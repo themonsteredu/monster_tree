@@ -1,0 +1,26 @@
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+
+# 환경변수 (절대 커밋 금지)
+.env
+.env.local
+.env*.local
+
+# 시스템 파일
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+npm-debug.log*
+
+# 에디터
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
