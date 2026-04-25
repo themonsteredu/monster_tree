@@ -25,7 +25,9 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
   const [page, setPage] = useState(0);
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [now, setNow] = useState(() => Date.now());
+  // SSR 과 클라이언트의 시각이 달라 hydration mismatch 가 나는 것을 방지하기 위해
+  // 마운트 전에는 0 으로 두고, 클라이언트에서만 실제 시각으로 갱신합니다.
+  const [now, setNow] = useState(0);
 
   // 이전 단계 캐시 (단계 상승 감지용)
   const prevStageRef = useRef<Record<string, number>>({});
@@ -35,6 +37,7 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
 
   // 1초마다 시각 갱신 (현재 시각 표시 + 만료 정리)
   useEffect(() => {
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -63,6 +66,9 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
   // Realtime 구독
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
+    // 환경변수가 클라이언트 번들에 inline 되지 않은 배포 환경에서는
+    // 조용히 구독을 건너뜁니다. (SSR 데이터로 화면은 그대로 렌더됨)
+    if (!sb) return;
 
     const channel = sb
       .channel("garden-tv")
@@ -135,7 +141,8 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
   }, [now]);
 
   const visible = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-  const today = formatToday(new Date(now));
+  // now === 0 이면 SSR 단계 → 시각 영역만 빈 칸으로 두어 hydration mismatch 회피
+  const today = now === 0 ? "" : formatToday(new Date(now));
 
   return (
     <main className="min-h-screen kiosk overflow-hidden">

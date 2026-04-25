@@ -50,6 +50,7 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
   // Realtime 구독 (다른 기기에서 입력 시 즉시 반영)
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
+    if (!sb) return;
     const ch = sb
       .channel("garden-admin")
       .on(
