@@ -92,6 +92,76 @@ export async function addPointsAction(args: {
   return { ok: true as const, newTotal, newStage };
 }
 
+/* ============== 수확 ============== */
+
+// 8단계(380pt 이상) 학생을 수확 처리합니다.
+// - garden_harvests 에 사과 6개 기록
+// - 학생 total_points 를 130(5단계 큰나무) 으로 리셋 → 다시 꽃 → 열매 → 수확 사이클이 반복됨
+// - apples_harvested 누적 카운터 +6
+// 수확 사과 개수와 리셋 포인트는 한 곳에서 변경할 수 있게 상수화.
+const HARVEST_APPLES = 6;
+const HARVEST_RESET_POINTS = 130;
+
+export async function harvestStudentAction(args: { studentId: string }) {
+  ensureAuth();
+  const { studentId } = args;
+  if (!studentId) {
+    return { ok: false as const, message: "잘못된 입력이에요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+
+  const { data: student, error: e1 } = await sb
+    .from("garden_students")
+    .select("id, name, total_points, apples_harvested")
+    .eq("id", studentId)
+    .single();
+  if (e1 || !student) {
+    return { ok: false as const, message: "학생을 찾을 수 없어요." };
+  }
+  if ((student.total_points ?? 0) < 380) {
+    return {
+      ok: false as const,
+      message: "8단계(380pt 이상)에 도달한 학생만 수확할 수 있어요.",
+    };
+  }
+
+  // 1) 수확 기록
+  const { error: e2 } = await sb.from("garden_harvests").insert({
+    student_id: studentId,
+    apples_count: HARVEST_APPLES,
+  });
+  if (e2) {
+    return { ok: false as const, message: `수확 기록 실패: ${e2.message}` };
+  }
+
+  // 2) 학생 상태 리셋 (총 사과 누적 + 포인트는 5단계로)
+  const newTotal = HARVEST_RESET_POINTS;
+  const newStage = calculateStage(newTotal);
+  const newApples = (student.apples_harvested ?? 0) + HARVEST_APPLES;
+
+  const { error: e3 } = await sb
+    .from("garden_students")
+    .update({
+      total_points: newTotal,
+      current_stage: newStage,
+      apples_harvested: newApples,
+    })
+    .eq("id", studentId);
+  if (e3) {
+    return { ok: false as const, message: `학생 정보 갱신 실패: ${e3.message}` };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return {
+    ok: true as const,
+    apples: HARVEST_APPLES,
+    newTotal,
+    newStage,
+  };
+}
+
 /* ============== 학생 CRUD ============== */
 
 export async function createStudentAction(args: {

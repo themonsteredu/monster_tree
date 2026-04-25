@@ -16,7 +16,7 @@ import { AppleTree } from "@/components/AppleTree";
 import { calculateStage, getStageInfo, stageProgress } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
-import { addPointsAction } from "./actions";
+import { addPointsAction, harvestStudentAction } from "./actions";
 
 const QUICK_BUTTONS = [1, 2, 3, 5] as const;
 const LONG_PRESS_MS = 500;
@@ -56,6 +56,7 @@ export function AdminClient({
   const [toast, setToast] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [stageUp, setStageUp] = useState<StageUp | null>(null);
+  const [harvestTarget, setHarvestTarget] = useState<GardenStudent | null>(null);
   const [pending, startTransition] = useTransition();
 
   const prevStageRef = useRef<Record<string, number>>({});
@@ -135,6 +136,18 @@ export function AdminClient({
     setTimeout(() => setToast(null), 1800);
   };
 
+  const submitHarvest = (student: GardenStudent) => {
+    startTransition(async () => {
+      const res = await harvestStudentAction({ studentId: student.id });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast(`${student.name} 사과 ${res.apples}개 수확!`);
+      fireConfetti(true);
+    });
+  };
+
   const submitPoints = (studentId: string, delta: number, reason?: string) => {
     // 카드 플래시 (낙관적 - 서버 응답 기다리지 않고 시각적 피드백)
     setFlashId(studentId);
@@ -201,6 +214,7 @@ export function AdminClient({
             isFlash={flashId === s.id}
             onQuick={(delta) => submitPoints(s.id, delta)}
             onLongPress={(delta) => setReasonModal({ studentId: s.id, delta })}
+            onHarvest={() => setHarvestTarget(s)}
           />
         ))}
       </div>
@@ -257,6 +271,22 @@ export function AdminClient({
           />
         )}
       </AnimatePresence>
+
+      {/* 수확 확인 모달 */}
+      <AnimatePresence>
+        {harvestTarget && (
+          <HarvestConfirmModal
+            student={harvestTarget}
+            disabled={pending}
+            onCancel={() => setHarvestTarget(null)}
+            onConfirm={() => {
+              const t = harvestTarget;
+              setHarvestTarget(null);
+              submitHarvest(t);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -291,12 +321,14 @@ function StudentRow({
   isFlash,
   onQuick,
   onLongPress,
+  onHarvest,
 }: {
   student: GardenStudent;
   disabled: boolean;
   isFlash: boolean;
   onQuick: (delta: number) => void;
   onLongPress: (delta: number) => void;
+  onHarvest: () => void;
 }) {
   const stage = calculateStage(student.total_points);
   const info = getStageInfo(stage);
@@ -347,6 +379,18 @@ function StudentRow({
           )}
         </div>
       </div>
+
+      {/* 수확 가능 학생 (8단계) 전용 버튼 */}
+      {isHarvest && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onHarvest}
+          className="mt-3 w-full min-h-[48px] py-3 rounded-[14px] border-[2.5px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.97] transition-transform shadow-card animate-soft-bounce"
+        >
+          🍎 수확하기 (사과 6개 → 바구니로)
+        </button>
+      )}
 
       <div className="mt-3 grid grid-cols-5 gap-2">
         {QUICK_BUTTONS.map((n) => (
@@ -684,6 +728,67 @@ function StageUpModal({
               단계로 성장!
             </>
           )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function HarvestConfirmModal({
+  student,
+  disabled,
+  onCancel,
+  onConfirm,
+}: {
+  student: GardenStudent;
+  disabled: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[55] flex items-center justify-center p-6 bg-[var(--ink)]/40 backdrop-blur-[2px]"
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ scale: 0.7, y: 30, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.85, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 250, damping: 20 }}
+        className="relative w-full max-w-sm rounded-[24px] border-[3px] border-[var(--ink)] bg-white px-6 py-6 text-center shadow-card-pop"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-5xl mb-2">🍎</div>
+        <div className="text-xl font-extrabold text-[var(--ink)]">수확하시겠어요?</div>
+        <div className="mt-3 text-base font-bold text-[var(--ink)]">
+          {student.name}
+        </div>
+        <p className="mt-2 text-sm text-[var(--ink-soft)] leading-relaxed">
+          사과 <b className="text-[var(--apple-deep)]">6개</b>가 바구니로
+          모이고,
+          <br />
+          나무는 <b>큰나무 (5단계)</b>로 돌아가
+          <br />
+          다시 꽃 → 열매 → 수확 사이클을 시작해요.
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            disabled={disabled}
+            onClick={onCancel}
+            className="py-3 rounded-xl bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold disabled:opacity-50"
+          >
+            취소
+          </button>
+          <button
+            disabled={disabled}
+            onClick={onConfirm}
+            className="py-3 rounded-xl bg-[var(--accent-gold)] border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold disabled:opacity-50"
+          >
+            🍎 수확하기
+          </button>
         </div>
       </motion.div>
     </motion.div>

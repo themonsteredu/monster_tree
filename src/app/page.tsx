@@ -14,25 +14,44 @@ export const revalidate = 0;
 export default async function Page() {
   // 첫 페인트는 SSR 로 빠르게 (이후 클라이언트에서 Realtime 구독)
   let initialStudents: GardenStudent[] = [];
+  let initialTodayHarvest = 0;
   let envMissing = false;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     envMissing = true;
   } else {
     const sb = createSupabaseServerAnonClient();
-    const { data } = await sb
-      .from("garden_students")
-      .select("*")
-      .eq("is_active", true)
-      .order("total_points", { ascending: false });
-    initialStudents = (data ?? []) as GardenStudent[];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [{ data: students }, { data: harvests }] = await Promise.all([
+      sb
+        .from("garden_students")
+        .select("*")
+        .eq("is_active", true)
+        .order("total_points", { ascending: false }),
+      sb
+        .from("garden_harvests")
+        .select("apples_count")
+        .gte("harvested_at", todayStart.toISOString()),
+    ]);
+    initialStudents = (students ?? []) as GardenStudent[];
+    initialTodayHarvest = (harvests ?? []).reduce(
+      (acc, h) => acc + (h.apples_count ?? 0),
+      0,
+    );
   }
 
   if (envMissing) {
     return <EnvMissingNotice />;
   }
 
-  return <TVScreen initialStudents={initialStudents} />;
+  return (
+    <TVScreen
+      initialStudents={initialStudents}
+      initialTodayHarvest={initialTodayHarvest}
+    />
+  );
 }
 
 function EnvMissingNotice() {
