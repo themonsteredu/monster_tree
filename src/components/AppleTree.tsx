@@ -7,7 +7,7 @@
 
 import React from "react";
 
-export type AppleTreeSize = "small" | "medium" | "large";
+export type AppleTreeSize = "xs" | "small" | "medium" | "large" | "xl";
 
 type Props = {
   stage: number; // 1~8 (범위 밖이면 1~8 로 강제)
@@ -19,9 +19,11 @@ type Props = {
 };
 
 const SIZE_PX: Record<AppleTreeSize, number> = {
+  xs: 64,
   small: 88,
   medium: 140,
   large: 220,
+  xl: 340,
 };
 
 // 팔레트 (Tailwind 와 동일)
