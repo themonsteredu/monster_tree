@@ -1,16 +1,25 @@
 "use client";
 
 // TV 화면 (1920×1080 풀스크린 가로 모드 가정)
-// - 학생을 누적 포인트 높은 순으로 정렬해 12명씩 4×3 그리드로 표시
-// - 12명 초과 시 15초마다 자동 페이지 전환
-// - Supabase Realtime 으로 garden_students/garden_point_logs 변경 감지
-//   → 방금 적립된 학생은 3초간 강조 (놀란 표정 + 초록 외곽선 + +pt 배지)
-//   → 단계 상승 시 5초 배너 + 컨페티
+//
+// 레이아웃:
+//   [헤더: 타이틀 / TOP 학생 / 오늘 수확 / 시계]
+//   ┌─────────────────────┬───────────────────────────────────┐
+//   │   SPOTLIGHT (좌)    │   STUDENTS GRID (우)              │
+//   │   한 학생씩 큰 사과나무 │   모든 학생을 컴팩트 카드로 한 번에 │
+//   │   4초마다 자동 교체    │   현재 스포트라이트 학생 강조        │
+//   └─────────────────────┴───────────────────────────────────┘
+//                                                  [수확 바구니]
+//
+// Realtime:
+// - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
+// - garden_point_logs: +pt 강조 (3초)
+// - garden_harvests: 사과가 카드 → 바구니로 포물선 비행
 
 import confetti from "canvas-confetti";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
+import { AppleTree, type AppleTreeMood, type AppleTreeSize } from "@/components/AppleTree";
 import {
   calculateStage,
   getStageInfo,
@@ -20,12 +29,11 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 
-const PAGE_SIZE = 12; // 4 × 3
-const FOCUS_INTERVAL_MS = 3_500; // 한 명에게 머무는 시간 (12명 × 3.5s = 페이지당 42s)
+const SPOTLIGHT_INTERVAL_MS = 4_000; // 한 학생당 스포트라이트 노출 시간
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
 const HARVEST_BANNER_MS = 10_000;
-const FLY_DURATION_MS = 1_400; // 사과가 바구니로 날아가는 시간
+const FLY_DURATION_MS = 1_400;
 
 type Highlight = { delta: number; expiresAt: number };
 type Banner = {
@@ -66,7 +74,6 @@ export function TVScreen({
   initialTodayHarvest?: number;
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
-  const [page, setPage] = useState(0);
   const [focusedIdx, setFocusedIdx] = useState(0);
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -101,38 +108,19 @@ export function TVScreen({
     [students],
   );
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const visible = useMemo(
-    () => sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
-    [sorted, page],
-  );
-
-  // 학생 한 명씩 순차적으로 포커스 (확대 효과)
-  // - FOCUS_INTERVAL_MS 마다 다음 카드로 이동
-  // - 페이지의 마지막 카드를 지나면 다음 페이지로 + 포커스 0 으로 리셋
+  // 스포트라이트 자동 순환 - 전체 학생을 한 명씩
   useEffect(() => {
-    if (visible.length === 0) return;
+    if (sorted.length <= 1) return;
     const t = setInterval(() => {
-      setFocusedIdx((prev) => {
-        const next = prev + 1;
-        if (next >= visible.length) {
-          if (pageCount > 1) setPage((p) => (p + 1) % pageCount);
-          return 0;
-        }
-        return next;
-      });
-    }, FOCUS_INTERVAL_MS);
+      setFocusedIdx((i) => (i + 1) % sorted.length);
+    }, SPOTLIGHT_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [visible.length, pageCount]);
+  }, [sorted.length]);
 
+  // 학생 수가 줄어들어 인덱스가 범위를 벗어나면 보정
   useEffect(() => {
-    if (page >= pageCount) setPage(0);
-  }, [page, pageCount]);
-
-  // 페이지가 바뀌면 포커스 인덱스 리셋
-  useEffect(() => {
-    setFocusedIdx(0);
-  }, [page]);
+    if (focusedIdx >= sorted.length) setFocusedIdx(0);
+  }, [focusedIdx, sorted.length]);
 
   // Realtime 구독
   useEffect(() => {
@@ -238,6 +226,8 @@ export function TVScreen({
 
   const today = now === 0 ? "" : formatToday(new Date(now));
   const top = sorted[0];
+  const spotlight = sorted[focusedIdx];
+  const cycleLabel = sorted.length > 0 ? `${focusedIdx + 1} / ${sorted.length}` : "0 / 0";
 
   return (
     <main className="kiosk min-h-screen relative overflow-hidden">
@@ -256,47 +246,33 @@ export function TVScreen({
         </div>
       </header>
 
-      {/* 그리드 */}
-      <section className="relative z-10 px-8 pb-10">
-        {sorted.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="grid grid-cols-4 grid-rows-3 gap-5 h-[calc(100vh-130px)]">
-            {visible.map((s, idx) => (
-              <StudentCard
-                key={s.id}
-                student={s}
-                highlight={highlights[s.id]}
-                now={now}
-                isFocused={idx === focusedIdx}
-                cardRef={(el) => {
-                  cardRefs.current[s.id] = el;
-                }}
-              />
-            ))}
-            {/* 빈 슬롯 (12개 미만일 때) */}
-            {visible.length < PAGE_SIZE &&
-              Array.from({ length: PAGE_SIZE - visible.length }).map((_, i) => (
-                <div key={`empty-${i}`} className="rounded-[22px] bg-white/30 border-[2.5px] border-dashed border-[var(--ink)]/15" />
-              ))}
-          </div>
-        )}
-      </section>
-
-      {/* 페이지 인디케이터 */}
-      {pageCount > 1 && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-          {Array.from({ length: pageCount }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-2.5 rounded-full transition-all duration-500 ${
-                i === page
-                  ? "w-10 bg-[var(--ink)]"
-                  : "w-2.5 bg-[var(--ink)]/25"
-              }`}
-            />
-          ))}
-        </div>
+      {/* 본문: 좌측 스포트라이트 + 우측 컴팩트 그리드 */}
+      {sorted.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <section
+          className="relative z-10 grid gap-6 px-8 pb-10"
+          style={{
+            gridTemplateColumns: "minmax(420px, 36%) 1fr",
+            height: "calc(100vh - 130px)",
+          }}
+        >
+          <Spotlight
+            student={spotlight}
+            highlight={spotlight ? highlights[spotlight.id] : undefined}
+            now={now}
+            cycleLabel={cycleLabel}
+          />
+          <CompactGrid
+            students={sorted}
+            spotlightId={spotlight?.id}
+            highlights={highlights}
+            now={now}
+            registerRef={(id, el) => {
+              cardRefs.current[id] = el;
+            }}
+          />
+        </section>
       )}
 
       {/* 우하단 수확 바구니 */}
@@ -333,22 +309,28 @@ export function TVScreen({
 }
 
 /* ================================================================
-   학생 카드
+   좌측 스포트라이트 (큰 카드 1개, 4초마다 학생 교체)
 ================================================================ */
 
-function StudentCard({
+function Spotlight({
   student,
   highlight,
   now,
-  isFocused,
-  cardRef,
+  cycleLabel,
 }: {
-  student: GardenStudent;
+  student: GardenStudent | undefined;
   highlight: Highlight | undefined;
   now: number;
-  isFocused: boolean;
-  cardRef: (el: HTMLDivElement | null) => void;
+  cycleLabel: string;
 }) {
+  if (!student) {
+    return (
+      <div className="rounded-[28px] bg-white/70 border-[2.5px] border-[var(--ink)] flex items-center justify-center text-[var(--ink-soft)]">
+        스포트라이트 대기 중…
+      </div>
+    );
+  }
+
   const stage = calculateStage(student.total_points);
   const info = getStageInfo(stage);
   const remaining = pointsToNextStage(student.total_points);
@@ -359,28 +341,25 @@ function StudentCard({
   const mood: AppleTreeMood = isFresh ? "surprised" : "happy";
 
   return (
-    <motion.div
-      ref={cardRef}
-      animate={{
-        scale: isFocused ? 1.18 : 1,
-        opacity: isFocused ? 1 : 0.78,
-      }}
-      transition={{ type: "spring", stiffness: 220, damping: 22 }}
-      style={{ zIndex: isFocused ? 20 : 1 }}
+    <div
       className={[
-        "relative rounded-[22px] border-[2.5px] flex flex-col items-center px-3 pt-4 pb-3 gap-1.5",
-        "origin-center will-change-transform",
+        "relative rounded-[28px] border-[2.5px] border-[var(--ink)] p-7 flex flex-col items-center",
         isHarvest
-          ? "bg-[var(--card-bg-hero)] border-[var(--ink)] hero-glow"
-          : "bg-[var(--card-bg)] border-[var(--ink)] shadow-card",
-        isFresh ? "!border-[var(--accent-success)] !border-[3.5px]" : "",
+          ? "bg-[var(--card-bg-hero)] hero-glow"
+          : "bg-[var(--card-bg)] shadow-card",
       ].join(" ")}
     >
-      {/* 상단 뱃지 (단계 표시) - 카드 위쪽으로 살짝 튀어나옴 */}
-      <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20">
+      {/* 우상단 사이클 인디케이터 */}
+      <div className="absolute top-4 right-5 flex items-center gap-2 text-sm font-bold text-[var(--ink-soft)] tabular-nums">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--apple-base)] animate-pulse" />
+        스포트라이트 {cycleLabel}
+      </div>
+
+      {/* 단계 배지 + 수확 배지 */}
+      <div className="flex items-center gap-2 mt-1">
         <span
           className={[
-            "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-extrabold border-[2.5px] border-[var(--ink)] shadow-card",
+            "inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-extrabold border-[2.5px] border-[var(--ink)] shadow-card",
             accent.bg,
             accent.text,
           ].join(" ")}
@@ -390,62 +369,227 @@ function StudentCard({
             {stage}단계 · {info.name}
           </span>
         </span>
+        {isHarvest && (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-extrabold bg-[var(--accent-gold)] border-[2.5px] border-[var(--ink)] text-[var(--ink)] shadow-card-pop animate-soft-bounce">
+            ★ 수확 가능
+          </span>
+        )}
       </div>
 
-      {/* 우상단: 수확 가능 뱃지 */}
+      {/* 사과나무 (학생 교체 시 부드러운 페이드/스케일 전환) */}
+      <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={student.id}
+            initial={{ opacity: 0, scale: 0.85, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: -10 }}
+            transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
+            className="relative"
+          >
+            <AppleTree stage={stage} size="xl" mood={mood} />
+            {isFresh && (
+              <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
+                +{highlight!.delta}pt ✨
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* 학생 정보 + 진행도 (학생 교체 시 같이 페이드) */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`${student.id}-info`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.4, delay: 0.06 }}
+          className="text-center w-full"
+        >
+          <div className="text-5xl font-black tracking-tight leading-none truncate">
+            {student.name}
+          </div>
+          {student.class_name && (
+            <div className="mt-2 text-base font-semibold text-[var(--ink-soft)]">
+              {student.class_name}
+            </div>
+          )}
+          <div className="mt-4 flex items-baseline justify-center gap-1.5">
+            <span className="text-6xl font-black tabular-nums text-[var(--ink)]">
+              {student.total_points}
+            </span>
+            <span className="text-xl font-bold text-[var(--ink-soft)]">pt</span>
+          </div>
+
+          {/* 진행도 바 / 수확 알약 */}
+          <div className="mt-5 mx-auto w-full max-w-[78%]">
+            {isHarvest ? (
+              <div className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 rounded-full bg-[var(--accent-gold)] border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-base font-extrabold">
+                <span>🍎</span>
+                <span>다음 수확을 기다리는 중!</span>
+              </div>
+            ) : (
+              <ProgressBar
+                current={student.total_points}
+                target={info.nextThreshold ?? student.total_points}
+                stageStart={info.threshold}
+                progress={progress}
+                barFill={accent.barFill}
+                remaining={remaining}
+              />
+            )}
+            {!isHarvest && remaining > 0 && (
+              <div className="mt-2 text-sm font-bold text-[var(--ink-soft)]">
+                다음 단계까지 {remaining}pt
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ================================================================
+   우측 컴팩트 그리드 (모든 학생을 한 화면에)
+================================================================ */
+
+function CompactGrid({
+  students,
+  spotlightId,
+  highlights,
+  now,
+  registerRef,
+}: {
+  students: GardenStudent[];
+  spotlightId: string | undefined;
+  highlights: Record<string, Highlight>;
+  now: number;
+  registerRef: (id: string, el: HTMLDivElement | null) => void;
+}) {
+  const cols = colsFor(students.length);
+  const treeSize: AppleTreeSize = cols >= 8 ? "xs" : "small";
+  return (
+    <div className="rounded-[28px] bg-white/55 border-[2.5px] border-[var(--ink)]/40 backdrop-blur-sm shadow-card p-4 overflow-hidden">
+      <div
+        className="grid gap-2.5 h-full content-start"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {students.map((s, i) => (
+          <CompactCard
+            key={s.id}
+            student={s}
+            rank={i + 1}
+            isSpotlight={s.id === spotlightId}
+            highlight={highlights[s.id]}
+            now={now}
+            treeSize={treeSize}
+            cardRef={(el) => registerRef(s.id, el)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompactCard({
+  student,
+  rank,
+  isSpotlight,
+  highlight,
+  now,
+  treeSize,
+  cardRef,
+}: {
+  student: GardenStudent;
+  rank: number;
+  isSpotlight: boolean;
+  highlight: Highlight | undefined;
+  now: number;
+  treeSize: AppleTreeSize;
+  cardRef: (el: HTMLDivElement | null) => void;
+}) {
+  const stage = calculateStage(student.total_points);
+  const isHarvest = stage === 8;
+  const isFresh = highlight && highlight.expiresAt > now;
+  const mood: AppleTreeMood = isFresh ? "surprised" : "happy";
+
+  return (
+    <motion.div
+      ref={cardRef}
+      animate={{
+        scale: isSpotlight ? 1.06 : 1,
+      }}
+      transition={{ type: "spring", stiffness: 240, damping: 22 }}
+      style={{ zIndex: isSpotlight ? 5 : 1 }}
+      className={[
+        "relative rounded-[18px] bg-white p-2 flex flex-col items-center justify-between gap-1",
+        "border-[2px] border-[var(--ink)]/85",
+        isSpotlight
+          ? "!border-[3px] !border-[var(--apple-base)] shadow-card-pop"
+          : "shadow-[0_3px_10px_-6px_rgba(61,40,24,0.35)]",
+        !isSpotlight && isHarvest ? "!border-[var(--accent-gold-deep)]" : "",
+      ].join(" ")}
+    >
+      {/* 좌상단 순위 (Top 3 색상) */}
+      <div
+        className={[
+          "absolute top-1 left-1 min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-extrabold flex items-center justify-center tabular-nums border-[1.5px] border-[var(--ink)]",
+          rank === 1
+            ? "bg-[var(--accent-gold)] text-[var(--ink)]"
+            : rank === 2
+              ? "bg-[#cdd0d4] text-[var(--ink)]"
+              : rank === 3
+                ? "bg-[#d9a273] text-white"
+                : "bg-white text-[var(--ink-soft)]",
+        ].join(" ")}
+      >
+        {rank}
+      </div>
+
+      {/* 우상단 수확 별 */}
       {isHarvest && (
-        <div className="absolute -top-3 -right-2 z-20 px-2.5 py-1 rounded-full bg-[var(--accent-gold)] border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card-pop animate-soft-bounce">
-          ★ 수확
+        <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-[var(--accent-gold)] border-[1.5px] border-[var(--ink)] text-[var(--ink)] flex items-center justify-center text-[12px] font-extrabold">
+          ★
         </div>
       )}
 
-      {/* 좌상단: 방금 +pt 뱃지 */}
+      {/* +pt 강조 */}
       {isFresh && (
-        <>
-          <div className="absolute -top-3 -left-2 z-20 px-2.5 py-1 rounded-full bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xs font-extrabold shadow-card-pop animate-pop-in">
-            {(highlight!.delta > 0 ? "+" : "") + highlight!.delta}pt ✨
-          </div>
-          {/* 카드 양쪽 burst lines */}
-          <BurstLines />
-        </>
+        <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[var(--accent-success)] border-[1.5px] border-[var(--ink)] text-white text-[11px] font-extrabold animate-pop-in shadow-card">
+          {(highlight!.delta > 0 ? "+" : "") + highlight!.delta}
+        </div>
       )}
 
       {/* 사과나무 */}
-      <div className="flex-1 flex items-center justify-center w-full pt-2">
-        <AppleTree stage={stage} size="medium" mood={mood} />
+      <div className="flex-1 flex items-center justify-center w-full pt-3">
+        <AppleTree stage={stage} size={treeSize} mood={mood} />
       </div>
 
-      {/* 학생 정보 */}
+      {/* 이름 + pt */}
       <div className="text-center w-full">
-        <div className="text-[17px] font-extrabold leading-tight truncate">
+        <div className="text-[12px] font-extrabold truncate leading-tight">
           {student.name}
         </div>
-        <div className="text-[10px] font-semibold text-[var(--ink-soft)] mt-0.5 truncate">
-          {student.class_name ? `${student.class_name} · ` : ""}
-          {stage}단계
+        <div className="text-[10px] font-bold tabular-nums text-[var(--ink-soft)]">
+          {student.total_points}pt
         </div>
-      </div>
-
-      {/* 진행률 바 또는 포인트 알약 */}
-      <div className="w-full mt-1">
-        {isHarvest ? (
-          <div className="mx-auto inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-gold)] border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-sm font-extrabold w-full">
-            <span>🍎</span>
-            <span className="tabular-nums">{student.total_points} pt</span>
-          </div>
-        ) : (
-          <ProgressBar
-            current={student.total_points}
-            target={info.nextThreshold ?? student.total_points}
-            stageStart={info.threshold}
-            progress={progress}
-            barFill={accent.barFill}
-            remaining={remaining}
-          />
-        )}
       </div>
     </motion.div>
   );
+}
+
+// 학생 수에 맞춰 그리드 컬럼 수를 결정 (최대 10열)
+function colsFor(count: number): number {
+  if (count <= 6) return 3;
+  if (count <= 12) return 4;
+  if (count <= 20) return 5;
+  if (count <= 30) return 6;
+  if (count <= 42) return 7;
+  if (count <= 56) return 8;
+  if (count <= 72) return 9;
+  return 10;
 }
 
 function ProgressBar({
