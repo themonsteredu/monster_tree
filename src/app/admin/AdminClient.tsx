@@ -1,21 +1,26 @@
 "use client";
 
-// Admin 메인 화면 클라이언트 측 로직
+// Admin 메인 화면 (모바일 한 손 조작 최적화)
 // - 반(class) 필터
-// - 학생별 빠른 적립 버튼 (+1, +2, +3, +5, -1)
+// - 가로 행 학생 카드 + 빠른 적립 버튼 (+1, +2, +3, +5, -1)
 // - 길게 누르면 사유 입력 모달
+// - 점수 적립 시 카드 초록 플래시 + 포인트 카운트업
+// - 단계 상승 시 큰 모달 + 컨페티
 // - 하단 시트로 "오늘 입력 기록" 펼치기
 // - Realtime 으로 다른 화면에서 입력해도 즉시 갱신됨
 
+import confetti from "canvas-confetti";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AppleTree } from "@/components/AppleTree";
-import { calculateStage } from "@/lib/garden";
+import { calculateStage, getStageInfo, stageProgress } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { addPointsAction } from "./actions";
 
 const QUICK_BUTTONS = [1, 2, 3, 5] as const;
 const LONG_PRESS_MS = 500;
+const FLASH_MS = 600;
 
 type StudentMini = { name: string; class_name: string | null };
 
@@ -26,14 +31,37 @@ type Props = {
   initialClass: string | null;
 };
 
-export function AdminClient({ students: initialStudents, recentLogs: initialLogs, studentMap, initialClass }: Props) {
+type StageUp = {
+  id: string;
+  name: string;
+  stage: number;
+  stageName: string;
+  isHarvest: boolean;
+};
+
+export function AdminClient({
+  students: initialStudents,
+  recentLogs: initialLogs,
+  studentMap,
+  initialClass,
+}: Props) {
   const [students, setStudents] = useState(initialStudents);
   const [logs, setLogs] = useState(initialLogs);
   const [classFilter, setClassFilter] = useState<string | null>(initialClass);
-  const [reasonModal, setReasonModal] = useState<{ studentId: string; delta: number } | null>(null);
+  const [reasonModal, setReasonModal] = useState<{
+    studentId: string;
+    delta: number;
+  } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [stageUp, setStageUp] = useState<StageUp | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const prevStageRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    for (const s of initialStudents) prevStageRef.current[s.id] = s.current_stage;
+  }, [initialStudents]);
 
   const classes = useMemo(() => {
     const set = new Set<string>();
@@ -47,7 +75,7 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
     [students, classFilter],
   );
 
-  // Realtime 구독 (다른 기기에서 입력 시 즉시 반영)
+  // Realtime 구독
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
     if (!sb) return;
@@ -63,6 +91,23 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
             return;
           }
           const next = payload.new as GardenStudent;
+          // 단계 상승 감지 (Admin 에서도 모달 띄우기)
+          const prev = prevStageRef.current[next.id] ?? next.current_stage;
+          if (next.current_stage > prev) {
+            const info = getStageInfo(
+              next.current_stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+            );
+            const isHarvest = next.current_stage === 8;
+            setStageUp({
+              id: `${next.id}-${next.current_stage}-${Date.now()}`,
+              name: next.name,
+              stage: next.current_stage,
+              stageName: info.name,
+              isHarvest,
+            });
+            fireConfetti(isHarvest);
+          }
+          prevStageRef.current[next.id] = next.current_stage;
           setStudents((prev) => {
             const i = prev.findIndex((s) => s.id === next.id);
             if (i === -1) return [...prev, next];
@@ -91,8 +136,16 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
   };
 
   const submitPoints = (studentId: string, delta: number, reason?: string) => {
+    // 카드 플래시 (낙관적 - 서버 응답 기다리지 않고 시각적 피드백)
+    setFlashId(studentId);
+    setTimeout(() => setFlashId((cur) => (cur === studentId ? null : cur)), FLASH_MS);
+
     startTransition(async () => {
-      const res = await addPointsAction({ studentId, delta, reason: reason ?? null });
+      const res = await addPointsAction({
+        studentId,
+        delta,
+        reason: reason ?? null,
+      });
       if (!res.ok) {
         showToast(res.message);
         return;
@@ -103,10 +156,23 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 space-y-3">
+    <div className="max-w-2xl mx-auto px-4 pt-4 pb-20 space-y-3">
+      {/* 헤더 (TV 와 동일 톤) */}
+      <header className="pt-2 pb-1">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card">
+          <span className="text-xl">🌳</span>
+          <span className="text-base font-extrabold text-[var(--ink)]">
+            사과정원 입력
+          </span>
+        </div>
+      </header>
+
       {/* 반 필터 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        <FilterChip active={classFilter === null} onClick={() => setClassFilter(null)}>
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <FilterChip
+          active={classFilter === null}
+          onClick={() => setClassFilter(null)}
+        >
           전체 ({students.length})
         </FilterChip>
         {classes.map((c) => (
@@ -121,9 +187,9 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
       </div>
 
       {/* 학생 목록 */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {visible.length === 0 && (
-          <div className="text-center text-ink-soft py-12">
+          <div className="text-center text-[var(--ink-soft)] py-12">
             표시할 학생이 없어요.
           </div>
         )}
@@ -132,6 +198,7 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
             key={s.id}
             student={s}
             disabled={pending}
+            isFlash={flashId === s.id}
             onQuick={(delta) => submitPoints(s.id, delta)}
             onLongPress={(delta) => setReasonModal({ studentId: s.id, delta })}
           />
@@ -141,17 +208,24 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
       {/* 하단 고정: 오늘 기록 시트 토글 */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-ink-strong text-white shadow-card-pop"
+        className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm"
       >
         오늘 입력 기록
       </button>
 
       {/* 토스트 */}
-      {toast && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-ink-strong text-white text-sm shadow-card animate-pop-in">
-          {toast}
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-[var(--ink)] text-white text-sm font-bold shadow-card-pop border-[2px] border-[var(--ink)]"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 사유 입력 모달 */}
       {reasonModal && (
@@ -173,6 +247,16 @@ export function AdminClient({ students: initialStudents, recentLogs: initialLogs
           onClose={() => setSheetOpen(false)}
         />
       )}
+
+      {/* 단계 상승 모달 */}
+      <AnimatePresence>
+        {stageUp && (
+          <StageUpModal
+            stageUp={stageUp}
+            onClose={() => setStageUp(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -190,8 +274,10 @@ function FilterChip({
     <button
       onClick={onClick}
       className={[
-        "shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition",
-        active ? "bg-apple text-white" : "bg-white text-ink-strong border border-ink-soft/20",
+        "shrink-0 px-3.5 py-2 rounded-full text-sm font-extrabold transition border-[2px] border-[var(--ink)]",
+        active
+          ? "bg-[var(--ink)] text-white shadow-card"
+          : "bg-white text-[var(--ink)] shadow-card",
       ].join(" ")}
     >
       {children}
@@ -202,42 +288,78 @@ function FilterChip({
 function StudentRow({
   student,
   disabled,
+  isFlash,
   onQuick,
   onLongPress,
 }: {
   student: GardenStudent;
   disabled: boolean;
+  isFlash: boolean;
   onQuick: (delta: number) => void;
   onLongPress: (delta: number) => void;
 }) {
   const stage = calculateStage(student.total_points);
+  const info = getStageInfo(stage);
+  const progress = stageProgress(student.total_points);
+  const isHarvest = stage === 8;
 
   return (
-    <div className="bg-white rounded-2xl shadow-card p-3">
+    <div
+      className={[
+        "relative rounded-[18px] p-3 border-[2.5px] border-[var(--ink)] transition-colors duration-300",
+        isHarvest
+          ? "bg-[var(--card-bg-hero)]"
+          : "bg-white",
+        isFlash ? "!bg-[#dff5d0]" : "",
+        "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
+      ].join(" ")}
+    >
       <div className="flex items-center gap-3">
         <AppleTree stage={stage} size="small" />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
-            <div className="text-lg font-semibold truncate">{student.name}</div>
-            <div className="text-xs text-ink-soft truncate">{student.class_name ?? ""}</div>
+            <div className="text-lg font-extrabold truncate text-[var(--ink)]">
+              {student.name}
+            </div>
+            <div className="text-xs font-semibold text-[var(--ink-soft)] truncate">
+              {student.class_name ?? ""}
+            </div>
           </div>
-          <div className="text-sm text-ink-soft">
-            <span className="text-base text-ink-strong font-semibold tabular-nums">
-              {student.total_points}pt
-            </span>
-            <span className="ml-2">{stage}단계</span>
+          <div className="text-sm font-bold text-[var(--ink-soft)] flex items-center gap-2">
+            <CountUpNumber value={student.total_points} />
+            <span className="text-[var(--ink-soft)]">pt</span>
+            <span className="text-xs">·</span>
+            <span>{stage}단계 {info.name}</span>
           </div>
+          {/* 작은 progress 바 */}
+          {!isHarvest && (
+            <div className="mt-1.5 h-2 rounded-full bg-[#e8dfcf] border border-[var(--ink)]/30 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full"
+                style={{
+                  background: stage === 6 ? "var(--accent-purple)" : "var(--leaf-base)",
+                }}
+                initial={false}
+                animate={{ width: `${Math.max(4, progress * 100)}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-5 gap-2">
+      <div className="mt-3 grid grid-cols-5 gap-2">
         {QUICK_BUTTONS.map((n) => (
           <LongPressButton
             key={n}
             disabled={disabled}
             onClick={() => onQuick(n)}
             onLongPress={() => onLongPress(n)}
-            className="py-3 rounded-xl bg-leaf-light/30 hover:bg-leaf-light/60 active:bg-leaf-light text-ink-strong font-bold text-lg select-none touch-manipulation"
+            className={[
+              "min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] font-extrabold text-base",
+              "active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation",
+              quickClass(n),
+            ].join(" ")}
           >
             +{n}
           </LongPressButton>
@@ -245,12 +367,58 @@ function StudentRow({
         <button
           disabled={disabled}
           onClick={() => onQuick(-1)}
-          className="py-3 rounded-xl bg-apple/10 hover:bg-apple/20 active:bg-apple/30 text-apple font-bold text-lg select-none touch-manipulation"
+          className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[#ffe4dc] text-[var(--apple-deep)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
         >
           −1
         </button>
       </div>
     </div>
+  );
+}
+
+function quickClass(n: number): string {
+  // 스펙에 명시된 단계별 컬러 (밝게 → 진하게)
+  switch (n) {
+    case 1:
+      return "bg-[#e8f5d8] text-[var(--ink)]";
+    case 2:
+      return "bg-[#d4ebc0] text-[var(--ink)]";
+    case 3:
+      return "bg-[#c8e598] text-[var(--ink)]";
+    case 5:
+      return "bg-[var(--accent-success)] text-white";
+    default:
+      return "bg-[#e8f5d8] text-[var(--ink)]";
+  }
+}
+
+function CountUpNumber({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  const prevRef = useRef(value);
+
+  useEffect(() => {
+    const start = prevRef.current;
+    const end = value;
+    if (start === end) return;
+    const startTime = performance.now();
+    const duration = 400;
+    let raf = 0;
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - startTime) / duration);
+      const eased = 1 - Math.pow(1 - k, 3);
+      const current = Math.round(start + (end - start) * eased);
+      setShown(current);
+      if (k < 1) raf = requestAnimationFrame(tick);
+      else prevRef.current = end;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+
+  return (
+    <span className="text-base font-extrabold tabular-nums text-[var(--ink)]">
+      {shown}
+    </span>
   );
 }
 
@@ -267,8 +435,6 @@ function LongPressButton({
   className?: string;
   children: React.ReactNode;
 }) {
-  // touchstart / mousedown 에서 타이머 시작, 일정 시간 지나면 onLongPress
-  // 빨리 떼면 onClick
   const timer = useRef<number | null>(null);
   const longPressed = useRef(false);
 
@@ -306,7 +472,16 @@ function LongPressButton({
   );
 }
 
-const REASON_PRESETS = ["출석", "지각 안 함", "숙제 완료", "수업 태도 우수", "테스트 90점↑", "테스트 80점↑", "테스트 70점↑", "응시"];
+const REASON_PRESETS = [
+  "출석",
+  "지각 안 함",
+  "숙제 완료",
+  "수업 태도 우수",
+  "테스트 90점↑",
+  "테스트 80점↑",
+  "테스트 70점↑",
+  "응시",
+];
 
 function ReasonModal({
   delta,
@@ -319,18 +494,20 @@ function ReasonModal({
 }) {
   const [text, setText] = useState("");
   return (
-    <div className="fixed inset-0 z-50 bg-ink-strong/40 flex items-end sm:items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-card-pop p-5">
-        <div className="text-lg font-bold mb-1">
+    <div className="fixed inset-0 z-50 bg-[var(--ink)]/40 flex items-end sm:items-center justify-center p-4 backdrop-blur-[1px]">
+      <div className="w-full max-w-sm bg-white rounded-[24px] border-[2.5px] border-[var(--ink)] shadow-card-pop p-5">
+        <div className="text-lg font-extrabold mb-1 text-[var(--ink)]">
           {delta > 0 ? `+${delta}` : delta}pt 적립 사유
         </div>
-        <p className="text-sm text-ink-soft mb-3">자주 쓰는 사유를 누르거나 직접 입력해주세요.</p>
+        <p className="text-sm text-[var(--ink-soft)] mb-3">
+          자주 쓰는 사유를 누르거나 직접 입력해주세요.
+        </p>
         <div className="flex flex-wrap gap-2 mb-3">
           {REASON_PRESETS.map((r) => (
             <button
               key={r}
               onClick={() => setText(r)}
-              className="px-3 py-1.5 rounded-full bg-cream-deep text-ink-strong text-sm"
+              className="px-3 py-1.5 rounded-full bg-[#fff5d6] border-[1.5px] border-[var(--ink)]/50 text-[var(--ink)] text-sm font-bold"
             >
               {r}
             </button>
@@ -341,18 +518,18 @@ function ReasonModal({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="예: 단어시험 만점"
-          className="w-full px-3 py-2 rounded-xl border border-ink-soft/20 focus:outline-none focus:ring-2 focus:ring-apple"
+          className="w-full px-3 py-2.5 rounded-xl border-[2px] border-[var(--ink)]/40 focus:outline-none focus:border-[var(--accent-success)] font-medium"
         />
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             onClick={onCancel}
-            className="py-3 rounded-xl bg-cream-deep text-ink-strong font-semibold"
+            className="py-3 rounded-xl bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold"
           >
             취소
           </button>
           <button
             onClick={() => onConfirm(text)}
-            className="py-3 rounded-xl bg-apple text-white font-semibold"
+            className="py-3 rounded-xl bg-[var(--accent-success)] border-[2px] border-[var(--ink)] text-white font-extrabold"
           >
             적립
           </button>
@@ -376,22 +553,36 @@ function RecentLogsSheet({
     t.setHours(0, 0, 0, 0);
     return t.getTime();
   }, []);
-  const todayLogs = logs.filter((l) => new Date(l.logged_at).getTime() >= today);
+  const todayLogs = logs.filter(
+    (l) => new Date(l.logged_at).getTime() >= today,
+  );
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink-strong/40 flex items-end justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-[var(--ink)]/40 flex items-end justify-center backdrop-blur-[1px]"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-2xl bg-white rounded-t-3xl p-5 max-h-[70vh] overflow-y-auto"
+        className="w-full max-w-2xl bg-white rounded-t-[24px] border-t-[2.5px] border-[var(--ink)] p-5 max-h-[70vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold">오늘 입력 기록 ({todayLogs.length})</h2>
-          <button onClick={onClose} className="text-ink-soft text-sm">닫기</button>
+          <h2 className="text-lg font-extrabold text-[var(--ink)]">
+            오늘 입력 기록 ({todayLogs.length})
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-[var(--ink-soft)] text-sm font-bold"
+          >
+            닫기
+          </button>
         </div>
         {todayLogs.length === 0 && (
-          <p className="text-center text-ink-soft py-10">아직 오늘 입력한 기록이 없어요.</p>
+          <p className="text-center text-[var(--ink-soft)] py-10">
+            아직 오늘 입력한 기록이 없어요.
+          </p>
         )}
-        <ul className="divide-y divide-ink-soft/10">
+        <ul className="divide-y divide-[var(--ink)]/10">
           {todayLogs.map((l) => {
             const m = studentMap[l.student_id];
             const t = new Date(l.logged_at);
@@ -399,17 +590,23 @@ function RecentLogsSheet({
             const mm = t.getMinutes().toString().padStart(2, "0");
             return (
               <li key={l.id} className="py-2 flex items-center gap-3">
-                <div className="text-xs text-ink-soft tabular-nums w-12">
+                <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
                   {hh}:{mm}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{m?.name ?? "(삭제된 학생)"}</div>
-                  <div className="text-xs text-ink-soft truncate">{l.reason ?? "—"}</div>
+                  <div className="font-extrabold truncate text-[var(--ink)]">
+                    {m?.name ?? "(삭제된 학생)"}
+                  </div>
+                  <div className="text-xs text-[var(--ink-soft)] truncate">
+                    {l.reason ?? "—"}
+                  </div>
                 </div>
                 <div
                   className={[
-                    "font-bold tabular-nums",
-                    l.points >= 0 ? "text-leaf-dark" : "text-apple",
+                    "font-extrabold tabular-nums",
+                    l.points >= 0
+                      ? "text-[var(--accent-success)]"
+                      : "text-[var(--apple-deep)]",
                   ].join(" ")}
                 >
                   {l.points > 0 ? "+" : ""}
@@ -422,4 +619,105 @@ function RecentLogsSheet({
       </div>
     </div>
   );
+}
+
+function StageUpModal({
+  stageUp,
+  onClose,
+}: {
+  stageUp: StageUp;
+  onClose: () => void;
+}) {
+  // 자동 닫기
+  useEffect(() => {
+    const timeoutId = setTimeout(
+      onClose,
+      stageUp.isHarvest ? 8_000 : 4_000,
+    );
+    return () => clearTimeout(timeoutId);
+  }, [stageUp, onClose]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-[var(--ink)]/40 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.6, y: 50, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.85, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 240, damping: 18 }}
+        className={[
+          "relative rounded-[28px] border-[3px] border-[var(--ink)] px-8 py-7 text-center shadow-card-pop",
+          stageUp.isHarvest
+            ? "bg-gradient-to-br from-[#fff5d6] via-[var(--accent-gold)] to-[#f0a020]"
+            : "bg-gradient-to-br from-white via-[#fff5d6] to-[var(--accent-gold)]",
+        ].join(" ")}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-6xl mb-1 animate-soft-bounce">
+          {stageUp.isHarvest ? "🎉" : "🌳"}
+        </div>
+        <div className="text-lg font-extrabold text-[var(--ink)]">
+          축하합니다!
+        </div>
+        <div className="mt-1 text-3xl font-black text-[var(--ink)] tracking-tight">
+          {stageUp.name}
+        </div>
+        <div className="mt-2 text-xl font-extrabold text-[var(--ink)]">
+          {stageUp.isHarvest ? (
+            <>
+              사과를{" "}
+              <span className="underline decoration-wavy decoration-[var(--apple-base)]">
+                수확
+              </span>
+              !
+            </>
+          ) : (
+            <>
+              <span className="underline decoration-wavy decoration-[var(--apple-base)]">
+                {stageUp.stageName}
+              </span>{" "}
+              단계로 성장!
+            </>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function fireConfetti(harvest: boolean) {
+  const colors = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
+  if (harvest) {
+    const end = Date.now() + 2_500;
+    const tick = () => {
+      confetti({
+        particleCount: 4,
+        angle: 60,
+        spread: 65,
+        origin: { x: 0, y: 0.7 },
+        colors,
+      });
+      confetti({
+        particleCount: 4,
+        angle: 120,
+        spread: 65,
+        origin: { x: 1, y: 0.7 },
+        colors,
+      });
+      if (Date.now() < end) requestAnimationFrame(tick);
+    };
+    tick();
+  } else {
+    confetti({
+      particleCount: 60,
+      spread: 65,
+      origin: { y: 0.5 },
+      colors,
+    });
+  }
 }
