@@ -9,7 +9,7 @@
 
 import confetti from "canvas-confetti";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import {
   calculateStage,
@@ -21,10 +21,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 
 const PAGE_SIZE = 12; // 4 × 3
-const PAGE_INTERVAL_MS = 15_000;
+const FOCUS_INTERVAL_MS = 3_500; // 한 명에게 머무는 시간 (12명 × 3.5s = 페이지당 42s)
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
 const HARVEST_BANNER_MS = 10_000;
+const FLY_DURATION_MS = 1_400; // 사과가 바구니로 날아가는 시간
 
 type Highlight = { delta: number; expiresAt: number };
 type Banner = {
@@ -33,6 +34,13 @@ type Banner = {
   stage: number;
   stageName: string;
   expiresAt: number;
+};
+type FlyingApple = {
+  id: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
 };
 
 // 단계별 액센트 (배지/진행바 컬러)
@@ -50,15 +58,30 @@ const STAGE_ACCENT: Record<
   8: { bg: "bg-[var(--accent-gold)]", text: "text-[var(--ink)]", emoji: "★", barFill: "var(--accent-gold-deep)" },
 };
 
-export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[] }) {
+export function TVScreen({
+  initialStudents,
+  initialTodayHarvest = 0,
+}: {
+  initialStudents: GardenStudent[];
+  initialTodayHarvest?: number;
+}) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [page, setPage] = useState(0);
+  const [focusedIdx, setFocusedIdx] = useState(0);
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [todayApples, setTodayApples] = useState<number>(initialTodayHarvest);
+  const [bumpBasket, setBumpBasket] = useState(0); // 바구니 살짝 흔들기 트리거
+  const [flyingApples, setFlyingApples] = useState<FlyingApple[]>([]);
   // SSR/CSR 시각 mismatch 방지 - 마운트 전에는 0
   const [now, setNow] = useState(0);
 
   const prevStageRef = useRef<Record<string, number>>({});
+  // 카드 DOM 참조 (사과 비행 시작점 계산용)
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // 바구니 DOM 참조 (사과 비행 도착점 계산용)
+  const basketRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     for (const s of initialStudents) prevStageRef.current[s.id] = s.current_stage;
   }, [initialStudents]);
@@ -79,18 +102,37 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
   );
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const visible = useMemo(
+    () => sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
+    [sorted, page],
+  );
 
-  // 페이지 자동 전환
+  // 학생 한 명씩 순차적으로 포커스 (확대 효과)
+  // - FOCUS_INTERVAL_MS 마다 다음 카드로 이동
+  // - 페이지의 마지막 카드를 지나면 다음 페이지로 + 포커스 0 으로 리셋
   useEffect(() => {
-    if (pageCount <= 1) return;
+    if (visible.length === 0) return;
     const t = setInterval(() => {
-      setPage((p) => (p + 1) % pageCount);
-    }, PAGE_INTERVAL_MS);
+      setFocusedIdx((prev) => {
+        const next = prev + 1;
+        if (next >= visible.length) {
+          if (pageCount > 1) setPage((p) => (p + 1) % pageCount);
+          return 0;
+        }
+        return next;
+      });
+    }, FOCUS_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [pageCount]);
+  }, [visible.length, pageCount]);
+
   useEffect(() => {
     if (page >= pageCount) setPage(0);
   }, [page, pageCount]);
+
+  // 페이지가 바뀌면 포커스 인덱스 리셋
+  useEffect(() => {
+    setFocusedIdx(0);
+  }, [page]);
 
   // Realtime 구독
   useEffect(() => {
@@ -156,6 +198,27 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
           }));
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "garden_harvests" },
+        (payload) => {
+          const harvest = payload.new as {
+            student_id: string;
+            apples_count: number;
+          } | null;
+          if (!harvest?.student_id) return;
+          // 카드/바구니의 화면 좌표를 측정해 사과들이 포물선 그리며 날아가게 트리거
+          spawnFlyingApples(
+            harvest.student_id,
+            harvest.apples_count,
+            cardRefs.current,
+            basketRef.current,
+            (items) => setFlyingApples((prev) => [...prev, ...items]),
+          );
+          // 바구니 카운터는 비행 사과가 도착할 때 증가시키므로 여기서는 카운트만 예약
+          // (각 비행 사과가 onComplete 에서 +1 씩 증가)
+        },
+      )
       .subscribe();
 
     return () => {
@@ -173,7 +236,6 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
     setBanners((b) => b.filter((x) => x.expiresAt > now));
   }, [now]);
 
-  const visible = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const today = now === 0 ? "" : formatToday(new Date(now));
   const top = sorted[0];
 
@@ -186,6 +248,7 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
       <header className="relative z-10 px-8 pt-6 pb-3 flex items-center justify-between">
         <TitlePill />
         <div className="flex items-center gap-3">
+          <TodayHarvestPill count={todayApples} bump={bumpBasket} />
           {top && <TopStudentPill name={top.name} points={top.total_points} />}
           <div className="px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card">
             {today}
@@ -199,12 +262,16 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
           <EmptyState />
         ) : (
           <div className="grid grid-cols-4 grid-rows-3 gap-5 h-[calc(100vh-130px)]">
-            {visible.map((s) => (
+            {visible.map((s, idx) => (
               <StudentCard
                 key={s.id}
                 student={s}
                 highlight={highlights[s.id]}
                 now={now}
+                isFocused={idx === focusedIdx}
+                cardRef={(el) => {
+                  cardRefs.current[s.id] = el;
+                }}
               />
             ))}
             {/* 빈 슬롯 (12개 미만일 때) */}
@@ -232,6 +299,31 @@ export function TVScreen({ initialStudents }: { initialStudents: GardenStudent[]
         </div>
       )}
 
+      {/* 우하단 수확 바구니 */}
+      <HarvestBasket
+        ref={basketRef}
+        count={todayApples}
+        bumpKey={bumpBasket}
+      />
+
+      {/* 사과 비행 layer (포물선) */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-40 overflow-hidden"
+      >
+        {flyingApples.map((fa) => (
+          <FlyingAppleNode
+            key={fa.id}
+            fa={fa}
+            onArrive={() => {
+              setFlyingApples((prev) => prev.filter((x) => x.id !== fa.id));
+              setTodayApples((c) => c + 1);
+              setBumpBasket((k) => k + 1);
+            }}
+          />
+        ))}
+      </div>
+
       {/* 단계 상승 모달 배너 */}
       {banners.map((b) => (
         <StageUpBanner key={b.id} banner={b} />
@@ -248,10 +340,14 @@ function StudentCard({
   student,
   highlight,
   now,
+  isFocused,
+  cardRef,
 }: {
   student: GardenStudent;
   highlight: Highlight | undefined;
   now: number;
+  isFocused: boolean;
+  cardRef: (el: HTMLDivElement | null) => void;
 }) {
   const stage = calculateStage(student.total_points);
   const info = getStageInfo(stage);
@@ -263,10 +359,17 @@ function StudentCard({
   const mood: AppleTreeMood = isFresh ? "surprised" : "happy";
 
   return (
-    <div
+    <motion.div
+      ref={cardRef}
+      animate={{
+        scale: isFocused ? 1.18 : 1,
+        opacity: isFocused ? 1 : 0.78,
+      }}
+      transition={{ type: "spring", stiffness: 220, damping: 22 }}
+      style={{ zIndex: isFocused ? 20 : 1 }}
       className={[
         "relative rounded-[22px] border-[2.5px] flex flex-col items-center px-3 pt-4 pb-3 gap-1.5",
-        "transition-all duration-300",
+        "origin-center will-change-transform",
         isHarvest
           ? "bg-[var(--card-bg-hero)] border-[var(--ink)] hero-glow"
           : "bg-[var(--card-bg)] border-[var(--ink)] shadow-card",
@@ -341,7 +444,7 @@ function StudentCard({
           />
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -442,6 +545,221 @@ function TopStudentPill({
   );
 }
 
+// 헤더의 "오늘 수확 N개" 알약. bumpKey 가 바뀔 때마다 살짝 흔들리며 강조.
+function TodayHarvestPill({
+  count,
+  bump,
+}: {
+  count: number;
+  bump: number;
+}) {
+  return (
+    <motion.div
+      key={bump}
+      initial={{ scale: 1 }}
+      animate={{ scale: bump > 0 ? [1, 1.15, 1] : 1 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--card-bg-hero)] text-[var(--ink)] border-[2.5px] border-[var(--ink)] shadow-card"
+    >
+      <span className="text-lg">🍎</span>
+      <span className="font-extrabold text-sm">오늘 수확</span>
+      <span className="font-extrabold tabular-nums">{count}개</span>
+    </motion.div>
+  );
+}
+
+/* ================================================================
+   수확 바구니 (우하단 고정) + 비행 사과
+================================================================ */
+
+// 우하단 큰 바구니. 사과가 도착하면 살짝 튀어오르며 카운트가 +1 됨.
+const HarvestBasket = forwardRef<HTMLDivElement, { count: number; bumpKey: number }>(
+  function HarvestBasket({ count, bumpKey }, ref) {
+    return (
+      <motion.div
+        ref={ref}
+        animate={{ rotate: bumpKey > 0 ? [0, -3, 3, 0] : 0, y: bumpKey > 0 ? [0, -6, 0] : 0 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="fixed bottom-6 right-6 z-30 pointer-events-none select-none"
+      >
+        <div className="relative">
+          {/* 바구니 SVG */}
+          <BasketSVG />
+          {/* 카운트 배지 (바구니 위쪽에 알약) */}
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-[var(--ink)] border-[2.5px] border-[var(--ink)] text-[var(--accent-gold)] text-base font-extrabold shadow-card-pop tabular-nums whitespace-nowrap">
+            🍎 {count}
+          </div>
+        </div>
+      </motion.div>
+    );
+  },
+);
+
+function BasketSVG() {
+  return (
+    <svg
+      viewBox="0 0 200 160"
+      width={180}
+      height={144}
+      role="img"
+      aria-label="수확 바구니"
+    >
+      <defs>
+        <linearGradient id="basket-side" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#c9924f" />
+          <stop offset="100%" stopColor="#8a5a26" />
+        </linearGradient>
+        <linearGradient id="basket-rim" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#d8a868" />
+          <stop offset="100%" stopColor="#a4753a" />
+        </linearGradient>
+      </defs>
+
+      {/* 그림자 */}
+      <ellipse cx="100" cy="148" rx="78" ry="6" fill="var(--ink)" opacity="0.18" />
+
+      {/* 바구니 본체 (사다리꼴) */}
+      <path
+        d="M 26 60 L 174 60 L 162 142 L 38 142 Z"
+        fill="url(#basket-side)"
+        stroke="var(--ink)"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* 바구니 위빙 라인 */}
+      {[78, 96, 114, 132].map((y) => (
+        <path
+          key={y}
+          d={`M ${30 + (y - 60) * 0.18} ${y} L ${170 - (y - 60) * 0.18} ${y}`}
+          stroke="var(--ink)"
+          strokeWidth="1.5"
+          opacity="0.45"
+        />
+      ))}
+      {[60, 90, 120, 150].map((x) => (
+        <path
+          key={x}
+          d={`M ${x} 60 L ${x - 6} 142`}
+          stroke="var(--ink)"
+          strokeWidth="1.5"
+          opacity="0.35"
+        />
+      ))}
+      {/* 위쪽 가장자리 림 */}
+      <ellipse
+        cx="100"
+        cy="60"
+        rx="76"
+        ry="12"
+        fill="url(#basket-rim)"
+        stroke="var(--ink)"
+        strokeWidth="3"
+      />
+      <ellipse cx="100" cy="58" rx="68" ry="7" fill="#5a3a1a" opacity="0.55" />
+
+      {/* 안쪽 사과 더미 (장식) */}
+      <g>
+        <circle cx="78" cy="56" r="9" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
+        <circle cx="76" cy="54" r="2.5" fill="#fff" opacity="0.7" />
+        <circle cx="100" cy="50" r="11" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
+        <circle cx="97" cy="47" r="3" fill="#fff" opacity="0.8" />
+        <circle cx="124" cy="55" r="9" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
+        <circle cx="122" cy="53" r="2.5" fill="#fff" opacity="0.7" />
+      </g>
+
+      {/* 손잡이 */}
+      <path
+        d="M 30 60 Q 100 -30 170 60"
+        fill="none"
+        stroke="url(#basket-rim)"
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M 30 60 Q 100 -30 170 60"
+        fill="none"
+        stroke="var(--ink)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity="0.85"
+      />
+    </svg>
+  );
+}
+
+// 카드 → 바구니로 포물선 그리며 날아가는 작은 사과 SVG.
+// framer-motion 의 keyframe times 옵션을 이용해 중간점이 위로 튀는 곡선을 만듬.
+function FlyingAppleNode({
+  fa,
+  onArrive,
+}: {
+  fa: FlyingApple;
+  onArrive: () => void;
+}) {
+  const midX = (fa.startX + fa.endX) / 2;
+  // 시작/끝 중 더 위에 있는 점에서 추가로 더 위로 튀어오르게
+  const minY = Math.min(fa.startY, fa.endY);
+  const midY = minY - 220;
+
+  return (
+    <motion.div
+      className="absolute"
+      style={{ left: 0, top: 0 }}
+      initial={{ x: fa.startX - 18, y: fa.startY - 18, scale: 1, rotate: 0 }}
+      animate={{
+        x: [fa.startX - 18, midX - 18, fa.endX - 18],
+        y: [fa.startY - 18, midY - 18, fa.endY - 18],
+        scale: [1, 1.25, 0.55],
+        rotate: [0, 180, 360],
+      }}
+      transition={{
+        duration: FLY_DURATION_MS / 1000,
+        ease: "easeIn",
+        times: [0, 0.45, 1],
+      }}
+      onAnimationComplete={onArrive}
+    >
+      <FlyingAppleSVG />
+    </motion.div>
+  );
+}
+
+function FlyingAppleSVG() {
+  return (
+    <svg viewBox="-20 -22 40 40" width={36} height={36}>
+      <defs>
+        <radialGradient id="fly-apple-grad" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="var(--apple-light)" />
+          <stop offset="55%" stopColor="var(--apple-base)" />
+          <stop offset="100%" stopColor="var(--apple-deep)" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M 0 -10 L 4 -16"
+        stroke="var(--ink)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M 4 -16 Q 10 -16 12 -12 Q 8 -14 4 -12 Z"
+        fill="var(--leaf-base)"
+        stroke="var(--ink)"
+        strokeWidth="1.5"
+      />
+      <circle
+        cx="0"
+        cy="0"
+        r="11"
+        fill="url(#fly-apple-grad)"
+        stroke="var(--ink)"
+        strokeWidth="2"
+      />
+      <ellipse cx="-3.5" cy="-4.5" rx="3" ry="3.6" fill="#fff" opacity="0.85" />
+    </svg>
+  );
+}
+
 /* ================================================================
    배경 데코
 ================================================================ */
@@ -521,6 +839,40 @@ function StageUpBanner({ banner }: { banner: Banner }) {
 /* ================================================================
    유틸
 ================================================================ */
+
+// 수확 이벤트가 도착하면 카드 중앙 → 바구니 중앙으로 사과 N 개를 날린다.
+// - 카드 또는 바구니 ref 가 아직 마운트되지 않았으면 시각 효과를 건너뛰고
+//   바구니 카운터만 즉시 +N 으로 정확성 보장.
+function spawnFlyingApples(
+  studentId: string,
+  count: number,
+  cardEls: Record<string, HTMLDivElement | null>,
+  basketEl: HTMLDivElement | null,
+  push: (items: FlyingApple[]) => void,
+) {
+  const card = cardEls[studentId];
+  if (!card || !basketEl) return;
+  const cardRect = card.getBoundingClientRect();
+  const basketRect = basketEl.getBoundingClientRect();
+  const startX = cardRect.left + cardRect.width / 2;
+  const startY = cardRect.top + cardRect.height / 2;
+  const endX = basketRect.left + basketRect.width / 2;
+  const endY = basketRect.top + basketRect.height * 0.35;
+
+  const items: FlyingApple[] = [];
+  const baseId = Date.now();
+  for (let i = 0; i < count; i++) {
+    items.push({
+      id: `${baseId}-${studentId}-${i}`,
+      // 시작점/도착점 살짝 흔들어 자연스럽게
+      startX: startX + (Math.random() - 0.5) * 24,
+      startY: startY + (Math.random() - 0.5) * 16,
+      endX: endX + (Math.random() - 0.5) * 30,
+      endY: endY + (Math.random() - 0.5) * 10,
+    });
+  }
+  push(items);
+}
 
 function fireConfetti(harvest: boolean) {
   const colors = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
