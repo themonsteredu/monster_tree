@@ -29,6 +29,20 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 
+// 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(query);
+    setMatch(m.matches);
+    const handler = (e: MediaQueryListEvent) => setMatch(e.matches);
+    m.addEventListener("change", handler);
+    return () => m.removeEventListener("change", handler);
+  }, [query]);
+  return match;
+}
+
 const SPOTLIGHT_INTERVAL_MS = 4_000; // 한 학생당 스포트라이트 노출 시간
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
@@ -90,6 +104,9 @@ export function TVScreen({
   const [flyingApples, setFlyingApples] = useState<FlyingApple[]>([]);
   // SSR/CSR 시각 mismatch 방지 - 마운트 전에는 0
   const [now, setNow] = useState(0);
+
+  // 모바일/데스크탑 분기 (1024px 미만 = 모바일)
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const prevStageRef = useRef<Record<string, number>>({});
   // sorted 의 최신 값 ref (Realtime 핸들러는 마운트 시 한 번만 등록되므로 stale closure 방지)
@@ -278,13 +295,17 @@ export function TVScreen({
       {/* 배경 데코 닷 (절제 있게 4개) */}
       <DecorDots />
 
-      {/* 헤더 */}
-      <header className="relative z-10 flex-shrink-0 px-8 pt-6 pb-3 flex items-center justify-between">
+      {/* 헤더 - 모바일에서는 컴팩트, 데스크탑에서는 풀 */}
+      <header className="relative z-10 flex-shrink-0 px-3 sm:px-8 pt-3 sm:pt-6 pb-2 sm:pb-3 flex items-center justify-between gap-2">
         <TitlePill />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <TodayHarvestPill ref={basketRef} count={todayApples} bump={bumpBasket} />
-          {top && <TopStudentPill name={top.name} points={top.total_points} />}
-          <div className="px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card">
+          {top && (
+            <div className="hidden md:block">
+              <TopStudentPill name={top.name} points={top.total_points} />
+            </div>
+          )}
+          <div className="hidden lg:block px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card">
             {today}
           </div>
         </div>
@@ -295,21 +316,22 @@ export function TVScreen({
         <EmptyState />
       ) : (
         <section
-          className="relative z-10 flex-1 min-h-0 grid gap-6 px-8 pb-4"
-          style={{
-            gridTemplateColumns: "minmax(420px, 36%) 1fr",
-          }}
+          className="relative z-10 flex-1 min-h-0 px-3 sm:px-8 pb-3 gap-3 lg:gap-6 flex flex-col lg:grid lg:[grid-template-columns:minmax(420px,_36%)_1fr]"
         >
-          <Spotlight
-            ref={spotlightRef}
-            student={spotlight}
-            highlight={spotlight ? highlights[spotlight.id] : undefined}
-            now={now}
-            cycleLabel={cycleLabel}
-            isShaking={!!spotlight && shakingId === spotlight.id}
-          />
-          {/* 우측 컬럼: 위에 그리드(flex-1), 아래에 기준 바(자동 높이) */}
-          <div className="flex flex-col gap-3 min-h-0">
+          {/* 스포트라이트: 모바일에서는 viewport 의 약 45vh, 데스크탑은 그리드 row 자동 */}
+          <div className="h-[44vh] lg:h-auto min-h-0 shrink-0 lg:shrink">
+            <Spotlight
+              ref={spotlightRef}
+              student={spotlight}
+              highlight={spotlight ? highlights[spotlight.id] : undefined}
+              now={now}
+              cycleLabel={cycleLabel}
+              isShaking={!!spotlight && shakingId === spotlight.id}
+              compact={!isDesktop}
+            />
+          </div>
+          {/* 우측(데스크탑) / 아래쪽(모바일): 그리드 + 기준 바(데스크탑만) */}
+          <div className="flex flex-col gap-3 min-h-0 flex-1">
             <div className="flex-1 min-h-0">
               <CompactGrid
                 students={sorted}
@@ -319,9 +341,13 @@ export function TVScreen({
                 registerRef={(id, el) => {
                   cardRefs.current[id] = el;
                 }}
+                maxCols={isDesktop ? undefined : 3}
               />
             </div>
-            <CriteriaBar />
+            {/* 기준 바: 모바일은 너무 좁아 숨김 */}
+            <div className="hidden lg:block">
+              <CriteriaBar />
+            </div>
           </div>
         </section>
       )}
@@ -365,8 +391,10 @@ const Spotlight = forwardRef<
     now: number;
     cycleLabel: string;
     isShaking: boolean;
+    /** 모바일 등 좁은 화면에서 폰트/트리 크기 축소 */
+    compact?: boolean;
   }
->(function Spotlight({ student, highlight, now, cycleLabel, isShaking }, ref) {
+>(function Spotlight({ student, highlight, now, cycleLabel, isShaking, compact = false }, ref) {
   if (!student) {
     return (
       <div
@@ -397,16 +425,17 @@ const Spotlight = forwardRef<
     <div
       ref={ref}
       className={[
-        "relative rounded-[28px] border-[2.5px] border-[var(--ink)] p-7 flex flex-col items-center",
+        "relative rounded-[28px] border-[2.5px] border-[var(--ink)] flex flex-col items-center h-full",
+        compact ? "p-3" : "p-7",
         isHarvest
           ? "bg-[var(--card-bg-hero)] hero-glow"
           : "bg-[var(--card-bg)] shadow-card",
       ].join(" ")}
     >
       {/* 우상단 사이클 인디케이터 */}
-      <div className="absolute top-4 right-5 flex items-center gap-2 text-sm font-bold text-[var(--ink-soft)] tabular-nums">
+      <div className="absolute top-2 right-3 sm:top-4 sm:right-5 flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--ink-soft)] tabular-nums">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--apple-base)] animate-pulse" />
-        스포트라이트 {cycleLabel}
+        {cycleLabel}
       </div>
 
       {/* 단계 배지 + 수확 배지 */}
@@ -443,7 +472,7 @@ const Spotlight = forwardRef<
           >
             <AppleTree
               stage={stage}
-              size="xl"
+              size={compact ? "large" : "xl"}
               mood={mood}
               wilted={isNegative}
               growthBoost={progress}
@@ -475,19 +504,34 @@ const Spotlight = forwardRef<
           transition={{ duration: 0.4, delay: 0.06 }}
           className="text-center w-full"
         >
-          <div className="text-5xl font-black tracking-tight leading-none truncate">
+          <div
+            className={[
+              "font-black tracking-tight leading-none truncate",
+              compact ? "text-3xl" : "text-5xl",
+            ].join(" ")}
+          >
             {student.name}
           </div>
           {student.class_name && (
-            <div className="mt-2 text-base font-semibold text-[var(--ink-soft)]">
+            <div
+              className={[
+                "font-semibold text-[var(--ink-soft)]",
+                compact ? "mt-1 text-sm" : "mt-2 text-base",
+              ].join(" ")}
+            >
               {student.class_name}
             </div>
           )}
-          <div className="mt-4 flex items-baseline justify-center gap-1.5">
-            <span className="text-6xl font-black tabular-nums text-[var(--ink)]">
+          <div className={["flex items-baseline justify-center gap-1.5", compact ? "mt-2" : "mt-4"].join(" ")}>
+            <span
+              className={[
+                "font-black tabular-nums text-[var(--ink)]",
+                compact ? "text-4xl" : "text-6xl",
+              ].join(" ")}
+            >
               {student.total_points}
             </span>
-            <span className="text-xl font-bold text-[var(--ink-soft)]">pt</span>
+            <span className={["font-bold text-[var(--ink-soft)]", compact ? "text-base" : "text-xl"].join(" ")}>pt</span>
           </div>
           {/* 누적 수확 사과 수 */}
           {student.apples_harvested > 0 && (
@@ -535,14 +579,17 @@ function CompactGrid({
   highlights,
   now,
   registerRef,
+  maxCols,
 }: {
   students: GardenStudent[];
   spotlightId: string | undefined;
   highlights: Record<string, Highlight>;
   now: number;
   registerRef: (id: string, el: HTMLDivElement | null) => void;
+  /** 컬럼 수 상한 (모바일에서 카드가 너무 작아지지 않게) */
+  maxCols?: number;
 }) {
-  const cols = colsFor(students.length);
+  const cols = Math.min(colsFor(students.length), maxCols ?? Infinity);
   const treeSize: AppleTreeSize = cols >= 8 ? "xs" : "small";
   return (
     <div className="rounded-[28px] bg-white/55 border-[2.5px] border-[var(--ink)]/40 backdrop-blur-sm shadow-card p-4 overflow-hidden">
