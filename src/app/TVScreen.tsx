@@ -233,6 +233,10 @@ export function TVScreen({
               expiresAt: Date.now() + HIGHLIGHT_MS,
             },
           }));
+          // 포인트 적립 시 해당 학생을 즉시 스포트라이트로 점프
+          // (정상 사이클은 다음 SPOTLIGHT_INTERVAL_MS 후에 다시 진행)
+          const idx = sortedRef.current.findIndex((s) => s.id === log.student_id);
+          if (idx >= 0) setFocusedIdx(idx);
         },
       )
       .on(
@@ -316,6 +320,9 @@ export function TVScreen({
           />
         </section>
       )}
+
+      {/* 하단 포인트 적립 기준 바 */}
+      <CriteriaBar />
 
       {/* 우하단 수확 바구니 */}
       <HarvestBasket
@@ -438,13 +445,19 @@ const Spotlight = forwardRef<
             transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
             className={["relative", isShaking ? "tree-shake" : ""].join(" ")}
           >
-            <AppleTree stage={stage} size="xl" mood={mood} wilted={isNegative} />
+            <AppleTree
+              stage={stage}
+              size="xl"
+              mood={mood}
+              wilted={isNegative}
+              growthBoost={progress}
+            />
             {isPositive && (
               <>
                 <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
                   +{highlight!.delta}pt ✨
                 </div>
-                <WaterDrops />
+                <SprayWater />
               </>
             )}
             {isNegative && (
@@ -480,6 +493,12 @@ const Spotlight = forwardRef<
             </span>
             <span className="text-xl font-bold text-[var(--ink-soft)]">pt</span>
           </div>
+          {/* 누적 수확 사과 수 */}
+          {student.apples_harvested > 0 && (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--card-bg-hero)] border-[2px] border-[var(--ink)] text-[var(--ink)] text-sm font-extrabold tabular-nums">
+              🍎 × {student.apples_harvested}개
+            </div>
+          )}
 
           {/* 진행도 바 / 수확 알약 */}
           <div className="mt-5 mx-auto w-full max-w-[78%]">
@@ -570,6 +589,7 @@ function CompactCard({
   cardRef: (el: HTMLDivElement | null) => void;
 }) {
   const stage = calculateStage(student.total_points);
+  const progress = stageProgress(student.total_points);
   const isHarvest = stage === 8;
   const isFresh = highlight && highlight.expiresAt > now;
   const isPositive = isFresh && highlight!.delta > 0;
@@ -629,17 +649,29 @@ function CompactCard({
 
       {/* 사과나무 */}
       <div className="flex-1 flex items-center justify-center w-full pt-3 relative">
-        <AppleTree stage={stage} size={treeSize} mood={mood} wilted={isNegative} />
-        {isPositive && <WaterDrops compact />}
+        <AppleTree
+          stage={stage}
+          size={treeSize}
+          mood={mood}
+          wilted={isNegative}
+          growthBoost={progress}
+        />
+        {isPositive && <SprayWater compact />}
       </div>
 
-      {/* 이름 + pt */}
+      {/* 이름 + pt + 사과 누적 */}
       <div className="text-center w-full">
         <div className="text-[12px] font-extrabold truncate leading-tight">
           {student.name}
         </div>
-        <div className="text-[10px] font-bold tabular-nums text-[var(--ink-soft)]">
-          {student.total_points}pt
+        <div className="text-[10px] font-bold tabular-nums text-[var(--ink-soft)] flex items-center justify-center gap-1">
+          <span>{student.total_points}pt</span>
+          {student.apples_harvested > 0 && (
+            <>
+              <span className="text-[var(--ink)]/30">·</span>
+              <span className="text-[var(--apple-deep)]">🍎 {student.apples_harvested}</span>
+            </>
+          )}
         </div>
       </div>
     </motion.div>
@@ -779,45 +811,157 @@ function TodayHarvestPill({
 }
 
 /* ================================================================
-   물방울 (포인트 적립 시 나무 위에서 톡톡 떨어짐)
+   하단 포인트 적립 기준 바 (placeholder - 양희쌤이 알려주시면 교체)
 ================================================================ */
 
-function WaterDrops({ compact = false }: { compact?: boolean }) {
-  // 3-5개 방울이 시간차로 떨어지게
-  const count = compact ? 3 : 5;
-  const spread = compact ? 28 : 70;
+// 자주 쓰는 적립 사유와 추천 포인트.
+// 실제 운영 기준이 정해지면 이 배열만 갈아끼우면 됨.
+const CRITERIA: ReadonlyArray<{ label: string; pts: number; emoji: string }> = [
+  { label: "출석", pts: 1, emoji: "📅" },
+  { label: "지각 안 함", pts: 1, emoji: "⏰" },
+  { label: "숙제 완료", pts: 2, emoji: "📝" },
+  { label: "수업 태도 우수", pts: 3, emoji: "🌟" },
+  { label: "테스트 70점↑", pts: 2, emoji: "✏️" },
+  { label: "테스트 80점↑", pts: 3, emoji: "📘" },
+  { label: "테스트 90점↑", pts: 5, emoji: "🏆" },
+];
+
+function CriteriaBar() {
+  return (
+    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[78%]">
+      <div className="flex items-center gap-2 flex-wrap justify-center">
+        <span className="text-xs font-extrabold text-[var(--ink-soft)] mr-1">
+          포인트 기준
+        </span>
+        {CRITERIA.map((c) => (
+          <span
+            key={c.label}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] text-xs font-bold shadow-card"
+          >
+            <span>{c.emoji}</span>
+            <span>{c.label}</span>
+            <span className="text-[var(--accent-success)] font-extrabold tabular-nums">
+              +{c.pts}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   분무기 + 미스트 (포인트 적립 시 나무에 물 뿌리기)
+================================================================ */
+
+function SprayWater({ compact = false }: { compact?: boolean }) {
+  // compact=true: 컴팩트 카드용 (작게), false: 스포트라이트용 (크게)
+  const particleCount = compact ? 8 : 16;
+  // 분무기 노즐 위치 (우상단). 미스트는 여기서 좌하단 부채꼴로 뿜어져 나옴
+  const bottlePx = compact ? 28 : 56;
+  // 미스트 부채꼴 범위 (좌하단으로 -130도 ~ -200도)
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 overflow-visible"
+      className="pointer-events-none absolute inset-0 overflow-visible z-30"
     >
-      {Array.from({ length: count }).map((_, i) => {
-        const x = ((i + 0.5) / count - 0.5) * spread + (Math.random() - 0.5) * 8;
-        const delay = i * 110;
-        const size = compact ? 6 : 10;
+      {/* 분무기 SVG (우상단) */}
+      <div
+        className="absolute spray-wiggle"
+        style={{
+          top: compact ? 0 : 6,
+          right: compact ? -2 : 12,
+          width: bottlePx,
+          height: bottlePx,
+        }}
+      >
+        <SprayBottleSVG />
+      </div>
+
+      {/* 미스트 입자들 (분무기 노즐에서 좌하단 부채꼴로) */}
+      {Array.from({ length: particleCount }).map((_, i) => {
+        // 노즐 화면상 좌표 (분무기 좌상단 코너 근처)
+        const nozzleTop = compact ? 6 : 14;
+        const nozzleRight = compact ? 16 : 38;
+        // 부채꼴 각도: -160도 ~ -200도 (좌하단 방향)
+        const angleDeg = -160 - (i / particleCount) * 80 + ((i * 13) % 7) * 2;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const distance = (compact ? 26 : 60) + ((i * 7) % 11) * 2;
+        const dx = Math.cos(angleRad) * distance;
+        const dy = -Math.sin(angleRad) * distance; // 화면 y 는 아래로
+        const delay = i * 35;
+        const dotSize = compact ? 3.5 : 6;
         return (
           <div
             key={i}
-            className="water-drop absolute left-1/2 top-1/2"
+            className="spray-mist absolute rounded-full"
             style={{
-              transform: `translate(${x}px, -50%)`,
+              top: nozzleTop,
+              right: nozzleRight,
+              width: dotSize,
+              height: dotSize,
+              background: "#7fc6e8",
+              border: "1.2px solid var(--ink)",
+              opacity: 0,
               animationDelay: `${delay}ms`,
+              ["--spray-x" as string]: `${dx}px`,
+              ["--spray-y" as string]: `${dy}px`,
             }}
-          >
-            <svg viewBox="-6 -8 12 16" width={size} height={size * 1.3}>
-              <path
-                d="M 0 -7 Q 5 0 0 6 Q -5 0 0 -7 Z"
-                fill="#5cb8e8"
-                stroke="var(--ink)"
-                strokeWidth="1.2"
-                strokeLinejoin="round"
-              />
-              <ellipse cx="-1.5" cy="-2" rx="1" ry="1.6" fill="#fff" opacity="0.7" />
-            </svg>
-          </div>
+          />
         );
       })}
     </div>
+  );
+}
+
+function SprayBottleSVG() {
+  // 단순 분무기: 본체 + 노즐 + 트리거
+  return (
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      <defs>
+        <linearGradient id="bottle-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#a8e0ff" />
+          <stop offset="100%" stopColor="#5cb8e8" />
+        </linearGradient>
+      </defs>
+      {/* 본체 (라운드 사각형) */}
+      <rect
+        x="36"
+        y="40"
+        width="44"
+        height="48"
+        rx="6"
+        fill="url(#bottle-grad)"
+        stroke="var(--ink)"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* 라벨 */}
+      <rect x="42" y="56" width="32" height="18" rx="2" fill="#fff" stroke="var(--ink)" strokeWidth="1.6" />
+      <line x1="46" y1="61" x2="70" y2="61" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="46" y1="65" x2="66" y2="65" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="46" y1="69" x2="68" y2="69" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      {/* 목 */}
+      <rect x="46" y="32" width="20" height="10" fill="#5cb8e8" stroke="var(--ink)" strokeWidth="2.5" />
+      {/* 트리거 손잡이 */}
+      <path
+        d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z"
+        fill="#7fc6e8"
+        stroke="var(--ink)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {/* 노즐 (좌상단) */}
+      <path
+        d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z"
+        fill="#5cb8e8"
+        stroke="var(--ink)"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {/* 노즐 입구 점 */}
+      <circle cx="13" cy="26" r="1.4" fill="var(--ink)" />
+    </svg>
   );
 }
 

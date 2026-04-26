@@ -21,6 +21,8 @@ type Props = {
   mood?: AppleTreeMood;
   /** 잎이 시들어 보이게 (포인트 차감 시 일시적) */
   wilted?: boolean;
+  /** 단계 내에서의 진행도 0~1 (sub-stage 성장: 키가 점점 자라남) */
+  growthBoost?: number;
   className?: string;
   title?: string;
 };
@@ -38,6 +40,7 @@ export function AppleTree({
   size = "medium",
   mood = "happy",
   wilted = false,
+  growthBoost = 0,
   className,
   title,
 }: Props) {
@@ -46,6 +49,11 @@ export function AppleTree({
   const px = SIZE_PX[size];
   const isSmall = size === "xs" || size === "small";
   const sw = isSmall ? 1.8 : 2.5;
+  // sub-stage 성장: 0 → 1 사이를 0.92 → 1.08 로 매핑 (단계 시작점 살짝 작게, 끝점 살짝 크게)
+  const g = Math.min(1, Math.max(0, growthBoost));
+  const treeScaleY = 0.92 + g * 0.16;
+  // y=4 (화분 림 위) 기준으로 스케일하므로 transform 매트릭스로 처리
+  const treeMatrix = `matrix(1 0 0 ${treeScaleY} 0 ${4 * (1 - treeScaleY)})`;
 
   // 같은 페이지에 여러 사과나무를 그릴 때 그라데이션 id 충돌 방지
   const reactId = React.useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -97,14 +105,16 @@ export function AppleTree({
       {/* 화분 (얼굴 포함, 모든 단계 공통) */}
       <Pot id={id} sw={sw} mood={mood} />
 
-      {/* 단계별 식물 본체 */}
-      {s === 2 && <Sprout sw={sw} />}
-      {s === 3 && <YoungSprout id={id} sw={sw} />}
-      {s === 4 && <YoungTree id={id} sw={sw} />}
-      {s === 5 && <SmallTree id={id} sw={sw} />}
-      {s === 6 && <MediumTree id={id} sw={sw} />}
-      {s === 7 && <FloweringTree id={id} sw={sw} />}
-      {s === 8 && <FruitfulTree id={id} sw={sw} />}
+      {/* 단계별 식물 본체 (sub-stage 키 자람을 위해 scaleY 매트릭스 wrapper) */}
+      <g transform={treeMatrix}>
+        {s === 2 && <Sprout sw={sw} />}
+        {s === 3 && <YoungSprout id={id} sw={sw} />}
+        {s === 4 && <YoungTree id={id} sw={sw} />}
+        {s === 5 && <SmallTree id={id} sw={sw} />}
+        {s === 6 && <MediumTree id={id} sw={sw} />}
+        {s === 7 && <FloweringTree id={id} sw={sw} />}
+        {s === 8 && <FruitfulTree id={id} sw={sw} />}
+      </g>
     </svg>
   );
 }
@@ -530,66 +540,54 @@ function FruitfulTree({ id, sw }: { id: string; sw: number }) {
    각 항목: [cx, cy, rotateDeg, size]
 ================================================================ */
 
-// 4단계: 어린나무 (이미 화분보다 큰 캐노피)
-const LEAVES_4: ReadonlyArray<[number, number, number, number]> = [
-  [-14, -22, -65, 1.1],
-  [-6, -16, -30, 1.0],
-  [0, -28, 0, 1.2],
-  [6, -16, 30, 1.0],
-  [14, -22, 65, 1.1],
-  [-9, -28, -50, 1.0],
-  [9, -28, 50, 1.0],
-  [-3, -22, -10, 0.95],
-  [3, -22, 10, 0.95],
-];
+// 잎 위치를 캐노피 타원 안쪽에 절차적으로 분포.
+// sunflower-spiral (golden angle) + seeded jitter 로 자연스러우면서 결정적으로 생성 → 동일 결과.
+function generateLeaves(
+  seed: number,
+  count: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  baseSize: number,
+): ReadonlyArray<[number, number, number, number]> {
+  // 결정적 의사난수 (xorshift 변형)
+  let s = seed >>> 0;
+  const rand = () => {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return ((s >>> 0) % 10000) / 10000;
+  };
 
-// 5단계: 큰나무 (캐노피 화분 1.6배)
-const LEAVES_5: ReadonlyArray<[number, number, number, number]> = [
-  [-22, -36, -75, 1.3],
-  [-15, -28, -50, 1.15],
-  [-8, -42, -25, 1.2],
-  [0, -50, 0, 1.35],
-  [8, -42, 25, 1.2],
-  [15, -28, 50, 1.15],
-  [22, -36, 75, 1.3],
-  [-18, -42, -65, 1.15],
-  [18, -42, 65, 1.15],
-  [-5, -32, -15, 1.0],
-  [5, -32, 15, 1.0],
-  [-10, -50, -40, 1.1],
-  [10, -50, 40, 1.1],
-  [0, -34, 0, 1.05],
-];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const out: Array<[number, number, number, number]> = [];
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) / count; // 0..1, 균등
+    const r = Math.sqrt(t); // 중심 가까이 더 밀집되는 효과 방지 (균등 분포)
+    const angle = i * goldenAngle;
+    // 미세 jitter 로 너무 규칙적으로 보이지 않게
+    const rj = 0.92 + rand() * 0.16;
+    const x = cx + Math.cos(angle) * rx * r * rj;
+    const y = cy + Math.sin(angle) * ry * r * rj;
+    // 잎이 캐노피 중심에서 바깥쪽으로 향하게 회전 (위쪽 잎은 위로, 옆쪽 잎은 옆으로)
+    const dx = x - cx;
+    const dy = y - cy;
+    const outwardDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+    const sj = 0.85 + rand() * 0.3;
+    out.push([x, y, outwardDeg, baseSize * sj]);
+  }
+  return out;
+}
 
-// 6단계: 큰나무 (캐노피 화분의 2배 이상, 풍성하게)
-const LEAVES_6: ReadonlyArray<[number, number, number, number]> = [
-  // 좌측 끝
-  [-30, -38, -88, 1.4],
-  [-26, -46, -75, 1.3],
-  [-22, -32, -90, 1.3],
-  [-20, -52, -55, 1.35],
-  // 좌측 안쪽
-  [-15, -42, -45, 1.3],
-  [-12, -56, -25, 1.4],
-  [-10, -32, -25, 1.15],
-  [-7, -50, -10, 1.3],
-  // 가운데 / 꼭대기
-  [0, -62, 0, 1.5],
-  [0, -48, 0, 1.4],
-  [0, -36, 0, 1.15],
-  [-4, -42, -10, 1.15],
-  [4, -42, 10, 1.15],
-  // 우측 안쪽
-  [7, -50, 10, 1.3],
-  [10, -32, 25, 1.15],
-  [12, -56, 25, 1.4],
-  [15, -42, 45, 1.3],
-  // 우측 끝
-  [20, -52, 55, 1.35],
-  [22, -32, 90, 1.3],
-  [26, -46, 75, 1.3],
-  [30, -38, 88, 1.4],
-];
+// 4단계: 어린나무 (캐노피가 이미 화분보다 큼, 잎 27개)
+const LEAVES_4 = generateLeaves(4, 27, 0, -22, 18, 14, 0.95);
+
+// 5단계: 큰나무 (캐노피 화분 1.6배, 잎 42개)
+const LEAVES_5 = generateLeaves(5, 42, 0, -36, 26, 22, 1.15);
+
+// 6단계: 가장 풍성한 캐노피 (화분의 2배 이상, 잎 63개)
+const LEAVES_6 = generateLeaves(6, 63, 0, -42, 34, 28, 1.25);
 
 // 7단계 꽃 위치 (큰 캐노피에 흩뿌리듯)
 const FLOWER_POSITIONS: ReadonlyArray<[number, number]> = [

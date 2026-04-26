@@ -166,7 +166,7 @@ body {
   transform-origin: 50% 90%;
 }
 
-/* 물방울이 떨어지는 효과 (+pt 적립 시) */
+/* 물방울이 떨어지는 효과 (+pt 적립 시 - 레거시) */
 @keyframes water-drop {
   0% {
     transform: translateY(-30px) scale(1);
@@ -186,4 +186,42 @@ body {
 }
 .water-drop {
   animation: water-drop 1100ms ease-in forwards;
+}
+
+/* 분무기 미스트 (+pt 적립 시) - var(--spray-x), var(--spray-y) 로 이동 */
+@keyframes spray-mist {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(var(--spray-x, 0), var(--spray-y, 0)) scale(0.3);
+    opacity: 0;
+  }
+}
+.spray-mist {
+  animation: spray-mist 1200ms cubic-bezier(0.3, 0.6, 0.5, 1) forwards;
+}
+
+/* 분무기 본체가 살짝 흔들리는 효과 */
+@keyframes spray-wiggle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+  75% {
+    transform: rotate(-2deg);
+  }
+}
+.spray-wiggle {
+  animation: spray-wiggle 0.6s ease-in-out infinite;
+  transform-origin: bottom right;
 }
