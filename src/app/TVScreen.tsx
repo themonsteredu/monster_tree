@@ -96,7 +96,7 @@ export function TVScreen({
   const sortedRef = useRef<GardenStudent[]>(initialStudents);
   // 카드 DOM 참조 (사과 비행 시작점 계산용)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  // 바구니 DOM 참조 (사과 비행 도착점 계산용)
+  // 헤더의 "오늘 수확" 알약 DOM 참조 (사과 비행 도착점)
   const basketRef = useRef<HTMLDivElement | null>(null);
   // 스포트라이트 패널 참조 (수확 시 사과가 떨어지는 위치)
   const spotlightRef = useRef<HTMLDivElement | null>(null);
@@ -282,7 +282,7 @@ export function TVScreen({
       <header className="relative z-10 flex-shrink-0 px-8 pt-6 pb-3 flex items-center justify-between">
         <TitlePill />
         <div className="flex items-center gap-3">
-          <TodayHarvestPill count={todayApples} bump={bumpBasket} />
+          <TodayHarvestPill ref={basketRef} count={todayApples} bump={bumpBasket} />
           {top && <TopStudentPill name={top.name} points={top.total_points} />}
           <div className="px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card">
             {today}
@@ -326,12 +326,6 @@ export function TVScreen({
         </section>
       )}
 
-      {/* 우하단 수확 바구니 (기준 바 우측 영역에 떠있게) */}
-      <HarvestBasket
-        ref={basketRef}
-        count={todayApples}
-        bumpKey={bumpBasket}
-      />
 
       {/* 사과 비행 layer (포물선) */}
       <div
@@ -789,89 +783,56 @@ function TopStudentPill({
   );
 }
 
-// 헤더의 "오늘 수확 N개" 알약. bumpKey 가 바뀔 때마다 살짝 흔들리며 강조.
-function TodayHarvestPill({
-  count,
-  bump,
-}: {
-  count: number;
-  bump: number;
-}) {
-  return (
-    <motion.div
-      key={bump}
-      initial={{ scale: 1 }}
-      animate={{ scale: bump > 0 ? [1, 1.15, 1] : 1 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--card-bg-hero)] text-[var(--ink)] border-[2.5px] border-[var(--ink)] shadow-card"
-    >
-      <span className="text-lg">🍎</span>
-      <span className="font-extrabold text-sm">오늘 수확</span>
-      <span className="font-extrabold tabular-nums">{count}개</span>
-    </motion.div>
-  );
-}
+// 헤더의 "오늘 수확 N개" 알약. 비행 사과의 도착점이기도 함 (ref 노출).
+// bump 가 바뀔 때마다 살짝 흔들리며 강조.
+const TodayHarvestPill = forwardRef<HTMLDivElement, { count: number; bump: number }>(
+  function TodayHarvestPill({ count, bump }, ref) {
+    return (
+      <motion.div
+        ref={ref}
+        key={bump}
+        initial={{ scale: 1 }}
+        animate={{ scale: bump > 0 ? [1, 1.18, 1] : 1, rotate: bump > 0 ? [0, -4, 4, 0] : 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--card-bg-hero)] text-[var(--ink)] border-[2.5px] border-[var(--ink)] shadow-card"
+      >
+        <span className="text-lg">🍎</span>
+        <span className="font-extrabold text-sm">오늘 수확</span>
+        <span className="font-extrabold tabular-nums">{count}개</span>
+      </motion.div>
+    );
+  },
+);
 
 /* ================================================================
    하단 포인트 적립 기준 바 (placeholder - 양희쌤이 알려주시면 교체)
 ================================================================ */
 
 // 더몬스터학원 사과정원 포인트 적립 기준 (양희쌤 기준)
-const CRITERIA: ReadonlyArray<{ emoji: string; label: string; pts: string }> = [
-  { emoji: "📅", label: "출석", pts: "+1" },
-  { emoji: "📝", label: "숙제", pts: "+1" },
-  { emoji: "✏️", label: "일일테스트", pts: "+1·2·3·4" },
-  { emoji: "🏆", label: "단원평가 만점", pts: "+10" },
-  { emoji: "📊", label: "주간/월말 70·80·90·100점", pts: "+2·3·4·5" },
+// 같은 +1 점인 출석/숙제는 한 줄로 묶어 단순화 (4개 항목)
+const CRITERIA: ReadonlyArray<{ label: string; pts: string }> = [
+  { label: "출석·숙제", pts: "+1" },
+  { label: "일일테스트", pts: "+1~4" },
+  { label: "단원평가 만점", pts: "+10" },
+  { label: "주간·월말", pts: "+2~5" },
 ];
 
+// 한 줄 짜리 미니 정보 바 - 표 형식 제거, 가벼운 구분점만
 function CriteriaBar() {
   return (
-    <div className="rounded-[18px] border-[2.5px] border-[var(--ink)] bg-white/90 backdrop-blur-sm overflow-hidden shadow-card">
-      <div
-        className="grid items-stretch h-[78px]"
-        style={{
-          // 좌측 타이틀 + 5개 균등 셀 + 우측 바구니 자리
-          gridTemplateColumns: `150px repeat(${CRITERIA.length}, minmax(0, 1fr)) 160px`,
-        }}
-      >
-        {/* 타이틀 (좌측) */}
-        <div className="flex items-center justify-center gap-2 border-r-[1.5px] border-[var(--ink)]/25 px-3 bg-[var(--card-bg-hero)]/50">
-          <span className="text-2xl">🌳</span>
-          <div className="leading-tight text-center">
-            <div className="text-[13px] font-extrabold text-[var(--ink)]">
-              포인트
-            </div>
-            <div className="text-[13px] font-extrabold text-[var(--ink)]">
-              적립 기준
-            </div>
-          </div>
+    <div className="flex items-center justify-center gap-4 px-4 py-2.5 rounded-full bg-white/85 border-[2px] border-[var(--ink)] backdrop-blur-sm shadow-card text-sm whitespace-nowrap overflow-x-auto">
+      <span className="font-extrabold text-[var(--ink)] flex items-center gap-1 shrink-0">
+        🌳 포인트
+      </span>
+      {CRITERIA.map((c, i) => (
+        <div key={c.label} className="flex items-center gap-2 shrink-0">
+          {i > 0 && <span className="text-[var(--ink)]/25">·</span>}
+          <span className="font-bold text-[var(--ink)]">{c.label}</span>
+          <span className="font-extrabold tabular-nums text-[var(--accent-success)]">
+            {c.pts}
+          </span>
         </div>
-
-        {/* 기준 셀들 */}
-        {CRITERIA.map((c, i) => (
-          <div
-            key={c.label}
-            className={[
-              "flex flex-col items-center justify-center px-2 py-1 gap-0.5 min-w-0",
-              i < CRITERIA.length - 1 ? "border-r border-[var(--ink)]/15" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-center gap-1 text-[var(--ink)] min-w-0">
-              <span className="text-base shrink-0">{c.emoji}</span>
-              <span className="text-[12px] font-extrabold truncate">
-                {c.label}
-              </span>
-            </div>
-            <div className="text-lg font-black tabular-nums text-[var(--accent-success)] whitespace-nowrap">
-              {c.pts}
-            </div>
-          </div>
-        ))}
-
-        {/* 우측: 바구니가 위에 떠있을 자리 (빈 칸, 시각적 구분만) */}
-        <div className="border-l-[1.5px] border-[var(--ink)]/25 bg-[var(--card-bg-hero)]/30" />
-      </div>
+      ))}
     </div>
   );
 }
