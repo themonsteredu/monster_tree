@@ -33,7 +33,7 @@ const SPOTLIGHT_INTERVAL_MS = 4_000; // 한 학생당 스포트라이트 노출 
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
 const HARVEST_BANNER_MS = 10_000;
-const FLY_DURATION_MS = 1_400;
+const FLY_DURATION_MS = 3_500; // 2s 떨어짐(중력) + 1.5s 바구니로 비행
 
 type Highlight = { delta: number; expiresAt: number };
 type Banner = {
@@ -43,12 +43,20 @@ type Banner = {
   stageName: string;
   expiresAt: number;
 };
+// 수확 시퀀스: tree → ground → basket (3 keyframe trajectory)
 type FlyingApple = {
   id: string;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
+  // Phase 1 시작: 캐노피 위
+  treeX: number;
+  treeY: number;
+  // Phase 1 끝 / Phase 2 시작: 화분 근처 바닥
+  groundX: number;
+  groundY: number;
+  // Phase 2 끝: 바구니
+  basketX: number;
+  basketY: number;
+  // 사과들이 시간차로 떨어지게 (후두두 효과)
+  delay: number;
 };
 
 // 단계별 액센트 (배지/진행바 컬러)
@@ -84,10 +92,16 @@ export function TVScreen({
   const [now, setNow] = useState(0);
 
   const prevStageRef = useRef<Record<string, number>>({});
+  // sorted 의 최신 값 ref (Realtime 핸들러는 마운트 시 한 번만 등록되므로 stale closure 방지)
+  const sortedRef = useRef<GardenStudent[]>(initialStudents);
   // 카드 DOM 참조 (사과 비행 시작점 계산용)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // 바구니 DOM 참조 (사과 비행 도착점 계산용)
   const basketRef = useRef<HTMLDivElement | null>(null);
+  // 스포트라이트 패널 참조 (수확 시 사과가 떨어지는 위치)
+  const spotlightRef = useRef<HTMLDivElement | null>(null);
+  // 현재 흔들리는 학생 (수확 시작 1초 동안)
+  const [shakingId, setShakingId] = useState<string | null>(null);
 
   useEffect(() => {
     for (const s of initialStudents) prevStageRef.current[s.id] = s.current_stage;
@@ -122,10 +136,45 @@ export function TVScreen({
     if (focusedIdx >= sorted.length) setFocusedIdx(0);
   }, [focusedIdx, sorted.length]);
 
+  // sorted 의 최신 값을 ref 에 저장 (Realtime 핸들러에서 사용)
+  useEffect(() => {
+    sortedRef.current = sorted;
+  }, [sorted]);
+
   // Realtime 구독
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
     if (!sb) return;
+
+    // 수확 시퀀스: 스포트라이트 점프 → 흔들림(1s) → 후두두 떨어짐 + 바구니 비행(3.5s) → 배너
+    function triggerHarvestSequence(studentId: string, count: number) {
+      const idx = sortedRef.current.findIndex((s) => s.id === studentId);
+      if (idx >= 0) setFocusedIdx(idx);
+
+      // 스포트라이트가 새 학생으로 리렌더된 직후 흔들림 시작
+      window.setTimeout(() => {
+        setShakingId(studentId);
+        window.setTimeout(() => {
+          setShakingId((cur) => (cur === studentId ? null : cur));
+        }, 1000);
+      }, 120);
+
+      // 흔들림 종료(~1100ms 후) 시점에 사과들을 후두두 떨어뜨림
+      window.setTimeout(() => {
+        const items = buildFallingApples(
+          count,
+          spotlightRef.current,
+          basketRef.current,
+        );
+        if (items.length > 0) {
+          setFlyingApples((prev) => [...prev, ...items]);
+        } else {
+          // refs 가 준비 안 된 fallback - 바구니 카운트만 즉시 +N
+          setTodayApples((c) => c + count);
+          setBumpBasket((k) => k + 1);
+        }
+      }, 1100);
+    }
 
     const channel = sb
       .channel("garden-tv")
@@ -195,16 +244,7 @@ export function TVScreen({
             apples_count: number;
           } | null;
           if (!harvest?.student_id) return;
-          // 카드/바구니의 화면 좌표를 측정해 사과들이 포물선 그리며 날아가게 트리거
-          spawnFlyingApples(
-            harvest.student_id,
-            harvest.apples_count,
-            cardRefs.current,
-            basketRef.current,
-            (items) => setFlyingApples((prev) => [...prev, ...items]),
-          );
-          // 바구니 카운터는 비행 사과가 도착할 때 증가시키므로 여기서는 카운트만 예약
-          // (각 비행 사과가 onComplete 에서 +1 씩 증가)
+          triggerHarvestSequence(harvest.student_id, harvest.apples_count);
         },
       )
       .subscribe();
@@ -258,10 +298,12 @@ export function TVScreen({
           }}
         >
           <Spotlight
+            ref={spotlightRef}
             student={spotlight}
             highlight={spotlight ? highlights[spotlight.id] : undefined}
             now={now}
             cycleLabel={cycleLabel}
+            isShaking={!!spotlight && shakingId === spotlight.id}
           />
           <CompactGrid
             students={sorted}
@@ -312,20 +354,22 @@ export function TVScreen({
    좌측 스포트라이트 (큰 카드 1개, 4초마다 학생 교체)
 ================================================================ */
 
-function Spotlight({
-  student,
-  highlight,
-  now,
-  cycleLabel,
-}: {
-  student: GardenStudent | undefined;
-  highlight: Highlight | undefined;
-  now: number;
-  cycleLabel: string;
-}) {
+const Spotlight = forwardRef<
+  HTMLDivElement,
+  {
+    student: GardenStudent | undefined;
+    highlight: Highlight | undefined;
+    now: number;
+    cycleLabel: string;
+    isShaking: boolean;
+  }
+>(function Spotlight({ student, highlight, now, cycleLabel, isShaking }, ref) {
   if (!student) {
     return (
-      <div className="rounded-[28px] bg-white/70 border-[2.5px] border-[var(--ink)] flex items-center justify-center text-[var(--ink-soft)]">
+      <div
+        ref={ref}
+        className="rounded-[28px] bg-white/70 border-[2.5px] border-[var(--ink)] flex items-center justify-center text-[var(--ink-soft)]"
+      >
         스포트라이트 대기 중…
       </div>
     );
@@ -337,11 +381,18 @@ function Spotlight({
   const progress = stageProgress(student.total_points);
   const isHarvest = stage === 8;
   const isFresh = highlight && highlight.expiresAt > now;
+  const isPositive = isFresh && highlight!.delta > 0;
+  const isNegative = isFresh && highlight!.delta < 0;
   const accent = STAGE_ACCENT[stage];
-  const mood: AppleTreeMood = isFresh ? "surprised" : "happy";
+  const mood: AppleTreeMood = isNegative
+    ? "sad"
+    : isPositive
+      ? "surprised"
+      : "happy";
 
   return (
     <div
+      ref={ref}
       className={[
         "relative rounded-[28px] border-[2.5px] border-[var(--ink)] p-7 flex flex-col items-center",
         isHarvest
@@ -385,12 +436,20 @@ function Spotlight({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: -10 }}
             transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
-            className="relative"
+            className={["relative", isShaking ? "tree-shake" : ""].join(" ")}
           >
-            <AppleTree stage={stage} size="xl" mood={mood} />
-            {isFresh && (
-              <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
-                +{highlight!.delta}pt ✨
+            <AppleTree stage={stage} size="xl" mood={mood} wilted={isNegative} />
+            {isPositive && (
+              <>
+                <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
+                  +{highlight!.delta}pt ✨
+                </div>
+                <WaterDrops />
+              </>
+            )}
+            {isNegative && (
+              <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--apple-deep)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
+                {highlight!.delta}pt
               </div>
             )}
           </motion.div>
@@ -449,7 +508,7 @@ function Spotlight({
       </AnimatePresence>
     </div>
   );
-}
+});
 
 /* ================================================================
    우측 컴팩트 그리드 (모든 학생을 한 화면에)
@@ -513,7 +572,13 @@ function CompactCard({
   const stage = calculateStage(student.total_points);
   const isHarvest = stage === 8;
   const isFresh = highlight && highlight.expiresAt > now;
-  const mood: AppleTreeMood = isFresh ? "surprised" : "happy";
+  const isPositive = isFresh && highlight!.delta > 0;
+  const isNegative = isFresh && highlight!.delta < 0;
+  const mood: AppleTreeMood = isNegative
+    ? "sad"
+    : isPositive
+      ? "surprised"
+      : "happy";
 
   return (
     <motion.div
@@ -563,8 +628,9 @@ function CompactCard({
       )}
 
       {/* 사과나무 */}
-      <div className="flex-1 flex items-center justify-center w-full pt-3">
-        <AppleTree stage={stage} size={treeSize} mood={mood} />
+      <div className="flex-1 flex items-center justify-center w-full pt-3 relative">
+        <AppleTree stage={stage} size={treeSize} mood={mood} wilted={isNegative} />
+        {isPositive && <WaterDrops compact />}
       </div>
 
       {/* 이름 + pt */}
@@ -713,6 +779,49 @@ function TodayHarvestPill({
 }
 
 /* ================================================================
+   물방울 (포인트 적립 시 나무 위에서 톡톡 떨어짐)
+================================================================ */
+
+function WaterDrops({ compact = false }: { compact?: boolean }) {
+  // 3-5개 방울이 시간차로 떨어지게
+  const count = compact ? 3 : 5;
+  const spread = compact ? 28 : 70;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 overflow-visible"
+    >
+      {Array.from({ length: count }).map((_, i) => {
+        const x = ((i + 0.5) / count - 0.5) * spread + (Math.random() - 0.5) * 8;
+        const delay = i * 110;
+        const size = compact ? 6 : 10;
+        return (
+          <div
+            key={i}
+            className="water-drop absolute left-1/2 top-1/2"
+            style={{
+              transform: `translate(${x}px, -50%)`,
+              animationDelay: `${delay}ms`,
+            }}
+          >
+            <svg viewBox="-6 -8 12 16" width={size} height={size * 1.3}>
+              <path
+                d="M 0 -7 Q 5 0 0 6 Q -5 0 0 -7 Z"
+                fill="#5cb8e8"
+                stroke="var(--ink)"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+              <ellipse cx="-1.5" cy="-2" rx="1" ry="1.6" fill="#fff" opacity="0.7" />
+            </svg>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ================================================================
    수확 바구니 (우하단 고정) + 비행 사과
 ================================================================ */
 
@@ -831,8 +940,9 @@ function BasketSVG() {
   );
 }
 
-// 카드 → 바구니로 포물선 그리며 날아가는 작은 사과 SVG.
-// framer-motion 의 keyframe times 옵션을 이용해 중간점이 위로 튀는 곡선을 만듬.
+// 사과가 캐노피 → 바닥(후두두) → 바구니로 3-페이즈로 이동.
+// 각 사과는 fa.delay (0..700ms) 만큼 늦게 시작해 "후두두" 효과를 낸다.
+// times 0..0.57: 떨어지기 (2s, gravity), 0.57..1: 바구니로 비행 (1.5s)
 function FlyingAppleNode({
   fa,
   onArrive,
@@ -840,26 +950,22 @@ function FlyingAppleNode({
   fa: FlyingApple;
   onArrive: () => void;
 }) {
-  const midX = (fa.startX + fa.endX) / 2;
-  // 시작/끝 중 더 위에 있는 점에서 추가로 더 위로 튀어오르게
-  const minY = Math.min(fa.startY, fa.endY);
-  const midY = minY - 220;
-
   return (
     <motion.div
       className="absolute"
       style={{ left: 0, top: 0 }}
-      initial={{ x: fa.startX - 18, y: fa.startY - 18, scale: 1, rotate: 0 }}
+      initial={{ x: fa.treeX - 18, y: fa.treeY - 18, scale: 1, rotate: 0 }}
       animate={{
-        x: [fa.startX - 18, midX - 18, fa.endX - 18],
-        y: [fa.startY - 18, midY - 18, fa.endY - 18],
-        scale: [1, 1.25, 0.55],
-        rotate: [0, 180, 360],
+        x: [fa.treeX - 18, fa.groundX - 18, fa.basketX - 18],
+        y: [fa.treeY - 18, fa.groundY - 18, fa.basketY - 18],
+        scale: [1, 1, 0.55],
+        rotate: [0, 540, 900],
       }}
       transition={{
         duration: FLY_DURATION_MS / 1000,
         ease: "easeIn",
-        times: [0, 0.45, 1],
+        delay: fa.delay / 1000,
+        times: [0, 0.57, 1],
       }}
       onAnimationComplete={onArrive}
     >
@@ -984,38 +1090,41 @@ function StageUpBanner({ banner }: { banner: Banner }) {
    유틸
 ================================================================ */
 
-// 수확 이벤트가 도착하면 카드 중앙 → 바구니 중앙으로 사과 N 개를 날린다.
-// - 카드 또는 바구니 ref 가 아직 마운트되지 않았으면 시각 효과를 건너뛰고
-//   바구니 카운터만 즉시 +N 으로 정확성 보장.
-function spawnFlyingApples(
-  studentId: string,
+// 수확 시퀀스용 사과 생성:
+// - 시작: 스포트라이트 캐노피 위쪽
+// - 중간: 화분/바닥 근처 (떨어진 상태)
+// - 도착: 바구니
+// 사과마다 0~700ms 시간차로 떨어져 "후두두" 효과
+function buildFallingApples(
   count: number,
-  cardEls: Record<string, HTMLDivElement | null>,
+  spotlightEl: HTMLDivElement | null,
   basketEl: HTMLDivElement | null,
-  push: (items: FlyingApple[]) => void,
-) {
-  const card = cardEls[studentId];
-  if (!card || !basketEl) return;
-  const cardRect = card.getBoundingClientRect();
-  const basketRect = basketEl.getBoundingClientRect();
-  const startX = cardRect.left + cardRect.width / 2;
-  const startY = cardRect.top + cardRect.height / 2;
-  const endX = basketRect.left + basketRect.width / 2;
-  const endY = basketRect.top + basketRect.height * 0.35;
+): FlyingApple[] {
+  if (!spotlightEl || !basketEl) return [];
+  const sRect = spotlightEl.getBoundingClientRect();
+  const bRect = basketEl.getBoundingClientRect();
+  const treeCenterX = sRect.left + sRect.width / 2;
+  // 캐노피 영역 (스포트라이트 상단 25-50% 영역에 사과들이 흩어져 있다고 가정)
+  const treeTop = sRect.top + sRect.height * 0.32;
+  // 화분 근처 (스포트라이트 하단 80% 즈음)
+  const groundY = sRect.top + sRect.height * 0.78;
+  const basketX = bRect.left + bRect.width / 2;
+  const basketY = bRect.top + bRect.height * 0.32;
 
-  const items: FlyingApple[] = [];
   const baseId = Date.now();
-  for (let i = 0; i < count; i++) {
-    items.push({
-      id: `${baseId}-${studentId}-${i}`,
-      // 시작점/도착점 살짝 흔들어 자연스럽게
-      startX: startX + (Math.random() - 0.5) * 24,
-      startY: startY + (Math.random() - 0.5) * 16,
-      endX: endX + (Math.random() - 0.5) * 30,
-      endY: endY + (Math.random() - 0.5) * 10,
-    });
-  }
-  push(items);
+  return Array.from({ length: count }, (_, i) => {
+    const offsetX = (Math.random() - 0.5) * sRect.width * 0.55;
+    return {
+      id: `${baseId}-${i}`,
+      treeX: treeCenterX + offsetX,
+      treeY: treeTop + (Math.random() - 0.5) * sRect.height * 0.18,
+      groundX: treeCenterX + offsetX * 0.7 + (Math.random() - 0.5) * 16,
+      groundY: groundY + (Math.random() - 0.5) * 14,
+      basketX: basketX + (Math.random() - 0.5) * bRect.width * 0.55,
+      basketY: basketY + (Math.random() - 0.5) * 8,
+      delay: i * 110, // 사과들이 시간차로
+    };
+  });
 }
 
 function fireConfetti(harvest: boolean) {
