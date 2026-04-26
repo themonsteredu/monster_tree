@@ -290,7 +290,7 @@ export function TVScreen({
         </div>
       </header>
 
-      {/* 본문: 좌측 스포트라이트 + 우측 컴팩트 그리드 */}
+      {/* 본문: 좌측 스포트라이트 (full height) + 우측 [그리드 + 기준 바] */}
       {sorted.length === 0 ? (
         <EmptyState />
       ) : (
@@ -308,22 +308,25 @@ export function TVScreen({
             cycleLabel={cycleLabel}
             isShaking={!!spotlight && shakingId === spotlight.id}
           />
-          <CompactGrid
-            students={sorted}
-            spotlightId={spotlight?.id}
-            highlights={highlights}
-            now={now}
-            registerRef={(id, el) => {
-              cardRefs.current[id] = el;
-            }}
-          />
+          {/* 우측 컬럼: 위에 그리드(flex-1), 아래에 기준 바(자동 높이) */}
+          <div className="flex flex-col gap-3 min-h-0">
+            <div className="flex-1 min-h-0">
+              <CompactGrid
+                students={sorted}
+                spotlightId={spotlight?.id}
+                highlights={highlights}
+                now={now}
+                registerRef={(id, el) => {
+                  cardRefs.current[id] = el;
+                }}
+              />
+            </div>
+            <CriteriaBar />
+          </div>
         </section>
       )}
 
-      {/* 하단 포인트 적립 기준 바 (flex 푸터, 항상 화면 맨 아래에 위치) */}
-      <CriteriaBar />
-
-      {/* 우하단 수확 바구니 (criteria 바 위에 떠있게) */}
+      {/* 우하단 수확 바구니 (기준 바 우측 영역에 떠있게) */}
       <HarvestBasket
         ref={basketRef}
         count={todayApples}
@@ -824,50 +827,52 @@ const CRITERIA: ReadonlyArray<{ emoji: string; label: string; pts: string }> = [
 
 function CriteriaBar() {
   return (
-    <footer className="relative z-10 flex-shrink-0 border-t-[2.5px] border-[var(--ink)] bg-white/85 backdrop-blur-sm">
+    <div className="rounded-[18px] border-[2.5px] border-[var(--ink)] bg-white/90 backdrop-blur-sm overflow-hidden shadow-card">
       <div
-        className="grid items-stretch h-[88px]"
+        className="grid items-stretch h-[78px]"
         style={{
-          // 좌측 타이틀 영역 + 우측 셀 5개 (균등) + 우측 바구니 영역
-          gridTemplateColumns: `220px repeat(${CRITERIA.length}, 1fr) 220px`,
+          // 좌측 타이틀 + 5개 균등 셀 + 우측 바구니 자리
+          gridTemplateColumns: `150px repeat(${CRITERIA.length}, minmax(0, 1fr)) 160px`,
         }}
       >
         {/* 타이틀 (좌측) */}
-        <div className="flex items-center justify-center gap-2 border-r-[2px] border-[var(--ink)]/30 px-4">
-          <span className="text-3xl">🌳</span>
-          <div className="leading-tight">
-            <div className="text-[15px] font-extrabold text-[var(--ink)]">
-              포인트 적립
+        <div className="flex items-center justify-center gap-2 border-r-[1.5px] border-[var(--ink)]/25 px-3 bg-[var(--card-bg-hero)]/50">
+          <span className="text-2xl">🌳</span>
+          <div className="leading-tight text-center">
+            <div className="text-[13px] font-extrabold text-[var(--ink)]">
+              포인트
             </div>
-            <div className="text-[15px] font-extrabold text-[var(--ink)]">
-              기준
+            <div className="text-[13px] font-extrabold text-[var(--ink)]">
+              적립 기준
             </div>
           </div>
         </div>
 
-        {/* 기준 셀들 (각 항목 = 표의 1열) */}
+        {/* 기준 셀들 */}
         {CRITERIA.map((c, i) => (
           <div
             key={c.label}
             className={[
-              "flex flex-col items-center justify-center px-3 py-2 gap-0.5",
+              "flex flex-col items-center justify-center px-2 py-1 gap-0.5 min-w-0",
               i < CRITERIA.length - 1 ? "border-r border-[var(--ink)]/15" : "",
             ].join(" ")}
           >
-            <div className="flex items-center gap-1.5 text-[var(--ink)] whitespace-nowrap">
-              <span className="text-xl">{c.emoji}</span>
-              <span className="text-sm font-extrabold">{c.label}</span>
+            <div className="flex items-center gap-1 text-[var(--ink)] min-w-0">
+              <span className="text-base shrink-0">{c.emoji}</span>
+              <span className="text-[12px] font-extrabold truncate">
+                {c.label}
+              </span>
             </div>
-            <div className="text-xl font-black tabular-nums text-[var(--accent-success)]">
+            <div className="text-lg font-black tabular-nums text-[var(--accent-success)] whitespace-nowrap">
               {c.pts}
             </div>
           </div>
         ))}
 
-        {/* 우측: 바구니가 위에 떠있을 자리 (빈칸 유지) */}
-        <div className="border-l-[2px] border-[var(--ink)]/30" />
+        {/* 우측: 바구니가 위에 떠있을 자리 (빈 칸, 시각적 구분만) */}
+        <div className="border-l-[1.5px] border-[var(--ink)]/25 bg-[var(--card-bg-hero)]/30" />
       </div>
-    </footer>
+    </div>
   );
 }
 
@@ -998,8 +1003,8 @@ const HarvestBasket = forwardRef<HTMLDivElement, { count: number; bumpKey: numbe
         ref={ref}
         animate={{ rotate: bumpKey > 0 ? [0, -3, 3, 0] : 0, y: bumpKey > 0 ? [0, -6, 0] : 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        // criteria 바(높이 88px) 우측 영역 위로 떠있게 배치
-        className="fixed bottom-[8px] right-3 z-30 pointer-events-none select-none"
+        // 기준 바(우측 컬럼 하단) 의 우측 빈 칸 위로 떠있게 배치
+        className="fixed bottom-3 right-6 z-30 pointer-events-none select-none"
       >
         <div className="relative">
           <BasketSVG />
