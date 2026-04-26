@@ -73,17 +73,33 @@ export function AppleTree({
           <stop offset="0%" stopColor="var(--pot-light)" />
           <stop offset="100%" stopColor="var(--pot-base)" />
         </linearGradient>
-        <radialGradient id={`leaf-${id}`} cx="35%" cy="30%" r="80%">
+        {/* 밝은 잎 (앞쪽 / 햇빛 받는 쪽) */}
+        <radialGradient id={`leaf-${id}`} cx="32%" cy="28%" r="85%">
           {wilted ? (
             <>
               <stop offset="0%" stopColor="#f0e090" />
-              <stop offset="55%" stopColor="var(--leaf-sick)" />
+              <stop offset="50%" stopColor="var(--leaf-sick)" />
               <stop offset="100%" stopColor="#8a7820" />
             </>
           ) : (
             <>
               <stop offset="0%" stopColor="var(--leaf-highlight)" />
-              <stop offset="55%" stopColor="var(--leaf-light)" />
+              <stop offset="45%" stopColor="var(--leaf-light)" />
+              <stop offset="100%" stopColor="var(--leaf-deep)" />
+            </>
+          )}
+        </radialGradient>
+        {/* 어두운 잎 (뒤쪽 / 그늘진 쪽) - 두 톤으로 입체감 */}
+        <radialGradient id={`leaf-dark-${id}`} cx="32%" cy="28%" r="85%">
+          {wilted ? (
+            <>
+              <stop offset="0%" stopColor="var(--leaf-sick)" />
+              <stop offset="100%" stopColor="#6e5b18" />
+            </>
+          ) : (
+            <>
+              <stop offset="0%" stopColor="var(--leaf-light)" />
+              <stop offset="55%" stopColor="var(--leaf-base)" />
               <stop offset="100%" stopColor="var(--leaf-deep)" />
             </>
           )}
@@ -276,12 +292,14 @@ function Branch({
   );
 }
 
-// 개별 잎 (눈물방울 모양 + 중앙선) - 큰 잎으로 풍성하게
+// 개별 잎 - 자연스러운 곡선 + 하이라이트 + 두 톤 (앞/뒤)
+// dark=true 면 뒤쪽 잎(그늘) 그라데이션 사용 → 입체감
 function Leaf({
   cx,
   cy,
   rotate = 0,
   size = 1,
+  dark = false,
   id,
   sw,
 }: {
@@ -289,29 +307,69 @@ function Leaf({
   cy: number;
   rotate?: number;
   size?: number;
+  dark?: boolean;
   id: string;
   sw: number;
 }) {
-  // 베이스 좌표는 size=1 기준. 위→아래로 길쭉한 잎.
-  const top = -9 * size;
-  const bot = 7 * size;
-  const w = 5.6 * size;
+  // size=1 기준 좌표. 잎 끝(top)은 뾰족하고 살짝 휘어 있음.
+  const tipY = -10 * size;
+  const baseY = 6 * size;
+  const w = 5.4 * size;
+  // 잎이 좌→우로 살짝 굴곡지게 비대칭 곡선
+  const curveBend = 1.2 * size;
+
   return (
     <g transform={`translate(${cx} ${cy}) rotate(${rotate})`}>
+      {/* 잎 본체: 비대칭 곡선으로 자연스럽게 */}
       <path
-        d={`M 0 ${top} Q ${w} ${top * 0.65} ${w * 0.95} 0 Q ${w * 0.6} ${bot} 0 ${bot} Q ${-w * 0.6} ${bot} ${-w * 0.95} 0 Q ${-w} ${top * 0.65} 0 ${top} Z`}
-        fill={`url(#leaf-${id})`}
+        d={`M ${curveBend} ${tipY}
+            C ${w + curveBend * 0.5} ${tipY * 0.5}, ${w} ${baseY * 0.4}, ${w * 0.55} ${baseY}
+            C ${w * 0.15} ${baseY + 1}, ${-w * 0.4} ${baseY + 1}, ${-w * 0.85} ${baseY * 0.7}
+            C ${-w} ${baseY * 0.2}, ${-w * 0.7} ${tipY * 0.5}, ${curveBend} ${tipY} Z`}
+        fill={dark ? `url(#leaf-dark-${id})` : `url(#leaf-${id})`}
         stroke="var(--ink)"
-        strokeWidth={sw * 0.7}
+        strokeWidth={sw * 0.65}
         strokeLinejoin="round"
       />
-      {/* 잎맥 */}
+      {/* 곡선 잎맥 (뾰족한 끝에서 밑동까지 휘어진 선) */}
       <path
-        d={`M 0 ${top + 1.5} L 0 ${bot - 1.5}`}
+        d={`M ${curveBend * 0.7} ${tipY + 1.5}
+            Q ${curveBend * 0.4} ${(tipY + baseY) / 2}, ${0} ${baseY - 1.5}`}
         stroke="var(--leaf-deep)"
         strokeWidth={sw * 0.32}
+        fill="none"
         opacity="0.55"
+        strokeLinecap="round"
       />
+      {/* 곁맥 2개 (작은 가지) */}
+      <path
+        d={`M ${curveBend * 0.5} ${tipY * 0.55}
+            Q ${w * 0.3} ${tipY * 0.45}, ${w * 0.45} ${tipY * 0.3}`}
+        stroke="var(--leaf-deep)"
+        strokeWidth={sw * 0.22}
+        fill="none"
+        opacity="0.4"
+        strokeLinecap="round"
+      />
+      <path
+        d={`M ${curveBend * 0.2} ${baseY * 0.1}
+            Q ${-w * 0.3} ${baseY * 0.1}, ${-w * 0.45} ${baseY * 0.3}`}
+        stroke="var(--leaf-deep)"
+        strokeWidth={sw * 0.22}
+        fill="none"
+        opacity="0.4"
+        strokeLinecap="round"
+      />
+      {/* 하이라이트 (잎 끝 쪽 안쪽에 부드러운 빛) */}
+      {!dark && (
+        <path
+          d={`M ${curveBend * 0.5} ${tipY * 0.7}
+              Q ${w * 0.45} ${tipY * 0.4}, ${w * 0.4} ${tipY * 0.05}
+              Q ${w * 0.15} ${tipY * 0.3}, ${curveBend * 0.5} ${tipY * 0.7} Z`}
+          fill="var(--leaf-highlight)"
+          opacity="0.55"
+        />
+      )}
     </g>
   );
 }
@@ -462,7 +520,7 @@ function YoungTree({ id, sw }: { id: string; sw: number }) {
       <Branch d="M 0 -16 Q -7 -22 -14 -24" sw={sw} />
       <Branch d="M 0 -16 Q 7 -22 14 -24" sw={sw} />
       {LEAVES_4.map((l, i) => (
-        <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
+        <Leaf key={i} cx={l.cx} cy={l.cy} rotate={l.rotate} size={l.size} dark={l.dark} id={id} sw={sw} />
       ))}
     </g>
   );
@@ -477,7 +535,7 @@ function SmallTree({ id, sw }: { id: string; sw: number }) {
       <Branch d="M 0 -22 Q 10 -32 22 -38" sw={sw} />
       <Branch d="M 0 -26 L 0 -50" sw={sw} />
       {LEAVES_5.map((l, i) => (
-        <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
+        <Leaf key={i} cx={l.cx} cy={l.cy} rotate={l.rotate} size={l.size} dark={l.dark} id={id} sw={sw} />
       ))}
     </g>
   );
@@ -502,7 +560,7 @@ function MediumTreeBody({ id, sw }: { id: string; sw: number }) {
       <Branch d="M 0 -32 Q -8 -42 -16 -52" sw={sw} />
       <Branch d="M 0 -32 Q 8 -42 16 -52" sw={sw} />
       {LEAVES_6.map((l, i) => (
-        <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
+        <Leaf key={i} cx={l.cx} cy={l.cy} rotate={l.rotate} size={l.size} dark={l.dark} id={id} sw={sw} />
       ))}
     </g>
   );
@@ -542,6 +600,15 @@ function FruitfulTree({ id, sw }: { id: string; sw: number }) {
 
 // 잎 위치를 캐노피 타원 안쪽에 절차적으로 분포.
 // sunflower-spiral (golden angle) + seeded jitter 로 자연스러우면서 결정적으로 생성 → 동일 결과.
+type LeafSpec = {
+  cx: number;
+  cy: number;
+  rotate: number;
+  size: number;
+  dark: boolean; // 뒤쪽(그늘) 잎 → 어두운 그라데이션
+  z: number; // z-order (먼저 그릴수록 뒤에)
+};
+
 function generateLeaves(
   seed: number,
   count: number,
@@ -550,7 +617,7 @@ function generateLeaves(
   rx: number,
   ry: number,
   baseSize: number,
-): ReadonlyArray<[number, number, number, number]> {
+): ReadonlyArray<LeafSpec> {
   // 결정적 의사난수 (xorshift 변형)
   let s = seed >>> 0;
   const rand = () => {
@@ -561,22 +628,29 @@ function generateLeaves(
   };
 
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const out: Array<[number, number, number, number]> = [];
+  const out: LeafSpec[] = [];
   for (let i = 0; i < count; i++) {
-    const t = (i + 0.5) / count; // 0..1, 균등
-    const r = Math.sqrt(t); // 중심 가까이 더 밀집되는 효과 방지 (균등 분포)
+    const t = (i + 0.5) / count;
+    const r = Math.sqrt(t);
     const angle = i * goldenAngle;
-    // 미세 jitter 로 너무 규칙적으로 보이지 않게
     const rj = 0.92 + rand() * 0.16;
     const x = cx + Math.cos(angle) * rx * r * rj;
     const y = cy + Math.sin(angle) * ry * r * rj;
-    // 잎이 캐노피 중심에서 바깥쪽으로 향하게 회전 (위쪽 잎은 위로, 옆쪽 잎은 옆으로)
+    // 잎이 캐노피 중심에서 바깥쪽을 향하게 회전 (잎 끝이 바깥으로)
     const dx = x - cx;
     const dy = y - cy;
     const outwardDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
     const sj = 0.85 + rand() * 0.3;
-    out.push([x, y, outwardDeg, baseSize * sj]);
+    // 약 35% 잎은 어둡게 (그늘), 입체감 부여
+    const dark = rand() < 0.35;
+    // z-order: 어두운 잎(뒤)은 먼저, 밝은 잎(앞)은 나중에 그려져서 위에 올라감
+    // 가장자리 → 안쪽 순으로 큰 z 값 → 안쪽 잎이 위에 오게 (내부 밀도감)
+    const distFromCenter = Math.hypot(dx, dy);
+    const z = (dark ? 0 : 1000) + (1000 - distFromCenter * 10);
+    out.push({ cx: x, cy: y, rotate: outwardDeg, size: baseSize * sj, dark, z });
   }
+  // z 오름차순: 작은 z → 먼저 그림 → 뒤로 감
+  out.sort((a, b) => a.z - b.z);
   return out;
 }
 

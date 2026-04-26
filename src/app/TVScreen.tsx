@@ -814,34 +814,31 @@ function TodayHarvestPill({
    하단 포인트 적립 기준 바 (placeholder - 양희쌤이 알려주시면 교체)
 ================================================================ */
 
-// 자주 쓰는 적립 사유와 추천 포인트.
-// 실제 운영 기준이 정해지면 이 배열만 갈아끼우면 됨.
-const CRITERIA: ReadonlyArray<{ label: string; pts: number; emoji: string }> = [
-  { label: "출석", pts: 1, emoji: "📅" },
-  { label: "지각 안 함", pts: 1, emoji: "⏰" },
-  { label: "숙제 완료", pts: 2, emoji: "📝" },
-  { label: "수업 태도 우수", pts: 3, emoji: "🌟" },
-  { label: "테스트 70점↑", pts: 2, emoji: "✏️" },
-  { label: "테스트 80점↑", pts: 3, emoji: "📘" },
-  { label: "테스트 90점↑", pts: 5, emoji: "🏆" },
+// 더몬스터학원 사과정원 포인트 적립 기준 (양희쌤 기준)
+const CRITERIA: ReadonlyArray<{ emoji: string; label: string; pts: string }> = [
+  { emoji: "📅", label: "출석", pts: "+1" },
+  { emoji: "📝", label: "숙제", pts: "+1" },
+  { emoji: "✏️", label: "일일테스트", pts: "+1·2·3·4" },
+  { emoji: "🏆", label: "단원평가 만점", pts: "+10" },
+  { emoji: "📊", label: "주간/월말 70·80·90·100점", pts: "+2·3·4·5" },
 ];
 
 function CriteriaBar() {
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[78%]">
+    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 max-w-[80%]">
       <div className="flex items-center gap-2 flex-wrap justify-center">
-        <span className="text-xs font-extrabold text-[var(--ink-soft)] mr-1">
-          포인트 기준
+        <span className="text-sm font-extrabold text-[var(--ink-soft)] mr-1">
+          🌳 포인트 기준
         </span>
         {CRITERIA.map((c) => (
           <span
             key={c.label}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] text-xs font-bold shadow-card"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] text-xs font-bold shadow-card"
           >
             <span>{c.emoji}</span>
             <span>{c.label}</span>
-            <span className="text-[var(--accent-success)] font-extrabold tabular-nums">
-              +{c.pts}
+            <span className="text-[var(--accent-success)] font-extrabold tabular-nums whitespace-nowrap">
+              {c.pts}
             </span>
           </span>
         ))}

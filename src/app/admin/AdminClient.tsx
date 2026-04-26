@@ -18,7 +18,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { addPointsAction, harvestStudentAction } from "./actions";
 
-const QUICK_BUTTONS = [1, 2, 3, 5] as const;
+const QUICK_BUTTONS = [1, 2, 3, 4, 5] as const;
 const LONG_PRESS_MS = 500;
 const FLASH_MS = 600;
 
@@ -392,6 +392,7 @@ function StudentRow({
         </button>
       )}
 
+      {/* 1행: 일반 적립 +1 ~ +5 */}
       <div className="mt-3 grid grid-cols-5 gap-2">
         {QUICK_BUTTONS.map((n) => (
           <LongPressButton
@@ -408,6 +409,18 @@ function StudentRow({
             +{n}
           </LongPressButton>
         ))}
+      </div>
+
+      {/* 2행: 단원평가 만점 (+10) / 차감 (-1) */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <LongPressButton
+          disabled={disabled}
+          onClick={() => onQuick(10)}
+          onLongPress={() => onLongPress(10)}
+          className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
+        >
+          🏆 단원평가 만점 +10
+        </LongPressButton>
         <button
           disabled={disabled}
           onClick={() => onQuick(-1)}
@@ -421,7 +434,7 @@ function StudentRow({
 }
 
 function quickClass(n: number): string {
-  // 스펙에 명시된 단계별 컬러 (밝게 → 진하게)
+  // 단계별 컬러 (밝게 → 진하게)
   switch (n) {
     case 1:
       return "bg-[#e8f5d8] text-[var(--ink)]";
@@ -429,6 +442,8 @@ function quickClass(n: number): string {
       return "bg-[#d4ebc0] text-[var(--ink)]";
     case 3:
       return "bg-[#c8e598] text-[var(--ink)]";
+    case 4:
+      return "bg-[#a8d870] text-[var(--ink)]";
     case 5:
       return "bg-[var(--accent-success)] text-white";
     default:
@@ -516,15 +531,15 @@ function LongPressButton({
   );
 }
 
+// 더몬스터학원 사과정원 적립 사유 프리셋 (양희쌤 기준)
+// - 실제 적립 포인트는 +1/+2/+3/+5 버튼 또는 사유 입력 후 직접 선택
 const REASON_PRESETS = [
   "출석",
-  "지각 안 함",
-  "숙제 완료",
-  "수업 태도 우수",
-  "테스트 90점↑",
-  "테스트 80점↑",
-  "테스트 70점↑",
-  "응시",
+  "숙제",
+  "일일테스트",
+  "단원평가 만점",
+  "주간 테스트",
+  "월말 테스트",
 ];
 
 function ReasonModal({
