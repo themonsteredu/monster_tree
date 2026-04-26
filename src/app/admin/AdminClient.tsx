@@ -48,6 +48,7 @@ export function AdminClient({
   const [students, setStudents] = useState(initialStudents);
   const [logs, setLogs] = useState(initialLogs);
   const [classFilter, setClassFilter] = useState<string | null>(initialClass);
+  const [search, setSearch] = useState("");
   const [reasonModal, setReasonModal] = useState<{
     studentId: string;
     delta: number;
@@ -70,11 +71,14 @@ export function AdminClient({
     return Array.from(set).sort();
   }, [students]);
 
-  const visible = useMemo(
-    () =>
-      students.filter((s) => (classFilter ? s.class_name === classFilter : true)),
-    [students, classFilter],
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return students.filter((s) => {
+      if (classFilter && s.class_name !== classFilter) return false;
+      if (q && !s.name.toLowerCase().includes(q) && !(s.class_name ?? "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [students, classFilter, search]);
 
   // Realtime 구독
   useEffect(() => {
@@ -137,6 +141,7 @@ export function AdminClient({
   };
 
   const submitHarvest = (student: GardenStudent) => {
+    triggerHaptic("strong");
     startTransition(async () => {
       const res = await harvestStudentAction({ studentId: student.id });
       if (!res.ok) {
@@ -152,6 +157,8 @@ export function AdminClient({
     // 카드 플래시 (낙관적 - 서버 응답 기다리지 않고 시각적 피드백)
     setFlashId(studentId);
     setTimeout(() => setFlashId((cur) => (cur === studentId ? null : cur)), FLASH_MS);
+    // 모바일 햅틱 피드백 (지원하는 브라우저만)
+    triggerHaptic(delta > 0 ? "tap" : "warning");
 
     startTransition(async () => {
       const res = await addPointsAction({
@@ -169,35 +176,70 @@ export function AdminClient({
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4 pb-20 space-y-3">
-      {/* 헤더 (TV 와 동일 톤) */}
-      <header className="pt-2 pb-1">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card">
-          <span className="text-xl">🌳</span>
-          <span className="text-base font-extrabold text-[var(--ink)]">
-            사과정원 입력
-          </span>
+    <div className="max-w-2xl mx-auto pb-20">
+      {/* sticky 헤더: 검색 + 반 필터 (스크롤 시에도 항상 보임) */}
+      <div className="sticky top-0 z-20 -mx-0 px-4 pt-3 pb-2 bg-gradient-to-b from-[var(--bg-warm-start)] via-[var(--bg-warm-start)]/95 to-[var(--bg-warm-start)]/0 backdrop-blur-sm">
+        {/* 한 줄: 타이틀 알약 + 검색창 */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card shrink-0">
+            <span className="text-lg">🌳</span>
+            <span className="text-sm font-extrabold text-[var(--ink)] hidden sm:inline">
+              사과정원
+            </span>
+          </div>
+          <div className="relative flex-1 min-w-0">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="학생 이름 / 반 검색"
+              className="w-full px-4 py-2.5 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-sm font-bold placeholder:text-[var(--ink-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-success)] shadow-card"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute top-1/2 -translate-y-1/2 right-2 w-7 h-7 rounded-full bg-[var(--ink)]/10 text-[var(--ink)] font-extrabold text-sm flex items-center justify-center"
+                aria-label="검색어 지우기"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
-      </header>
 
-      {/* 반 필터 */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <FilterChip
-          active={classFilter === null}
-          onClick={() => setClassFilter(null)}
-        >
-          전체 ({students.length})
-        </FilterChip>
-        {classes.map((c) => (
+        {/* 반 필터 (가로 스크롤) */}
+        <div className="flex items-center gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
           <FilterChip
-            key={c}
-            active={classFilter === c}
-            onClick={() => setClassFilter(c)}
+            active={classFilter === null}
+            onClick={() => setClassFilter(null)}
           >
-            {c} ({students.filter((s) => s.class_name === c).length})
+            전체 ({students.length})
           </FilterChip>
-        ))}
+          {classes.map((c) => (
+            <FilterChip
+              key={c}
+              active={classFilter === c}
+              onClick={() => setClassFilter(c)}
+            >
+              {c} ({students.filter((s) => s.class_name === c).length})
+            </FilterChip>
+          ))}
+        </div>
+
+        {/* 검색 결과 개수 (필터 활성 시에만) */}
+        {(search || classFilter) && (
+          <div className="mt-1.5 text-xs font-bold text-[var(--ink-soft)] px-1">
+            {visible.length}명 표시
+            {search && <span> · "{search}"</span>}
+          </div>
+        )}
       </div>
+
+      {/* 본문 영역 */}
+      <div className="px-4 pt-2 space-y-3">
 
       {/* 학생 목록 */}
       <div className="space-y-2.5">
@@ -287,6 +329,7 @@ export function AdminClient({
           />
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -808,6 +851,23 @@ function HarvestConfirmModal({
       </motion.div>
     </motion.div>
   );
+}
+
+// 모바일 햅틱(진동) 피드백 - navigator.vibrate 가 있는 환경(Android Chrome 등)에서만 동작
+// iOS Safari 는 미지원 → noop
+function triggerHaptic(kind: "tap" | "warning" | "strong") {
+  if (typeof navigator === "undefined") return;
+  const nav = navigator as Navigator & {
+    vibrate?: (pattern: number | number[]) => boolean;
+  };
+  if (!nav.vibrate) return;
+  try {
+    if (kind === "tap") nav.vibrate(8);
+    else if (kind === "warning") nav.vibrate([10, 40, 10]);
+    else if (kind === "strong") nav.vibrate([25, 30, 25, 30, 50]);
+  } catch {
+    // 일부 환경에서 권한 없을 수 있음
+  }
 }
 
 function fireConfetti(harvest: boolean) {
