@@ -274,12 +274,12 @@ export function TVScreen({
   const cycleLabel = sorted.length > 0 ? `${focusedIdx + 1} / ${sorted.length}` : "0 / 0";
 
   return (
-    <main className="kiosk min-h-screen relative overflow-hidden">
+    <main className="kiosk h-screen flex flex-col overflow-hidden relative">
       {/* 배경 데코 닷 (절제 있게 4개) */}
       <DecorDots />
 
       {/* 헤더 */}
-      <header className="relative z-10 px-8 pt-6 pb-3 flex items-center justify-between">
+      <header className="relative z-10 flex-shrink-0 px-8 pt-6 pb-3 flex items-center justify-between">
         <TitlePill />
         <div className="flex items-center gap-3">
           <TodayHarvestPill count={todayApples} bump={bumpBasket} />
@@ -295,10 +295,9 @@ export function TVScreen({
         <EmptyState />
       ) : (
         <section
-          className="relative z-10 grid gap-6 px-8 pb-10"
+          className="relative z-10 flex-1 min-h-0 grid gap-6 px-8 pb-4"
           style={{
             gridTemplateColumns: "minmax(420px, 36%) 1fr",
-            height: "calc(100vh - 130px)",
           }}
         >
           <Spotlight
@@ -321,10 +320,10 @@ export function TVScreen({
         </section>
       )}
 
-      {/* 하단 포인트 적립 기준 바 */}
+      {/* 하단 포인트 적립 기준 바 (flex 푸터, 항상 화면 맨 아래에 위치) */}
       <CriteriaBar />
 
-      {/* 우하단 수확 바구니 */}
+      {/* 우하단 수확 바구니 (criteria 바 위에 떠있게) */}
       <HarvestBasket
         ref={basketRef}
         count={todayApples}
@@ -825,25 +824,50 @@ const CRITERIA: ReadonlyArray<{ emoji: string; label: string; pts: string }> = [
 
 function CriteriaBar() {
   return (
-    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 max-w-[80%]">
-      <div className="flex items-center gap-2 flex-wrap justify-center">
-        <span className="text-sm font-extrabold text-[var(--ink-soft)] mr-1">
-          🌳 포인트 기준
-        </span>
-        {CRITERIA.map((c) => (
-          <span
+    <footer className="relative z-10 flex-shrink-0 border-t-[2.5px] border-[var(--ink)] bg-white/85 backdrop-blur-sm">
+      <div
+        className="grid items-stretch h-[88px]"
+        style={{
+          // 좌측 타이틀 영역 + 우측 셀 5개 (균등) + 우측 바구니 영역
+          gridTemplateColumns: `220px repeat(${CRITERIA.length}, 1fr) 220px`,
+        }}
+      >
+        {/* 타이틀 (좌측) */}
+        <div className="flex items-center justify-center gap-2 border-r-[2px] border-[var(--ink)]/30 px-4">
+          <span className="text-3xl">🌳</span>
+          <div className="leading-tight">
+            <div className="text-[15px] font-extrabold text-[var(--ink)]">
+              포인트 적립
+            </div>
+            <div className="text-[15px] font-extrabold text-[var(--ink)]">
+              기준
+            </div>
+          </div>
+        </div>
+
+        {/* 기준 셀들 (각 항목 = 표의 1열) */}
+        {CRITERIA.map((c, i) => (
+          <div
             key={c.label}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] text-xs font-bold shadow-card"
+            className={[
+              "flex flex-col items-center justify-center px-3 py-2 gap-0.5",
+              i < CRITERIA.length - 1 ? "border-r border-[var(--ink)]/15" : "",
+            ].join(" ")}
           >
-            <span>{c.emoji}</span>
-            <span>{c.label}</span>
-            <span className="text-[var(--accent-success)] font-extrabold tabular-nums whitespace-nowrap">
+            <div className="flex items-center gap-1.5 text-[var(--ink)] whitespace-nowrap">
+              <span className="text-xl">{c.emoji}</span>
+              <span className="text-sm font-extrabold">{c.label}</span>
+            </div>
+            <div className="text-xl font-black tabular-nums text-[var(--accent-success)]">
               {c.pts}
-            </span>
-          </span>
+            </div>
+          </div>
         ))}
+
+        {/* 우측: 바구니가 위에 떠있을 자리 (빈칸 유지) */}
+        <div className="border-l-[2px] border-[var(--ink)]/30" />
       </div>
-    </div>
+    </footer>
   );
 }
 
@@ -974,12 +998,11 @@ const HarvestBasket = forwardRef<HTMLDivElement, { count: number; bumpKey: numbe
         ref={ref}
         animate={{ rotate: bumpKey > 0 ? [0, -3, 3, 0] : 0, y: bumpKey > 0 ? [0, -6, 0] : 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="fixed bottom-6 right-6 z-30 pointer-events-none select-none"
+        // criteria 바(높이 88px) 우측 영역 위로 떠있게 배치
+        className="fixed bottom-[8px] right-3 z-30 pointer-events-none select-none"
       >
         <div className="relative">
-          {/* 바구니 SVG */}
           <BasketSVG />
-          {/* 카운트 배지 (바구니 위쪽에 알약) */}
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-[var(--ink)] border-[2.5px] border-[var(--ink)] text-[var(--accent-gold)] text-base font-extrabold shadow-card-pop tabular-nums whitespace-nowrap">
             🍎 {count}
           </div>
@@ -993,8 +1016,8 @@ function BasketSVG() {
   return (
     <svg
       viewBox="0 0 200 160"
-      width={180}
-      height={144}
+      width={140}
+      height={112}
       role="img"
       aria-label="수확 바구니"
     >
