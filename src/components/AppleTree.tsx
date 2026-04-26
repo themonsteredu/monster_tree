@@ -292,8 +292,8 @@ function Branch({
   );
 }
 
-// 개별 잎 - 자연스러운 곡선 + 하이라이트 + 두 톤 (앞/뒤)
-// dark=true 면 뒤쪽 잎(그늘) 그라데이션 사용 → 입체감
+// 개별 잎 - 둥글둥글 여리여리한 모양
+// 양쪽 대칭의 부드러운 잎: 뾰족한 점 대신 둥근 곡선 끝, 얇은 외곽선, 단일 잎맥, 부드러운 하이라이트
 function Leaf({
   cx,
   cy,
@@ -311,61 +311,39 @@ function Leaf({
   id: string;
   sw: number;
 }) {
-  // size=1 기준 좌표. 잎 끝(top)은 뾰족하고 살짝 휘어 있음.
-  const tipY = -10 * size;
-  const baseY = 6 * size;
-  const w = 5.4 * size;
-  // 잎이 좌→우로 살짝 굴곡지게 비대칭 곡선
-  const curveBend = 1.2 * size;
+  const h = 7.6 * size; // 잎 절반 높이
+  const w = 4.4 * size; // 잎 절반 폭
 
   return (
     <g transform={`translate(${cx} ${cy}) rotate(${rotate})`}>
-      {/* 잎 본체: 비대칭 곡선으로 자연스럽게 */}
+      {/* 둥글둥글 잎 (양쪽 대칭, 끝이 뾰족하지 않게 cubic 곡선으로 둥글게 마감) */}
       <path
-        d={`M ${curveBend} ${tipY}
-            C ${w + curveBend * 0.5} ${tipY * 0.5}, ${w} ${baseY * 0.4}, ${w * 0.55} ${baseY}
-            C ${w * 0.15} ${baseY + 1}, ${-w * 0.4} ${baseY + 1}, ${-w * 0.85} ${baseY * 0.7}
-            C ${-w} ${baseY * 0.2}, ${-w * 0.7} ${tipY * 0.5}, ${curveBend} ${tipY} Z`}
+        d={`M 0 ${-h}
+            C ${w * 0.95} ${-h * 0.95}, ${w * 1.2} ${-h * 0.15}, ${w * 0.78} ${h * 0.5}
+            C ${w * 0.45} ${h * 0.96}, ${-w * 0.45} ${h * 0.96}, ${-w * 0.78} ${h * 0.5}
+            C ${-w * 1.2} ${-h * 0.15}, ${-w * 0.95} ${-h * 0.95}, 0 ${-h} Z`}
         fill={dark ? `url(#leaf-dark-${id})` : `url(#leaf-${id})`}
         stroke="var(--ink)"
-        strokeWidth={sw * 0.65}
+        strokeWidth={sw * 0.38}
         strokeLinejoin="round"
-      />
-      {/* 곡선 잎맥 (뾰족한 끝에서 밑동까지 휘어진 선) */}
-      <path
-        d={`M ${curveBend * 0.7} ${tipY + 1.5}
-            Q ${curveBend * 0.4} ${(tipY + baseY) / 2}, ${0} ${baseY - 1.5}`}
-        stroke="var(--leaf-deep)"
-        strokeWidth={sw * 0.32}
-        fill="none"
-        opacity="0.55"
         strokeLinecap="round"
       />
-      {/* 곁맥 2개 (작은 가지) */}
+      {/* 부드러운 단일 잎맥 (얇게) */}
       <path
-        d={`M ${curveBend * 0.5} ${tipY * 0.55}
-            Q ${w * 0.3} ${tipY * 0.45}, ${w * 0.45} ${tipY * 0.3}`}
+        d={`M 0 ${-h * 0.7} Q 0 0, 0 ${h * 0.78}`}
         stroke="var(--leaf-deep)"
-        strokeWidth={sw * 0.22}
+        strokeWidth={sw * 0.2}
         fill="none"
-        opacity="0.4"
+        opacity="0.32"
         strokeLinecap="round"
       />
-      <path
-        d={`M ${curveBend * 0.2} ${baseY * 0.1}
-            Q ${-w * 0.3} ${baseY * 0.1}, ${-w * 0.45} ${baseY * 0.3}`}
-        stroke="var(--leaf-deep)"
-        strokeWidth={sw * 0.22}
-        fill="none"
-        opacity="0.4"
-        strokeLinecap="round"
-      />
-      {/* 하이라이트 (잎 끝 쪽 안쪽에 부드러운 빛) */}
+      {/* 부드러운 빛 하이라이트 (좌상단 한 곳만, 타원으로 은은하게) */}
       {!dark && (
-        <path
-          d={`M ${curveBend * 0.5} ${tipY * 0.7}
-              Q ${w * 0.45} ${tipY * 0.4}, ${w * 0.4} ${tipY * 0.05}
-              Q ${w * 0.15} ${tipY * 0.3}, ${curveBend * 0.5} ${tipY * 0.7} Z`}
+        <ellipse
+          cx={-w * 0.32}
+          cy={-h * 0.42}
+          rx={w * 0.42}
+          ry={h * 0.3}
           fill="var(--leaf-highlight)"
           opacity="0.55"
         />
