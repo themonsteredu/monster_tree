@@ -19,6 +19,8 @@ type Props = {
   stage: number;
   size?: AppleTreeSize;
   mood?: AppleTreeMood;
+  /** 잎이 시들어 보이게 (포인트 차감 시 일시적) */
+  wilted?: boolean;
   className?: string;
   title?: string;
 };
@@ -35,6 +37,7 @@ export function AppleTree({
   stage,
   size = "medium",
   mood = "happy",
+  wilted = false,
   className,
   title,
 }: Props) {
@@ -63,9 +66,19 @@ export function AppleTree({
           <stop offset="100%" stopColor="var(--pot-base)" />
         </linearGradient>
         <radialGradient id={`leaf-${id}`} cx="35%" cy="30%" r="80%">
-          <stop offset="0%" stopColor="var(--leaf-highlight)" />
-          <stop offset="55%" stopColor="var(--leaf-light)" />
-          <stop offset="100%" stopColor="var(--leaf-deep)" />
+          {wilted ? (
+            <>
+              <stop offset="0%" stopColor="#f0e090" />
+              <stop offset="55%" stopColor="var(--leaf-sick)" />
+              <stop offset="100%" stopColor="#8a7820" />
+            </>
+          ) : (
+            <>
+              <stop offset="0%" stopColor="var(--leaf-highlight)" />
+              <stop offset="55%" stopColor="var(--leaf-light)" />
+              <stop offset="100%" stopColor="var(--leaf-deep)" />
+            </>
+          )}
         </radialGradient>
         <radialGradient id={`apple-${id}`} cx="32%" cy="28%" r="75%">
           <stop offset="0%" stopColor="var(--apple-light)" />
@@ -253,7 +266,7 @@ function Branch({
   );
 }
 
-// 개별 잎 (눈물방울 모양 + 중앙선)
+// 개별 잎 (눈물방울 모양 + 중앙선) - 큰 잎으로 풍성하게
 function Leaf({
   cx,
   cy,
@@ -270,13 +283,13 @@ function Leaf({
   sw: number;
 }) {
   // 베이스 좌표는 size=1 기준. 위→아래로 길쭉한 잎.
-  const top = -7 * size;
-  const bot = 6 * size;
-  const w = 4.6 * size;
+  const top = -9 * size;
+  const bot = 7 * size;
+  const w = 5.6 * size;
   return (
     <g transform={`translate(${cx} ${cy}) rotate(${rotate})`}>
       <path
-        d={`M 0 ${top} Q ${w} ${top * 0.7} ${w * 0.95} 0 Q ${w * 0.6} ${bot} 0 ${bot} Q ${-w * 0.6} ${bot} ${-w * 0.95} 0 Q ${-w} ${top * 0.7} 0 ${top} Z`}
+        d={`M 0 ${top} Q ${w} ${top * 0.65} ${w * 0.95} 0 Q ${w * 0.6} ${bot} 0 ${bot} Q ${-w * 0.6} ${bot} ${-w * 0.95} 0 Q ${-w} ${top * 0.65} 0 ${top} Z`}
         fill={`url(#leaf-${id})`}
         stroke="var(--ink)"
         strokeWidth={sw * 0.7}
@@ -284,9 +297,9 @@ function Leaf({
       />
       {/* 잎맥 */}
       <path
-        d={`M 0 ${top + 1} L 0 ${bot - 1}`}
+        d={`M 0 ${top + 1.5} L 0 ${bot - 1.5}`}
         stroke="var(--leaf-deep)"
-        strokeWidth={sw * 0.3}
+        strokeWidth={sw * 0.32}
         opacity="0.55"
       />
     </g>
@@ -431,12 +444,13 @@ function YoungSprout({ id, sw }: { id: string; sw: number }) {
   );
 }
 
-// 4단계: 어린나무 (가는 줄기 + 작은 잎 클러스터)
+// 4단계: 어린나무 (가는 줄기 + 캐노피가 이미 화분보다 큰 정도)
 function YoungTree({ id, sw }: { id: string; sw: number }) {
   return (
     <g>
-      <Trunk id={id} sw={sw} length={20} width={5.5} />
-      {/* 잎 클러스터 */}
+      <Trunk id={id} sw={sw} length={22} width={6} />
+      <Branch d="M 0 -16 Q -7 -22 -14 -24" sw={sw} />
+      <Branch d="M 0 -16 Q 7 -22 14 -24" sw={sw} />
       {LEAVES_4.map((l, i) => (
         <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
       ))}
@@ -444,13 +458,14 @@ function YoungTree({ id, sw }: { id: string; sw: number }) {
   );
 }
 
-// 5단계: 큰나무 (긴 줄기 + 가지 + 풍성한 잎)
+// 5단계: 큰나무 (가지 + 풍성한 잎)
 function SmallTree({ id, sw }: { id: string; sw: number }) {
   return (
     <g>
-      <Trunk id={id} sw={sw} length={28} width={6.5} />
-      <Branch d="M 0 -22 Q -6 -28 -12 -32" sw={sw} />
-      <Branch d="M 0 -22 Q 6 -28 12 -32" sw={sw} />
+      <Trunk id={id} sw={sw} length={30} width={7} />
+      <Branch d="M 0 -22 Q -10 -32 -22 -38" sw={sw} />
+      <Branch d="M 0 -22 Q 10 -32 22 -38" sw={sw} />
+      <Branch d="M 0 -26 L 0 -50" sw={sw} />
       {LEAVES_5.map((l, i) => (
         <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
       ))}
@@ -458,7 +473,7 @@ function SmallTree({ id, sw }: { id: string; sw: number }) {
   );
 }
 
-// 6단계: 큰나무 (더 큰 캐노피)
+// 6단계: 큰나무 (가장 풍성한 캐노피, 화분의 2배 이상 너비)
 function MediumTree({ id, sw }: { id: string; sw: number }) {
   return (
     <g>
@@ -470,10 +485,12 @@ function MediumTree({ id, sw }: { id: string; sw: number }) {
 function MediumTreeBody({ id, sw }: { id: string; sw: number }) {
   return (
     <g>
-      <Trunk id={id} sw={sw} length={32} width={7.5} />
-      <Branch d="M 0 -24 Q -8 -32 -14 -38" sw={sw} />
-      <Branch d="M 0 -24 Q 8 -32 14 -38" sw={sw} />
-      <Branch d="M 0 -28 L 0 -46" sw={sw} />
+      <Trunk id={id} sw={sw} length={34} width={8} />
+      <Branch d="M 0 -24 Q -12 -36 -28 -42" sw={sw} />
+      <Branch d="M 0 -24 Q 12 -36 28 -42" sw={sw} />
+      <Branch d="M 0 -28 L 0 -56" sw={sw} />
+      <Branch d="M 0 -32 Q -8 -42 -16 -52" sw={sw} />
+      <Branch d="M 0 -32 Q 8 -42 16 -52" sw={sw} />
       {LEAVES_6.map((l, i) => (
         <Leaf key={i} cx={l[0]} cy={l[1]} rotate={l[2]} size={l[3]} id={id} sw={sw} />
       ))}
@@ -513,68 +530,95 @@ function FruitfulTree({ id, sw }: { id: string; sw: number }) {
    각 항목: [cx, cy, rotateDeg, size]
 ================================================================ */
 
+// 4단계: 어린나무 (이미 화분보다 큰 캐노피)
 const LEAVES_4: ReadonlyArray<[number, number, number, number]> = [
-  [-9, -19, -55, 0.85],
-  [9, -19, 55, 0.85],
-  [0, -26, 0, 1],
-  [-4, -16, -25, 0.7],
-  [4, -16, 25, 0.7],
+  [-14, -22, -65, 1.1],
+  [-6, -16, -30, 1.0],
+  [0, -28, 0, 1.2],
+  [6, -16, 30, 1.0],
+  [14, -22, 65, 1.1],
+  [-9, -28, -50, 1.0],
+  [9, -28, 50, 1.0],
+  [-3, -22, -10, 0.95],
+  [3, -22, 10, 0.95],
 ];
 
+// 5단계: 큰나무 (캐노피 화분 1.6배)
 const LEAVES_5: ReadonlyArray<[number, number, number, number]> = [
-  [-14, -32, -65, 1],
-  [-7, -25, -35, 0.85],
-  [0, -38, 0, 1.05],
-  [7, -25, 35, 0.85],
-  [14, -32, 65, 1],
-  [-3, -28, -10, 0.75],
-  [3, -28, 10, 0.75],
-  [-10, -38, -50, 0.85],
-  [10, -38, 50, 0.85],
+  [-22, -36, -75, 1.3],
+  [-15, -28, -50, 1.15],
+  [-8, -42, -25, 1.2],
+  [0, -50, 0, 1.35],
+  [8, -42, 25, 1.2],
+  [15, -28, 50, 1.15],
+  [22, -36, 75, 1.3],
+  [-18, -42, -65, 1.15],
+  [18, -42, 65, 1.15],
+  [-5, -32, -15, 1.0],
+  [5, -32, 15, 1.0],
+  [-10, -50, -40, 1.1],
+  [10, -50, 40, 1.1],
+  [0, -34, 0, 1.05],
 ];
 
+// 6단계: 큰나무 (캐노피 화분의 2배 이상, 풍성하게)
 const LEAVES_6: ReadonlyArray<[number, number, number, number]> = [
-  // 좌측 가지
-  [-18, -38, -70, 1.05],
-  [-13, -32, -50, 0.9],
-  [-8, -42, -25, 0.95],
-  [-22, -32, -85, 0.9],
-  // 우측 가지
-  [18, -38, 70, 1.05],
-  [13, -32, 50, 0.9],
-  [8, -42, 25, 0.95],
-  [22, -32, 85, 0.9],
-  // 가운데 가지 / 꼭대기
-  [0, -52, 0, 1.1],
-  [-5, -46, -15, 0.85],
-  [5, -46, 15, 0.85],
-  [-2, -36, -8, 0.8],
-  [2, -36, 8, 0.8],
+  // 좌측 끝
+  [-30, -38, -88, 1.4],
+  [-26, -46, -75, 1.3],
+  [-22, -32, -90, 1.3],
+  [-20, -52, -55, 1.35],
+  // 좌측 안쪽
+  [-15, -42, -45, 1.3],
+  [-12, -56, -25, 1.4],
+  [-10, -32, -25, 1.15],
+  [-7, -50, -10, 1.3],
+  // 가운데 / 꼭대기
+  [0, -62, 0, 1.5],
+  [0, -48, 0, 1.4],
+  [0, -36, 0, 1.15],
+  [-4, -42, -10, 1.15],
+  [4, -42, 10, 1.15],
+  // 우측 안쪽
+  [7, -50, 10, 1.3],
+  [10, -32, 25, 1.15],
+  [12, -56, 25, 1.4],
+  [15, -42, 45, 1.3],
+  // 우측 끝
+  [20, -52, 55, 1.35],
+  [22, -32, 90, 1.3],
+  [26, -46, 75, 1.3],
+  [30, -38, 88, 1.4],
 ];
 
-// 7단계 꽃 위치
+// 7단계 꽃 위치 (큰 캐노피에 흩뿌리듯)
 const FLOWER_POSITIONS: ReadonlyArray<[number, number]> = [
-  [-15, -36],
-  [-3, -50],
-  [12, -36],
-  [-9, -28],
-  [9, -28],
-  [0, -42],
-  [16, -44],
-];
-
-// 8단계 사과 위치
-const APPLE_POSITIONS: ReadonlyArray<[number, number]> = [
-  [-16, -34],
-  [-3, -48],
-  [11, -36],
-  [-8, -22],
-  [14, -22],
-];
-
-// 8단계 꽃 (소수)
-const FLOWER_POSITIONS_FEW: ReadonlyArray<[number, number]> = [
-  [-22, -38],
-  [4, -38],
+  [-22, -40],
+  [-12, -52],
+  [-3, -60],
+  [10, -52],
   [22, -40],
+  [-16, -30],
+  [16, -30],
+  [-6, -36],
+  [6, -36],
+];
+
+// 8단계 사과 위치 (큰 캐노피에 균형 있게)
+const APPLE_POSITIONS: ReadonlyArray<[number, number]> = [
+  [-22, -36],
+  [-10, -52],
+  [3, -42],
+  [13, -52],
+  [22, -34],
+  [-3, -28],
+];
+
+// 8단계 꽃 (소수, 사과 사이사이)
+const FLOWER_POSITIONS_FEW: ReadonlyArray<[number, number]> = [
+  [-28, -46],
+  [0, -60],
+  [28, -42],
+  [-15, -42],
+  [16, -42],
 ];

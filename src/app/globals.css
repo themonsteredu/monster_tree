@@ -135,3 +135,55 @@ body {
 .number-pop {
   animation: number-pop 360ms ease-out;
 }
+
+/* 나무 흔들림 (수확 시작 시 1초간) */
+@keyframes tree-shake {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(-5deg);
+  }
+  30% {
+    transform: rotate(4deg);
+  }
+  45% {
+    transform: rotate(-3deg);
+  }
+  60% {
+    transform: rotate(3deg);
+  }
+  75% {
+    transform: rotate(-2deg);
+  }
+  90% {
+    transform: rotate(1deg);
+  }
+}
+.tree-shake {
+  animation: tree-shake 1s ease-in-out;
+  transform-origin: 50% 90%;
+}
+
+/* 물방울이 떨어지는 효과 (+pt 적립 시) */
+@keyframes water-drop {
+  0% {
+    transform: translateY(-30px) scale(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(60px) scale(0.9);
+  }
+  100% {
+    transform: translateY(80px) scale(0);
+    opacity: 0;
+  }
+}
+.water-drop {
+  animation: water-drop 1100ms ease-in forwards;
+}
