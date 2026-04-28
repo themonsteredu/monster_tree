@@ -18,6 +18,7 @@
 
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood, type AppleTreeSize } from "@/components/AppleTree";
 import {
@@ -375,6 +376,9 @@ export function TVScreen({
       {banners.map((b) => (
         <StageUpBanner key={b.id} banner={b} />
       ))}
+
+      {/* 관리자 페이지 진입 버튼 (우하단, 학생들 시야에 산만하지 않게 반투명·연한 톤) */}
+      <AdminLink />
     </main>
   );
 }
@@ -1184,6 +1188,37 @@ function FlyingAppleSVG() {
       />
       <ellipse cx="-3.5" cy="-4.5" rx="3" ry="3.6" fill="#fff" opacity="0.85" />
     </svg>
+  );
+}
+
+/* ================================================================
+   관리자 페이지 진입 버튼 (우하단 고정, 반투명·연한 톤)
+   - 평소엔 거의 투명 → 마우스/포커스 시 또렷해짐
+   - /admin 라우트는 비밀번호로 보호되어 있으므로 단순 이동만 담당
+================================================================ */
+
+function AdminLink() {
+  return (
+    <Link
+      href="/admin"
+      aria-label="관리자 페이지로 이동"
+      title="관리자"
+      className={[
+        "fixed bottom-2.5 right-2.5 z-30",
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full",
+        "bg-white/35 hover:bg-white/85 focus-visible:bg-white/90 backdrop-blur-sm",
+        "border border-[var(--ink)]/15 hover:border-[var(--ink)]/40",
+        "text-[var(--ink)]/45 hover:text-[var(--ink)]",
+        "text-xs font-bold tracking-tight leading-none",
+        "opacity-40 hover:opacity-100 focus-visible:opacity-100",
+        "shadow-sm hover:shadow-card",
+        "transition-all duration-200",
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--apple-base)]",
+      ].join(" ")}
+    >
+      <span aria-hidden className="text-sm leading-none">⚙️</span>
+      <span>관리자</span>
+    </Link>
   );
 }
 
