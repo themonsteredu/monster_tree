@@ -1,14 +1,13 @@
 "use server";
 
 // /tree/me 학생 전용 server actions.
-// 학생 JWT 쿠키(monster_student) 로 본인 인증 후, garden_pending_points 의
-// 본인 행을 garden_point_logs 로 옮기고 garden_students 를 갱신한다.
+// 학생 JWT 쿠키(monster_student) 로 본인 인증 후, garden_claim_pending RPC 로
+// pending 행 소비 + 로그 기록 + 학생 누적/단계 갱신을 한 트랜잭션에 처리한다.
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { calculateStage } from "@/lib/garden";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -22,58 +21,36 @@ export async function claimPointAction(args: { pendingId: string }) {
 
   const sb = createSupabaseServiceClient();
 
-  // 1) JWT 로 본인 garden_students 행 찾기
-  const { data: student, error: se } = await sb
-    .from("garden_students")
-    .select("id, total_points")
-    .eq("branch_id", payload.branchId)
-    .eq("external_student_id", payload.studentLocalId)
-    .maybeSingle();
-  if (se || !student) {
-    return { ok: false as const, message: "본인 행을 찾지 못했어요." };
-  }
-
-  // 2) pending 행 조회 + 본인 소유 여부 확인 (다른 학생의 pending 을 받지 못하도록)
-  const { data: pending, error: pe } = await sb
-    .from("garden_pending_points")
-    .select("id, student_id, points, reason")
-    .eq("id", args.pendingId)
-    .maybeSingle();
-  if (pe || !pending) {
-    return { ok: false as const, message: "이미 받았거나 사라진 포인트예요." };
-  }
-  if (pending.student_id !== student.id) {
-    return { ok: false as const, message: "본인 포인트가 아니에요." };
-  }
-
-  // 3) 새 누적 / 단계 계산
-  const newTotal = Math.max(0, (student.total_points ?? 0) + pending.points);
-  const newStage = calculateStage(newTotal);
-
-  // 4) 로그 기록
-  const { error: le } = await sb.from("garden_point_logs").insert({
-    student_id: student.id,
-    points: pending.points,
-    reason: pending.reason,
+  const { data, error } = await sb.rpc("garden_claim_pending", {
+    p_pending_id: args.pendingId,
+    p_branch_id: payload.branchId,
+    p_external_id: payload.studentLocalId,
   });
-  if (le) {
-    return { ok: false as const, message: `로그 기록 실패: ${le.message}` };
+  if (error) {
+    if (error.message?.includes("student_not_found")) {
+      return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+    }
+    return { ok: false as const, message: `받기 실패: ${error.message}` };
   }
 
-  // 5) 학생 캐시 업데이트
-  const { error: ue } = await sb
-    .from("garden_students")
-    .update({ total_points: newTotal, current_stage: newStage })
-    .eq("id", student.id);
-  if (ue) {
-    return { ok: false as const, message: `학생 정보 갱신 실패: ${ue.message}` };
-  }
-
-  // 6) pending 삭제 (Realtime 으로 다른 탭의 학생 페이지에도 반영)
-  await sb.from("garden_pending_points").delete().eq("id", args.pendingId);
+  const result = data as {
+    ok: true;
+    already_claimed?: boolean;
+    new_total?: number;
+    new_stage?: number;
+    points?: number;
+  };
 
   revalidatePath("/me");
   revalidatePath("/admin");
   revalidatePath("/");
-  return { ok: true as const, newTotal, newStage };
+
+  if (result.already_claimed) {
+    return { ok: true as const, alreadyClaimed: true };
+  }
+  return {
+    ok: true as const,
+    newTotal: result.new_total ?? 0,
+    newStage: result.new_stage ?? 1,
+  };
 }
