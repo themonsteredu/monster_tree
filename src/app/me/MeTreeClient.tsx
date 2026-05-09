@@ -7,6 +7,7 @@
 //
 // Phase 1: 시각적 풍부 — AppleTree SVG, 단계별 액센트, 단계 배지, 수확 배지.
 // Phase 2: 정보 풍부 — 이번 주/이번 달 통계, 최근 활동 타임라인, 수확 히스토리.
+// Phase 3: 동기부여 — 격려 멘트, 다음 단계 미리보기, 마일스톤 뱃지.
 
 import { useEffect, useMemo, useState } from "react";
 import { AppleTree } from "@/components/AppleTree";
@@ -40,7 +41,6 @@ type Harvest = {
   harvested_at: string;
 };
 
-// 단계별 컬러 토큰. TVScreen 의 STAGE_ACCENT 와 톤을 맞췄다.
 const STAGE_ACCENT: Record<
   number,
   {
@@ -118,11 +118,83 @@ const STAGE_ACCENT: Record<
   },
 };
 
-// 월요일 00:00 (KST 사용자 기준 — 클라이언트 로컬 시각 사용)
+// 마일스톤 정의: 단계별 + 수확 카운트 별
+type Milestone = {
+  key: string;
+  emoji: string;
+  name: string;
+  achieved: boolean;
+};
+
+function buildMilestones(maxStageEver: number, applesHarvested: number): Milestone[] {
+  return [
+    { key: "s2", emoji: "🌱", name: "첫 씨앗", achieved: maxStageEver >= 2 },
+    { key: "s3", emoji: "🌿", name: "새싹", achieved: maxStageEver >= 3 },
+    { key: "s4", emoji: "🌳", name: "어린나무", achieved: maxStageEver >= 4 },
+    { key: "s5", emoji: "🌳", name: "큰나무", achieved: maxStageEver >= 5 },
+    { key: "s6", emoji: "🌸", name: "꽃피움", achieved: maxStageEver >= 7 || maxStageEver === 6 },
+    { key: "s7", emoji: "🍎", name: "열매", achieved: maxStageEver >= 7 },
+    { key: "h1", emoji: "🏆", name: "첫 수확", achieved: applesHarvested >= 1 },
+    { key: "h5", emoji: "🥇", name: "사과왕", achieved: applesHarvested >= 5 },
+    { key: "h10", emoji: "🌟", name: "사과 마스터", achieved: applesHarvested >= 10 },
+  ];
+}
+
+// 격려 멘트 — 우선순위 순서대로 첫 매치 사용
+function pickEncouragement(args: {
+  isHarvest: boolean;
+  applesHarvested: number;
+  weekTotal: number;
+  monthTotal: number;
+  hasAnyLogs: boolean;
+}): { text: string; tone: "celebrate" | "warm" | "neutral" | "soft" } {
+  const { isHarvest, applesHarvested, weekTotal, monthTotal, hasAnyLogs } = args;
+  if (isHarvest && applesHarvested === 0) {
+    return {
+      text: "🎉 8단계 도달 축하해요! 곧 사과를 딸 수 있어요",
+      tone: "celebrate",
+    };
+  }
+  if (isHarvest && applesHarvested > 0) {
+    return {
+      text: "🍎 또 수확할 수 있어요! 멋진 페이스예요",
+      tone: "celebrate",
+    };
+  }
+  if (weekTotal >= 30) {
+    return {
+      text: "🔥 이번 주 정말 열심히 하고 있어요! 멋져요",
+      tone: "celebrate",
+    };
+  }
+  if (weekTotal >= 15) {
+    return { text: "💪 좋은 페이스로 자라고 있어요", tone: "warm" };
+  }
+  if (weekTotal >= 5) {
+    return { text: "🌱 한 발씩 차근차근 자라는 중!", tone: "warm" };
+  }
+  if (weekTotal < 0) {
+    return {
+      text: "🌧 이번 주는 살짝 차감이 있었어요. 다시 한 걸음씩 가봐요",
+      tone: "soft",
+    };
+  }
+  if (!hasAnyLogs) {
+    return {
+      text: "🌟 사과정원에 오신 걸 환영해요! 첫 포인트를 기다리고 있어요",
+      tone: "neutral",
+    };
+  }
+  if (monthTotal > 0) {
+    return { text: "💡 이번 주 새 도전을 시작해 봐요!", tone: "neutral" };
+  }
+  return { text: "🌳 천천히 자라는 게 좋은 거예요", tone: "neutral" };
+}
+
 function getWeekStart(now: Date): Date {
   const d = new Date(now);
-  const day = d.getDay(); // 0=일 ~ 6=토
-  const daysFromMonday = (day + 6) % 7; // 월=0, 화=1, ..., 일=6
+  const day = d.getDay();
+  const daysFromMonday = (day + 6) % 7;
   d.setDate(d.getDate() - daysFromMonday);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -138,7 +210,6 @@ function formatRelative(iso: string, now: Date): string {
   if (hour < 24) return `${hour}시간 전`;
   const day = Math.floor(hour / 24);
   if (day < 7) return `${day}일 전`;
-  // 한 주 이상 → 날짜 표기
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${m}/${dd}`;
@@ -156,7 +227,6 @@ export function MeTreeClient({
   initialHarvests: Harvest[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
-  // 마운트 후에야 정확한 "지금" 을 알 수 있음 (SSR/CSR mismatch 방지)
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -207,8 +277,16 @@ export function MeTreeClient({
   const remain = pointsToNextStage(points);
   const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
   const isHarvest = stage === 8;
+  const applesHarvested = row?.apples_harvested ?? 0;
 
-  // 통계: 이번 주/이번 달 적립 합 (음수는 빼고 양수만 따로 표시)
+  // 한 번이라도 8단계를 도달했다면 max stage = 8 (수확 후 5단계로 내려와 있어도)
+  const maxStageEver = applesHarvested > 0 ? 8 : stage;
+
+  // 다음 단계 정보
+  const nextStage = stage < 8 ? ((stage + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) : null;
+  const nextInfo = nextStage ? getStageInfo(nextStage) : null;
+  const nextAccent = nextStage ? STAGE_ACCENT[nextStage] : null;
+
   const stats = useMemo(() => {
     if (!now) return { weekTotal: 0, monthTotal: 0 };
     const weekStart = getWeekStart(now);
@@ -217,10 +295,26 @@ export function MeTreeClient({
     for (const log of initialPointLogs) {
       const t = new Date(log.logged_at).getTime();
       if (t >= weekStart.getTime()) weekTotal += log.points;
-      monthTotal += log.points; // page.tsx 가 이번 달 1일부터만 가져옴
+      monthTotal += log.points;
     }
     return { weekTotal, monthTotal };
   }, [initialPointLogs, now]);
+
+  const milestones = useMemo(
+    () => buildMilestones(maxStageEver, applesHarvested),
+    [maxStageEver, applesHarvested],
+  );
+
+  const encouragement = useMemo(() => {
+    if (now === null) return null;
+    return pickEncouragement({
+      isHarvest,
+      applesHarvested,
+      weekTotal: stats.weekTotal,
+      monthTotal: stats.monthTotal,
+      hasAnyLogs: initialPointLogs.length > 0,
+    });
+  }, [now, isHarvest, applesHarvested, stats, initialPointLogs.length]);
 
   return (
     <main
@@ -249,7 +343,7 @@ export function MeTreeClient({
           border: `2px solid ${isHarvest ? "#e8a020" : "#f1e8d8"}`,
         }}
       >
-        {/* 헤더: 학생 이름 + 학년 */}
+        {/* 헤더 */}
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>
             나의 사과정원
@@ -353,7 +447,7 @@ export function MeTreeClient({
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-                margin: "8px 0 16px",
+                margin: "8px 0 12px",
               }}
             >
               <AppleTree
@@ -363,6 +457,14 @@ export function MeTreeClient({
                 growthBoost={progress}
               />
             </div>
+
+            {/* 격려 멘트 */}
+            {encouragement && (
+              <EncouragementCard
+                text={encouragement.text}
+                tone={encouragement.tone}
+              />
+            )}
 
             {/* 단계 정보 */}
             <div style={{ textAlign: "center", marginBottom: 14 }}>
@@ -387,7 +489,7 @@ export function MeTreeClient({
               />
               <Stat
                 label="수확한 사과"
-                value={`${row.apples_harvested ?? 0}개`}
+                value={`${applesHarvested}개`}
                 tone="primary"
               />
               <Stat
@@ -411,7 +513,7 @@ export function MeTreeClient({
             </div>
 
             {/* 진행도 바 */}
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 14 }}>
               <div
                 style={{
                   height: 12,
@@ -445,7 +547,34 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 최근 활동 타임라인 (최신 10건) */}
+            {/* 다음 단계 미리보기 */}
+            {nextStage && nextInfo && nextAccent && (
+              <NextStagePreview
+                stage={nextStage}
+                name={nextInfo.name}
+                threshold={nextInfo.threshold}
+                emoji={nextAccent.emoji}
+                badgeBg={nextAccent.badgeBg}
+                badgeText={nextAccent.badgeText}
+              />
+            )}
+
+            {/* 마일스톤 */}
+            <Section title="🏆 마일스톤">
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 8,
+                }}
+              >
+                {milestones.map((m) => (
+                  <MilestoneBadge key={m.key} {...m} />
+                ))}
+              </div>
+            </Section>
+
+            {/* 최근 활동 */}
             <Section title="📋 최근 활동">
               {initialPointLogs.length === 0 ? (
                 <Empty text="이번 달 활동 기록이 없어요" />
@@ -504,6 +633,167 @@ export function MeTreeClient({
         </div>
       </div>
     </main>
+  );
+}
+
+function EncouragementCard({
+  text,
+  tone,
+}: {
+  text: string;
+  tone: "celebrate" | "warm" | "neutral" | "soft";
+}) {
+  const palette: Record<typeof tone, { bg: string; border: string; color: string }> = {
+    celebrate: { bg: "#fff5d6", border: "#f0c050", color: "#3d2818" },
+    warm: { bg: "#f0fae6", border: "#a8e070", color: "#3d2818" },
+    neutral: { bg: "#fff8e8", border: "#e8d8b8", color: "#3d2818" },
+    soft: { bg: "#eef4f9", border: "#bcd2e2", color: "#3d2818" },
+  };
+  const p = palette[tone];
+  return (
+    <div
+      style={{
+        background: p.bg,
+        border: `1.5px solid ${p.border}`,
+        borderRadius: 14,
+        padding: "10px 14px",
+        textAlign: "center",
+        marginBottom: 14,
+        fontSize: 13,
+        fontWeight: 700,
+        color: p.color,
+        lineHeight: 1.5,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function NextStagePreview({
+  stage,
+  name,
+  threshold,
+  emoji,
+  badgeBg,
+  badgeText,
+}: {
+  stage: number;
+  name: string;
+  threshold: number;
+  emoji: string;
+  badgeBg: string;
+  badgeText: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 14px",
+        background: "#fffaf2",
+        border: "1.5px dashed #d6c2a0",
+        borderRadius: 14,
+        marginBottom: 14,
+      }}
+    >
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 999,
+          background: badgeBg,
+          color: badgeText,
+          fontSize: 22,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          border: "2px solid #3d2818",
+        }}
+      >
+        {emoji}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: "#9a8b6c",
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+          }}
+        >
+          다음 단계
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 800,
+            color: "#1f2937",
+            marginTop: 2,
+          }}
+        >
+          {stage}단계 · {name}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "#9a8b6c",
+            fontWeight: 600,
+            marginTop: 1,
+          }}
+        >
+          {threshold}P 도달 시 자라남
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MilestoneBadge({
+  emoji,
+  name,
+  achieved,
+}: {
+  emoji: string;
+  name: string;
+  achieved: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        padding: "10px 4px",
+        background: achieved ? "#fff5d6" : "#f5f0e6",
+        border: `1.5px solid ${achieved ? "#f0c050" : "#e0d4be"}`,
+        borderRadius: 12,
+        opacity: achieved ? 1 : 0.55,
+        transition: "all 240ms ease",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 22,
+          filter: achieved ? "none" : "grayscale(0.7)",
+        }}
+      >
+        {emoji}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          color: achieved ? "#3d2818" : "#9a8b6c",
+          textAlign: "center",
+        }}
+      >
+        {name}
+      </div>
+    </div>
   );
 }
 
