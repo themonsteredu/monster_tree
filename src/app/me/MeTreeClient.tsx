@@ -9,10 +9,11 @@
 // Phase 2: 정보 풍부 — 이번 주/이번 달 통계, 최근 활동 타임라인, 수확 히스토리.
 // Phase 3: 동기부여 — 격려 멘트, 다음 단계 미리보기, 마일스톤 뱃지.
 // Phase 4: 인터랙션 — 실시간 +pt 토스트, 단계업 컨페티/배너, 수확 가능 펄스, 수확 배너.
+// Phase 4.1: 나무가 반응하는 효과 — +pt 시 분무기 미스트, -pt 시 시들음, 점수 카운트업.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import { AppleTree } from "@/components/AppleTree";
+import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import {
   STAGE_TABLE,
   calculateStage,
@@ -61,9 +62,18 @@ type HarvestBanner = {
   applesCount: number;
 };
 
+// 나무에 직접 비치는 반응(분무기/시들음/델타칩) — 일정 시간 동안만 활성
+type Highlight = {
+  id: string;
+  delta: number;
+  reason: string | null;
+  expiresAt: number;
+};
+
 const TOAST_MS = 3500;
 const STAGE_UP_BANNER_MS = 4500;
 const HARVEST_BANNER_MS = 5000;
+const HIGHLIGHT_MS = 3500;
 
 const STAGE_ACCENT: Record<
   number,
@@ -286,12 +296,14 @@ export function MeTreeClient({
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [stageUp, setStageUp] = useState<StageUpBanner | null>(null);
   const [harvestBanner, setHarvestBanner] = useState<HarvestBanner | null>(null);
+  // 나무에 직접 보이는 반응 (분무기/시들음/델타칩)
+  const [highlight, setHighlight] = useState<Highlight | null>(null);
   // 단계 변화 감지용 (단계 증가 시 컨페티 + 배너)
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   useEffect(() => {
     setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 60_000);
+    const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -303,7 +315,6 @@ export function MeTreeClient({
 
     const channel = sb
       .channel(`me:${initialRow.id}`)
-      // 본인 행 갱신 (포인트/단계/사과 수)
       .on(
         "postgres_changes",
         {
@@ -320,14 +331,14 @@ export function MeTreeClient({
           const newStage = next.current_stage ?? prevStage;
           if (newStage > prevStage) {
             const info = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
-            const isHarvest = newStage === 8;
+            const isHarvestUp = newStage === 8;
             setStageUp({
               id: `${Date.now()}`,
               stage: newStage,
               name: info.name,
-              isHarvest,
+              isHarvest: isHarvestUp,
             });
-            fireConfetti(isHarvest);
+            fireConfetti(isHarvestUp);
           }
           prevStageRef.current = newStage;
 
@@ -341,7 +352,6 @@ export function MeTreeClient({
           }));
         },
       )
-      // 본인 포인트 적립/차감 로그 → 토스트
       .on(
         "postgres_changes",
         {
@@ -354,17 +364,23 @@ export function MeTreeClient({
           const log = payload.new as PointLog;
           if (!log) return;
           const id = `${log.id}-${Date.now()}`;
+          // 1) 토스트
           setToasts((prev) => [
             ...prev,
             { id, points: log.points, reason: log.reason },
           ]);
-          // 자동 dismiss
           window.setTimeout(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
           }, TOAST_MS);
+          // 2) 나무 반응 (분무기 또는 시들음)
+          setHighlight({
+            id,
+            delta: log.points,
+            reason: log.reason,
+            expiresAt: Date.now() + HIGHLIGHT_MS,
+          });
         },
       )
-      // 본인 수확 기록 → 수확 배너
       .on(
         "postgres_changes",
         {
@@ -389,6 +405,14 @@ export function MeTreeClient({
       sb.removeChannel(channel);
     };
   }, [initialRow]);
+
+  // 만료된 highlight 정리 (now 가 1초마다 갱신될 때 함께 검사)
+  useEffect(() => {
+    if (!highlight || !now) return;
+    if (highlight.expiresAt <= now.getTime()) {
+      setHighlight(null);
+    }
+  }, [now, highlight]);
 
   // 단계 상승 배너 자동 dismiss
   useEffect(() => {
@@ -416,13 +440,23 @@ export function MeTreeClient({
   const progress = stageProgress(points);
   const remain = pointsToNextStage(points);
   const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
-  const isHarvest = stage === 8;
+  const isHarvestStage = stage === 8;
   const applesHarvested = row?.apples_harvested ?? 0;
   const maxStageEver = applesHarvested > 0 ? 8 : stage;
 
   const nextStage = stage < 8 ? ((stage + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) : null;
   const nextInfo = nextStage ? getStageInfo(nextStage) : null;
   const nextAccent = nextStage ? STAGE_ACCENT[nextStage] : null;
+
+  // 나무 반응 상태
+  const isFresh = !!(highlight && now && highlight.expiresAt > now.getTime());
+  const isPositive = isFresh && highlight!.delta > 0;
+  const isNegative = isFresh && highlight!.delta < 0;
+  const treeMood: AppleTreeMood = isNegative
+    ? "sad"
+    : isPositive
+      ? "surprised"
+      : "happy";
 
   const stats = useMemo(() => {
     if (!now) return { weekTotal: 0, monthTotal: 0 };
@@ -445,13 +479,13 @@ export function MeTreeClient({
   const encouragement = useMemo(() => {
     if (now === null) return null;
     return pickEncouragement({
-      isHarvest,
+      isHarvest: isHarvestStage,
       applesHarvested,
       weekTotal: stats.weekTotal,
       monthTotal: stats.monthTotal,
       hasAnyLogs: initialPointLogs.length > 0,
     });
-  }, [now, isHarvest, applesHarvested, stats, initialPointLogs.length]);
+  }, [now, isHarvestStage, applesHarvested, stats, initialPointLogs.length]);
 
   return (
     <main
@@ -469,15 +503,15 @@ export function MeTreeClient({
     >
       <div
         style={{
-          background: isHarvest ? "#fff5d6" : "#fff",
+          background: isHarvestStage ? "#fff5d6" : "#fff",
           borderRadius: 24,
           padding: "32px 24px",
           width: "100%",
           maxWidth: 480,
-          boxShadow: isHarvest
+          boxShadow: isHarvestStage
             ? "0 0 0 4px rgba(240,192,80,0.45), 0 10px 40px rgba(61,40,24,0.12)"
             : "0 10px 40px rgba(61,40,24,0.08)",
-          border: `2px solid ${isHarvest ? "#e8a020" : "#f1e8d8"}`,
+          border: `2px solid ${isHarvestStage ? "#e8a020" : "#f1e8d8"}`,
         }}
       >
         {/* 헤더 */}
@@ -527,7 +561,7 @@ export function MeTreeClient({
           </div>
         ) : (
           <>
-            {/* 단계 배지 + 수확 가능 배지 (8단계는 펄스 애니메이션) */}
+            {/* 단계 배지 + 수확 가능 배지 */}
             <div
               style={{
                 display: "flex",
@@ -557,7 +591,7 @@ export function MeTreeClient({
                   {stage}단계 · {info.name}
                 </span>
               </span>
-              {isHarvest && (
+              {isHarvestStage && (
                 <span
                   className="harvest-pulse"
                   style={{
@@ -578,7 +612,7 @@ export function MeTreeClient({
               )}
             </div>
 
-            {/* AppleTree SVG */}
+            {/* AppleTree SVG + 반응 효과 (분무기/델타칩) */}
             <div
               style={{
                 display: "flex",
@@ -587,12 +621,21 @@ export function MeTreeClient({
                 margin: "8px 0 12px",
               }}
             >
-              <AppleTree
-                stage={stage}
-                size="xl"
-                mood="happy"
-                growthBoost={progress}
-              />
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <AppleTree
+                  stage={stage}
+                  size="xl"
+                  mood={treeMood}
+                  wilted={isNegative}
+                  growthBoost={progress}
+                />
+                {/* +pt 시 분무기 미스트 (TVScreen 의 SprayWater 와 동일 톤) */}
+                {isPositive && <SprayWater />}
+                {/* 델타 칩 (+10pt 또는 -5pt) */}
+                {isFresh && highlight && (
+                  <DeltaChip delta={highlight.delta} reason={highlight.reason} />
+                )}
+              </div>
             </div>
 
             {/* 격려 멘트 */}
@@ -619,7 +662,7 @@ export function MeTreeClient({
                 marginBottom: 14,
               }}
             >
-              <Stat label="누적 포인트" value={`${points} P`} tone="primary" />
+              <AnimatedStat label="누적 포인트" value={points} unit="P" />
               <Stat
                 label="수확한 사과"
                 value={`${applesHarvested}개`}
@@ -806,6 +849,240 @@ export function MeTreeClient({
         />
       )}
     </main>
+  );
+}
+
+/* ================================================================
+   Phase 4.1: 나무 반응 효과 — 분무기 미스트 / 델타 칩 / 카운트업 통계
+================================================================ */
+
+// 누적 포인트 통계 카드 — 값 변화 시 부드럽게 카운트업되고 살짝 튀어오름.
+function AnimatedStat({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+}) {
+  const [display, setDisplay] = useState(value);
+  const [popKey, setPopKey] = useState(0);
+  const fromRef = useRef(value);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    const to = value;
+    if (from === to) return;
+    setPopKey((k) => k + 1);
+    const duration = 700;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (ts: number) => {
+      const t = Math.min(1, (ts - start) / duration);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const cur = Math.round(from + (to - from) * eased);
+      setDisplay(cur);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+
+  return (
+    <div
+      style={{
+        background: "#fff8e8",
+        borderRadius: 12,
+        padding: "10px 12px",
+        textAlign: "center",
+        border: "1.5px solid #f1e8d8",
+      }}
+    >
+      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>
+        {label}
+      </div>
+      <div
+        key={popKey}
+        className={popKey > 0 ? "number-pop" : undefined}
+        style={{
+          fontSize: 16,
+          fontWeight: 800,
+          color: "#1f2937",
+          marginTop: 4,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {display} {unit}
+      </div>
+    </div>
+  );
+}
+
+// 델타 칩: 나무 우상단에 +10pt 또는 -5pt 떠올랐다 사라짐
+function DeltaChip({
+  delta,
+  reason,
+}: {
+  delta: number;
+  reason: string | null;
+}) {
+  const isPositive = delta > 0;
+  return (
+    <div
+      className="banner-pop"
+      style={{
+        position: "absolute",
+        top: -6,
+        right: -10,
+        background: isPositive ? "#5e9c38" : "#b04020",
+        color: "#fff",
+        padding: "6px 12px",
+        borderRadius: 999,
+        fontSize: 14,
+        fontWeight: 800,
+        border: "2px solid #3d2818",
+        boxShadow: "0 6px 16px rgba(61,40,24,0.30)",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        whiteSpace: "nowrap",
+        maxWidth: 200,
+        zIndex: 5,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      <span>
+        {isPositive ? "+" : ""}
+        {delta} P
+      </span>
+      {reason && (
+        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.9 }}>
+          · {reason}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// 분무기 + 미스트 (TVScreen 의 SprayWater 동일 톤, /tree/me 의 xl 사이즈에 맞춤).
+// 나무 우상단 코너에서 좌하단 부채꼴로 미스트가 뿜어져 나옴.
+function SprayWater() {
+  const particleCount = 14;
+  const bottlePx = 56;
+  return (
+    <div
+      aria-hidden
+      style={{
+        pointerEvents: "none",
+        position: "absolute",
+        inset: 0,
+        overflow: "visible",
+        zIndex: 4,
+      }}
+    >
+      {/* 분무기 (우상단) */}
+      <div
+        className="spray-wiggle"
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 4,
+          width: bottlePx,
+          height: bottlePx,
+        }}
+      >
+        <SprayBottleSVG />
+      </div>
+      {/* 미스트 입자들 */}
+      {Array.from({ length: particleCount }).map((_, i) => {
+        const nozzleTop = 14;
+        const nozzleRight = 38;
+        // 부채꼴: -160 ~ -200 도 (좌하단)
+        const angleDeg = -160 - (i / particleCount) * 80 + ((i * 13) % 7) * 2;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const distance = 64 + ((i * 7) % 11) * 2;
+        const dx = Math.cos(angleRad) * distance;
+        const dy = -Math.sin(angleRad) * distance;
+        const delay = i * 35;
+        const dotSize = 6;
+        return (
+          <div
+            key={i}
+            className="spray-mist"
+            style={{
+              position: "absolute",
+              top: nozzleTop,
+              right: nozzleRight,
+              width: dotSize,
+              height: dotSize,
+              borderRadius: 999,
+              background: "#7fc6e8",
+              border: "1.2px solid #3d2818",
+              opacity: 0,
+              animationDelay: `${delay}ms`,
+              ["--spray-x" as string]: `${dx}px`,
+              ["--spray-y" as string]: `${dy}px`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function SprayBottleSVG() {
+  return (
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      <defs>
+        <linearGradient id="me-bottle-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#a8e0ff" />
+          <stop offset="100%" stopColor="#5cb8e8" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="36"
+        y="40"
+        width="44"
+        height="48"
+        rx="6"
+        fill="url(#me-bottle-grad)"
+        stroke="#3d2818"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="42"
+        y="56"
+        width="32"
+        height="18"
+        rx="2"
+        fill="#fff"
+        stroke="#3d2818"
+        strokeWidth="1.6"
+      />
+      <line x1="46" y1="61" x2="70" y2="61" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="46" y1="65" x2="66" y2="65" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="46" y1="69" x2="68" y2="69" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
+      <rect x="46" y="32" width="20" height="10" fill="#5cb8e8" stroke="#3d2818" strokeWidth="2.5" />
+      <path
+        d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z"
+        fill="#7fc6e8"
+        stroke="#3d2818"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z"
+        fill="#5cb8e8"
+        stroke="#3d2818"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      <circle cx="13" cy="26" r="1.4" fill="#3d2818" />
+    </svg>
   );
 }
 
