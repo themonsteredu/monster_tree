@@ -5,10 +5,10 @@
 // 이후 garden_students UPDATE 를 Realtime 구독해 포인트/단계/사과 수 변화를
 // 페이지 새로고침 없이 반영한다.
 //
-// Phase 1: 시각적 풍부 — 🌳 이모지 대신 AppleTree SVG, 단계별 액센트 컬러,
-//          단계 배지, 8단계 시 수확 가능 배지, 페이지 배경 그라데이션.
+// Phase 1: 시각적 풍부 — AppleTree SVG, 단계별 액센트, 단계 배지, 수확 배지.
+// Phase 2: 정보 풍부 — 이번 주/이번 달 통계, 최근 활동 타임라인, 수확 히스토리.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppleTree } from "@/components/AppleTree";
 import {
   STAGE_TABLE,
@@ -27,13 +27,20 @@ type Row = {
   grade: string | null;
 };
 
+type PointLog = {
+  id: string;
+  points: number;
+  reason: string | null;
+  logged_at: string;
+};
+
+type Harvest = {
+  id: string;
+  apples_count: number;
+  harvested_at: string;
+};
+
 // 단계별 컬러 토큰. TVScreen 의 STAGE_ACCENT 와 톤을 맞췄다.
-//   pageBg: 페이지 배경 그라데이션 시작
-//   pageBgEnd: 페이지 배경 그라데이션 끝 (살짝 진한 같은 계열)
-//   badgeBg: 단계 배지 배경
-//   badgeText: 단계 배지 글자
-//   barFill: 진행도 바 채움
-//   emoji: 단계 이모지
 const STAGE_ACCENT: Record<
   number,
   {
@@ -111,14 +118,52 @@ const STAGE_ACCENT: Record<
   },
 };
 
+// 월요일 00:00 (KST 사용자 기준 — 클라이언트 로컬 시각 사용)
+function getWeekStart(now: Date): Date {
+  const d = new Date(now);
+  const day = d.getDay(); // 0=일 ~ 6=토
+  const daysFromMonday = (day + 6) % 7; // 월=0, 화=1, ..., 일=6
+  d.setDate(d.getDate() - daysFromMonday);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatRelative(iso: string, now: Date): string {
+  const d = new Date(iso);
+  const diffMs = now.getTime() - d.getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "방금 전";
+  if (min < 60) return `${min}분 전`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}시간 전`;
+  const day = Math.floor(hour / 24);
+  if (day < 7) return `${day}일 전`;
+  // 한 주 이상 → 날짜 표기
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${m}/${dd}`;
+}
+
 export function MeTreeClient({
   initialRow,
   studentName,
+  initialPointLogs,
+  initialHarvests,
 }: {
   initialRow: Row | null;
   studentName: string;
+  initialPointLogs: PointLog[];
+  initialHarvests: Harvest[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
+  // 마운트 후에야 정확한 "지금" 을 알 수 있음 (SSR/CSR mismatch 방지)
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (!initialRow) return;
@@ -163,13 +208,27 @@ export function MeTreeClient({
   const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
   const isHarvest = stage === 8;
 
+  // 통계: 이번 주/이번 달 적립 합 (음수는 빼고 양수만 따로 표시)
+  const stats = useMemo(() => {
+    if (!now) return { weekTotal: 0, monthTotal: 0 };
+    const weekStart = getWeekStart(now);
+    let weekTotal = 0;
+    let monthTotal = 0;
+    for (const log of initialPointLogs) {
+      const t = new Date(log.logged_at).getTime();
+      if (t >= weekStart.getTime()) weekTotal += log.points;
+      monthTotal += log.points; // page.tsx 가 이번 달 1일부터만 가져옴
+    }
+    return { weekTotal, monthTotal };
+  }, [initialPointLogs, now]);
+
   return (
     <main
       style={{
         minHeight: "100vh",
         background: `linear-gradient(180deg, ${accent.pageBg} 0%, ${accent.pageBgEnd} 100%)`,
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
         padding: 20,
         fontFamily:
@@ -181,9 +240,9 @@ export function MeTreeClient({
         style={{
           background: isHarvest ? "#fff5d6" : "#fff",
           borderRadius: 24,
-          padding: "32px 28px",
+          padding: "32px 24px",
           width: "100%",
-          maxWidth: 460,
+          maxWidth: 480,
           boxShadow: isHarvest
             ? "0 0 0 4px rgba(240,192,80,0.45), 0 10px 40px rgba(61,40,24,0.12)"
             : "0 10px 40px rgba(61,40,24,0.08)",
@@ -306,30 +365,53 @@ export function MeTreeClient({
             </div>
 
             {/* 단계 정보 */}
-            <div style={{ textAlign: "center", marginBottom: 18 }}>
+            <div style={{ textAlign: "center", marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: "#9a8b6c" }}>
                 {STAGE_TABLE.length}단계 중 {stage}단계
               </div>
             </div>
 
-            {/* 통계 카드 */}
+            {/* 통계 카드 - 4개 그리드 */}
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-                marginBottom: 18,
+                gap: 8,
+                marginBottom: 14,
               }}
             >
-              <Stat label="누적 포인트" value={`${points} P`} />
+              <Stat
+                label="누적 포인트"
+                value={`${points} P`}
+                tone="primary"
+              />
               <Stat
                 label="수확한 사과"
                 value={`${row.apples_harvested ?? 0}개`}
+                tone="primary"
+              />
+              <Stat
+                label="이번 주 적립"
+                value={
+                  now === null
+                    ? "—"
+                    : `${stats.weekTotal >= 0 ? "+" : ""}${stats.weekTotal} P`
+                }
+                tone={stats.weekTotal >= 0 ? "positive" : "negative"}
+              />
+              <Stat
+                label="이번 달 적립"
+                value={
+                  now === null
+                    ? "—"
+                    : `${stats.monthTotal >= 0 ? "+" : ""}${stats.monthTotal} P`
+                }
+                tone={stats.monthTotal >= 0 ? "positive" : "negative"}
               />
             </div>
 
             {/* 진행도 바 */}
-            <div style={{ marginBottom: 8 }}>
+            <div style={{ marginBottom: 18 }}>
               <div
                 style={{
                   height: 12,
@@ -362,10 +444,52 @@ export function MeTreeClient({
                   : `다음 단계까지 ${remain} P`}
               </div>
             </div>
+
+            {/* 최근 활동 타임라인 (최신 10건) */}
+            <Section title="📋 최근 활동">
+              {initialPointLogs.length === 0 ? (
+                <Empty text="이번 달 활동 기록이 없어요" />
+              ) : (
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {initialPointLogs.slice(0, 10).map((log) => (
+                    <LogRow key={log.id} log={log} now={now} />
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            {/* 수확 히스토리 */}
+            {initialHarvests.length > 0 && (
+              <Section title="🍎 수확 히스토리">
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {initialHarvests.slice(0, 5).map((h) => (
+                    <HarvestRow key={h.id} harvest={h} now={now} />
+                  ))}
+                </ul>
+              </Section>
+            )}
           </>
         )}
 
-        <div style={{ marginTop: 24, textAlign: "center" }}>
+        <div style={{ marginTop: 20, textAlign: "center" }}>
           <a
             href="https://www.themonster.kr/student"
             style={{
@@ -383,15 +507,29 @@ export function MeTreeClient({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  tone = "primary",
+}: {
+  label: string;
+  value: string;
+  tone?: "primary" | "positive" | "negative";
+}) {
+  const palette =
+    tone === "positive"
+      ? { bg: "#f0fae6", border: "#d8ebbf", color: "#4a8030" }
+      : tone === "negative"
+        ? { bg: "#fef2f0", border: "#f5cdc4", color: "#b04020" }
+        : { bg: "#fff8e8", border: "#f1e8d8", color: "#1f2937" };
   return (
     <div
       style={{
-        background: "#fff8e8",
+        background: palette.bg,
         borderRadius: 12,
-        padding: "14px 12px",
+        padding: "10px 12px",
         textAlign: "center",
-        border: "1.5px solid #f1e8d8",
+        border: `1.5px solid ${palette.border}`,
       }}
     >
       <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>
@@ -399,9 +537,9 @@ function Stat({ label, value }: { label: string; value: string }) {
       </div>
       <div
         style={{
-          fontSize: 18,
+          fontSize: 16,
           fontWeight: 800,
-          color: "#1f2937",
+          color: palette.color,
           marginTop: 4,
           fontVariantNumeric: "tabular-nums",
         }}
@@ -409,5 +547,147 @@ function Stat({ label, value }: { label: string; value: string }) {
         {value}
       </div>
     </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div
+        style={{
+          fontSize: 12,
+          color: "#8a6f52",
+          fontWeight: 800,
+          marginBottom: 8,
+          letterSpacing: "0.02em",
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        padding: "16px 12px",
+        textAlign: "center",
+        color: "#b09a7c",
+        fontSize: 13,
+        background: "#fff8e8",
+        borderRadius: 12,
+        border: "1.5px dashed #e8d8b8",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function LogRow({ log, now }: { log: PointLog; now: Date | null }) {
+  const isPositive = log.points >= 0;
+  return (
+    <li
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 10,
+        background: "#fffaf2",
+        border: "1.5px solid #f1e8d8",
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          textAlign: "center",
+          fontSize: 14,
+          fontWeight: 800,
+          fontVariantNumeric: "tabular-nums",
+          color: isPositive ? "#4a8030" : "#b04020",
+        }}
+      >
+        {isPositive ? "+" : ""}
+        {log.points}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#1f2937",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {log.reason ?? (isPositive ? "포인트 적립" : "포인트 차감")}
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: "#9a8b6c",
+          fontWeight: 600,
+          flexShrink: 0,
+        }}
+      >
+        {now ? formatRelative(log.logged_at, now) : ""}
+      </div>
+    </li>
+  );
+}
+
+function HarvestRow({
+  harvest,
+  now,
+}: {
+  harvest: Harvest;
+  now: Date | null;
+}) {
+  return (
+    <li
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 10,
+        background: "#fff5d6",
+        border: "1.5px solid #f0c050",
+      }}
+    >
+      <div style={{ fontSize: 18 }}>🍎</div>
+      <div
+        style={{
+          flex: 1,
+          fontSize: 13,
+          fontWeight: 800,
+          color: "#3d2818",
+        }}
+      >
+        사과 {harvest.apples_count}개 수확!
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: "#8a6f52",
+          fontWeight: 600,
+          flexShrink: 0,
+        }}
+      >
+        {now ? formatRelative(harvest.harvested_at, now) : ""}
+      </div>
+    </li>
   );
 }
