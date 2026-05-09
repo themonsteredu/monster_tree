@@ -3,11 +3,11 @@
 // Admin 화면에서 호출하는 Server Actions
 // - 포인트 적립/차감 (대기열 등록)
 // - 학생 추가/수정/삭제
+// - 수확 (RPC 로 atomic 처리)
 // 모든 액션은 isAdminAuthenticated() 로 보호됩니다.
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { calculateStage } from "@/lib/garden";
 import { isAdminAuthenticated, setAdminCookie, clearAdminCookie, isAdminKey } from "./auth";
 
 function ensureAuth() {
@@ -82,10 +82,8 @@ export async function addPointsAction(args: {
 
 /* ============== 수확 ============== */
 
-// 8단계(380pt 이상) 학생을 수확 처리합니다 (즉시 적용 — 수확은 admin 직권).
-const HARVEST_APPLES = 6;
-const HARVEST_RESET_POINTS = 130;
-
+// 8단계(380pt 이상) 학생을 atomic 하게 수확 처리합니다.
+// 실제 트랜잭션은 garden_harvest_student RPC 가 단일 단위로 수행.
 export async function harvestStudentAction(args: { studentId: string }) {
   ensureAuth();
   const { studentId } = args;
@@ -95,52 +93,36 @@ export async function harvestStudentAction(args: { studentId: string }) {
 
   const sb = createSupabaseServiceClient();
 
-  const { data: student, error: e1 } = await sb
-    .from("garden_students")
-    .select("id, name, total_points, apples_harvested")
-    .eq("id", studentId)
-    .single();
-  if (e1 || !student) {
-    return { ok: false as const, message: "학생을 찾을 수 없어요." };
-  }
-  if ((student.total_points ?? 0) < 380) {
-    return {
-      ok: false as const,
-      message: "8단계(380pt 이상)에 도달한 학생만 수확할 수 있어요.",
-    };
-  }
-
-  const { error: e2 } = await sb.from("garden_harvests").insert({
-    student_id: studentId,
-    apples_count: HARVEST_APPLES,
+  const { data, error } = await sb.rpc("garden_harvest_student", {
+    p_student_id: studentId,
   });
-  if (e2) {
-    return { ok: false as const, message: `수확 기록 실패: ${e2.message}` };
+  if (error) {
+    if (error.message?.includes("student_not_found")) {
+      return { ok: false as const, message: "학생을 찾을 수 없어요." };
+    }
+    if (error.message?.includes("not_yet_harvest_stage")) {
+      return {
+        ok: false as const,
+        message: "8단계(380pt 이상)에 도달한 학생만 수확할 수 있어요.",
+      };
+    }
+    return { ok: false as const, message: `수확 실패: ${error.message}` };
   }
 
-  const newTotal = HARVEST_RESET_POINTS;
-  const newStage = calculateStage(newTotal);
-  const newApples = (student.apples_harvested ?? 0) + HARVEST_APPLES;
-
-  const { error: e3 } = await sb
-    .from("garden_students")
-    .update({
-      total_points: newTotal,
-      current_stage: newStage,
-      apples_harvested: newApples,
-    })
-    .eq("id", studentId);
-  if (e3) {
-    return { ok: false as const, message: `학생 정보 갱신 실패: ${e3.message}` };
-  }
+  const result = data as {
+    ok: true;
+    apples: number;
+    new_total: number;
+    new_stage: number;
+  };
 
   revalidatePath("/admin");
   revalidatePath("/");
   return {
     ok: true as const,
-    apples: HARVEST_APPLES,
-    newTotal,
-    newStage,
+    apples: result.apples,
+    newTotal: result.new_total,
+    newStage: result.new_stage,
   };
 }
 
