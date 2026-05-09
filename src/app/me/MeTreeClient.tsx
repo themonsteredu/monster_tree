@@ -23,6 +23,7 @@ import {
   stageProgress,
 } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { claimPointAction } from "./actions";
 
 type Row = {
@@ -45,27 +46,6 @@ const TOAST_MS = 3500;
 const STAGE_UP_BANNER_MS = 4500;
 const HARVEST_BANNER_MS = 5000;
 const HIGHLIGHT_MS = 2400; // pt-float 애니메이션과 맞춤
-
-const STAGE_ACCENT: Record<
-  number,
-  {
-    pageBg: string;
-    pageBgEnd: string;
-    badgeBg: string;
-    badgeText: string;
-    barFill: string;
-    emoji: string;
-  }
-> = {
-  1: { pageBg: "#fffaf2", pageBgEnd: "#fef0d6", badgeBg: "#fef9ed", badgeText: "#8a6f52", barFill: "linear-gradient(90deg, #b8a382, #d6c2a0)", emoji: "🪴" },
-  2: { pageBg: "#fef9ed", pageBgEnd: "#f3eadc", badgeBg: "#f3eadc", badgeText: "#3d2818", barFill: "linear-gradient(90deg, #a87454, #d6a888)", emoji: "🌱" },
-  3: { pageBg: "#f7fcec", pageBgEnd: "#dbecc1", badgeBg: "#dbecc1", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #5e9c38, #a8e070)", emoji: "🌿" },
-  4: { pageBg: "#f4fae6", pageBgEnd: "#cfe6a8", badgeBg: "#cfe6a8", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #5e9c38, #a8e070)", emoji: "🌳" },
-  5: { pageBg: "#f0f8e0", pageBgEnd: "#bfdc8a", badgeBg: "#bfdc8a", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #4a8030, #8ec85c)", emoji: "🌳" },
-  6: { pageBg: "#fef0f6", pageBgEnd: "#f8d8e8", badgeBg: "#f8d8e8", badgeText: "#b0398e", barFill: "linear-gradient(90deg, #c87fdb, #ffb8d4)", emoji: "🌸" },
-  7: { pageBg: "#fff0eb", pageBgEnd: "#ffd6c8", badgeBg: "#ffd6c8", badgeText: "#b02020", barFill: "linear-gradient(90deg, #f04848, #ffb0a0)", emoji: "🍎" },
-  8: { pageBg: "#fffadd", pageBgEnd: "#f7d878", badgeBg: "#f0c050", badgeText: "#3d2818", barFill: "linear-gradient(90deg, #e8a020, #f0c050)", emoji: "★" },
-};
 
 type Milestone = { key: string; emoji: string; name: string; achieved: boolean };
 
@@ -418,7 +398,7 @@ export function MeTreeClient({
     <main
       style={{
         minHeight: "100vh",
-        background: `linear-gradient(180deg, ${accent.pageBg} 0%, ${accent.pageBgEnd} 100%)`,
+        background: `linear-gradient(180deg, ${accent.mePageBg} 0%, ${accent.mePageBgEnd} 100%)`,
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
@@ -478,8 +458,8 @@ export function MeTreeClient({
                   gap: 6,
                   padding: "6px 14px",
                   borderRadius: 999,
-                  background: accent.badgeBg,
-                  color: accent.badgeText,
+                  background: accent.meBadgeBg,
+                  color: accent.meBadgeText,
                   fontSize: 13,
                   fontWeight: 800,
                   border: `2px solid #3d2818`,
@@ -580,7 +560,7 @@ export function MeTreeClient({
                   style={{
                     width: `${Math.round(progress * 100)}%`,
                     height: "100%",
-                    background: accent.barFill,
+                    background: accent.meBarFill,
                     transition: "width 600ms ease",
                   }}
                 />
@@ -604,8 +584,8 @@ export function MeTreeClient({
                 name={nextInfo.name}
                 threshold={nextInfo.threshold}
                 emoji={nextAccent.emoji}
-                badgeBg={nextAccent.badgeBg}
-                badgeText={nextAccent.badgeText}
+                badgeBg={nextAccent.meBadgeBg}
+                badgeText={nextAccent.meBadgeText}
               />
             )}
 
@@ -1137,7 +1117,7 @@ function StageUpModal({
   studentName: string;
   onClose: () => void;
 }) {
-  const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
+  const accent = STAGE_ACCENT[stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8] ?? STAGE_ACCENT[1];
   return (
     <div
       onClick={onClose}
