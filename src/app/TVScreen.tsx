@@ -1,18 +1,18 @@
 "use client";
 
-// TV 화면 (1920×1080 풀스크린 가로 모드 가정)
+// TV 화면 (1920×1080 풌스크린 가로 모드 가정)
 //
 // 레이아웃:
 //   [헤더: 타이틀 / TOP 학생 / 오늘 수확 / 시계]
-//   ┌─────────────────────┬───────────────────────────────────┐
+//   ┌─────────────────────┬─────────────────────────────────┐
 //   │   SPOTLIGHT (좌)    │   STUDENTS GRID (우)              │
 //   │   한 학생씩 큰 사과나무 │   모든 학생을 컴팩트 카드로 한 번에 │
 //   │   4초마다 자동 교체    │   현재 스포트라이트 학생 강조        │
-//   └─────────────────────┴───────────────────────────────────┘
+//   └─────────────────────┴─────────────────────────────────┘
 //                                                  [수확 바구니]
 //
 // Realtime:
-// - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
+// - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컴페티
 // - garden_point_logs: +pt 강조 (3초)
 // - garden_harvests: 사과가 카드 → 바구니로 포물선 비행
 
@@ -29,8 +29,9 @@ import {
 } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
+import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 
-// 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
+// 화면 폭 매체 쿼리 훅 (TV 풌HD 가정의 데스크탑 vs 모바일)
 function useMediaQuery(query: string): boolean {
   const [match, setMatch] = useState(false);
   useEffect(() => {
@@ -74,21 +75,6 @@ type FlyingApple = {
   delay: number;
 };
 
-// 단계별 액센트 (배지/진행바 컬러)
-const STAGE_ACCENT: Record<
-  number,
-  { bg: string; text: string; emoji: string; barFill: string }
-> = {
-  1: { bg: "bg-white", text: "text-[var(--ink-soft)]", emoji: "🪴", barFill: "var(--ink-soft)" },
-  2: { bg: "bg-[#f3eadc]", text: "text-[var(--ink)]", emoji: "🌱", barFill: "var(--leaf-deep)" },
-  3: { bg: "bg-[#dbecc1]", text: "text-[var(--leaf-deep)]", emoji: "🌿", barFill: "var(--leaf-base)" },
-  4: { bg: "bg-[#cfe6a8]", text: "text-[var(--leaf-deep)]", emoji: "🌳", barFill: "var(--leaf-base)" },
-  5: { bg: "bg-[#bfdc8a]", text: "text-[var(--leaf-deep)]", emoji: "🌳", barFill: "var(--leaf-base)" },
-  6: { bg: "bg-[#f8d8e8]", text: "text-[#b0398e]", emoji: "🌸", barFill: "var(--accent-purple)" },
-  7: { bg: "bg-[#ffd6c8]", text: "text-[var(--apple-deep)]", emoji: "🍎", barFill: "var(--apple-base)" },
-  8: { bg: "bg-[var(--accent-gold)]", text: "text-[var(--ink)]", emoji: "★", barFill: "var(--accent-gold-deep)" },
-};
-
 export function TVScreen({
   initialStudents,
   initialTodayHarvest = 0,
@@ -103,7 +89,7 @@ export function TVScreen({
   const [todayApples, setTodayApples] = useState<number>(initialTodayHarvest);
   const [bumpBasket, setBumpBasket] = useState(0); // 바구니 살짝 흔들기 트리거
   const [flyingApples, setFlyingApples] = useState<FlyingApple[]>([]);
-  // SSR/CSR 시각 mismatch 방지 - 마운트 전에는 0
+  // SSR/CSR 시각 mismatch 방지 - 마운트 전엔 0
   const [now, setNow] = useState(0);
 
   // 모바일/데스크탑 분기 (1024px 미만 = 모바일)
@@ -224,7 +210,7 @@ export function TVScreen({
                 expiresAt: Date.now() + (isHarvest ? HARVEST_BANNER_MS : BANNER_MS),
               },
             ]);
-            // 컨페티
+            // 컴페티
             fireConfetti(isHarvest);
           }
           prevStageRef.current[next.id] = next.current_stage;
@@ -293,10 +279,10 @@ export function TVScreen({
 
   return (
     <main className="kiosk h-screen flex flex-col overflow-hidden relative">
-      {/* 배경 데코 닷 (절제 있게 4개) */}
+      {/* 배경 데코 닭 (절제 있게 4개) */}
       <DecorDots />
 
-      {/* 헤더 - 모바일에서는 컴팩트, 데스크탑에서는 풀 */}
+      {/* 헤더 - 모바일에서는 컴팩트, 데스크탑에서는 풌 */}
       <header className="relative z-10 flex-shrink-0 px-3 sm:px-8 pt-3 sm:pt-6 pb-2 sm:pb-3 flex items-center justify-between gap-2">
         <TitlePill />
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
@@ -447,8 +433,8 @@ const Spotlight = forwardRef<
         <span
           className={[
             "inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-extrabold border-[2.5px] border-[var(--ink)] shadow-card",
-            accent.bg,
-            accent.text,
+            accent.tvBgClass,
+            accent.tvTextClass,
           ].join(" ")}
         >
           <span>{accent.emoji}</span>
@@ -557,7 +543,7 @@ const Spotlight = forwardRef<
                 target={info.nextThreshold ?? student.total_points}
                 stageStart={info.threshold}
                 progress={progress}
-                barFill={accent.barFill}
+                barFill={accent.tvBarFill}
                 remaining={remaining}
               />
             )}
@@ -835,7 +821,7 @@ function TopStudentPill({
 }
 
 // 헤더의 "오늘 수확 N개" 알약. 비행 사과의 도착점이기도 함 (ref 노출).
-// bump 가 바뀔 때마다 살짝 흔들리며 강조.
+// bump 가 바눌 때마다 살짝 흔들리며 강조.
 const TodayHarvestPill = forwardRef<HTMLDivElement, { count: number; bump: number }>(
   function TodayHarvestPill({ count, bump }, ref) {
     return (
@@ -856,19 +842,19 @@ const TodayHarvestPill = forwardRef<HTMLDivElement, { count: number; bump: numbe
 );
 
 /* ================================================================
-   하단 포인트 적립 기준 바 (placeholder - 양희쌤이 알려주시면 교체)
+   하단 포인트 적립 기준 바 (placeholder - 양희쌌이 알려주시면 교체)
 ================================================================ */
 
-// 더몬스터학원 사과정원 포인트 적립 기준 (양희쌤 기준)
-// 같은 +1 점인 출석/숙제는 한 줄로 묶어 단순화 (4개 항목)
+// 더몬스터학원 사과정원 포인트 적립 기준 (양희쌌 기준)
+// 같은 +1 점인 출석/숨제는 한 줄로 묶어 단순화 (4개 항목)
 const CRITERIA: ReadonlyArray<{ label: string; pts: string }> = [
-  { label: "출석·숙제", pts: "+1" },
+  { label: "출석·숨제", pts: "+1" },
   { label: "일일테스트", pts: "+1~4" },
   { label: "단원평가 만점", pts: "+10" },
   { label: "주간·월말", pts: "+2~5" },
 ];
 
-// 한 줄 짜리 미니 정보 바 - 표 형식 제거, 가벼운 구분점만
+// 한 줄 짜리 미니 정보 바 - 표 형식 제거, 가벍운 구분점만
 function CriteriaBar() {
   return (
     <div className="flex items-center justify-center gap-4 px-4 py-2.5 rounded-full bg-white/85 border-[2px] border-[var(--ink)] backdrop-blur-sm shadow-card text-sm whitespace-nowrap overflow-x-auto">
@@ -895,9 +881,9 @@ function CriteriaBar() {
 function SprayWater({ compact = false }: { compact?: boolean }) {
   // compact=true: 컴팩트 카드용 (작게), false: 스포트라이트용 (크게)
   const particleCount = compact ? 8 : 16;
-  // 분무기 노즐 위치 (우상단). 미스트는 여기서 좌하단 부채꼴로 뿜어져 나옴
+  // 분무기 노즘 위치 (우상단). 미스트는 여기서 좌하단 부채꿴로 뿜겨져 나옴
   const bottlePx = compact ? 28 : 56;
-  // 미스트 부채꼴 범위 (좌하단으로 -130도 ~ -200도)
+  // 미스트 부채꾴 범위 (좌하단으로 -130도 ~ -200도)
   return (
     <div
       aria-hidden
@@ -916,12 +902,12 @@ function SprayWater({ compact = false }: { compact?: boolean }) {
         <SprayBottleSVG />
       </div>
 
-      {/* 미스트 입자들 (분무기 노즐에서 좌하단 부채꼴로) */}
+      {/* 미스트 입자들 (분무기 노즘에서 좌하단 부채꾴로) */}
       {Array.from({ length: particleCount }).map((_, i) => {
-        // 노즐 화면상 좌표 (분무기 좌상단 코너 근처)
+        // 노즘 화면상 좌표 (분무기 좌상단 코너 근처)
         const nozzleTop = compact ? 6 : 14;
         const nozzleRight = compact ? 16 : 38;
-        // 부채꼴 각도: -160도 ~ -200도 (좌하단 방향)
+        // 부채꾴 각도: -160도 ~ -200도 (좌하단 방향)
         const angleDeg = -160 - (i / particleCount) * 80 + ((i * 13) % 7) * 2;
         const angleRad = (angleDeg * Math.PI) / 180;
         const distance = (compact ? 26 : 60) + ((i * 7) % 11) * 2;
@@ -953,7 +939,7 @@ function SprayWater({ compact = false }: { compact?: boolean }) {
 }
 
 function SprayBottleSVG() {
-  // 단순 분무기: 본체 + 노즐 + 트리거
+  // 단순 분무기: 본체 + 노즘 + 트리거
   return (
     <svg viewBox="0 0 100 100" width="100%" height="100%">
       <defs>
@@ -989,7 +975,7 @@ function SprayBottleSVG() {
         strokeWidth="2.5"
         strokeLinejoin="round"
       />
-      {/* 노즐 (좌상단) */}
+      {/* 노즘 (좌상단) */}
       <path
         d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z"
         fill="#5cb8e8"
@@ -997,7 +983,7 @@ function SprayBottleSVG() {
         strokeWidth="2.5"
         strokeLinejoin="round"
       />
-      {/* 노즐 입구 점 */}
+      {/* 노즘 입구 점 */}
       <circle cx="13" cy="26" r="1.4" fill="var(--ink)" />
     </svg>
   );
@@ -1193,7 +1179,7 @@ function FlyingAppleSVG() {
 
 /* ================================================================
    관리자 페이지 진입 버튼 (우하단 고정, 반투명·연한 톤)
-   - 평소엔 거의 투명 → 마우스/포커스 시 또렷해짐
+   - 평소어 거의 투명 → 마우스/포커스 시 또렷해짐
    - /admin 라우트는 비밀번호로 보호되어 있으므로 단순 이동만 담당
 ================================================================ */
 
@@ -1244,7 +1230,7 @@ function DecorDots() {
 
 function StageUpBanner({ banner }: { banner: Banner }) {
   const isHarvest = banner.stage === 8;
-  const accent = STAGE_ACCENT[banner.stage];
+  const accent = STAGE_ACCENT[banner.stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8];
 
   return (
     <motion.div
@@ -1316,9 +1302,9 @@ function buildFallingApples(
   const sRect = spotlightEl.getBoundingClientRect();
   const bRect = basketEl.getBoundingClientRect();
   const treeCenterX = sRect.left + sRect.width / 2;
-  // 캐노피 영역 (스포트라이트 상단 25-50% 영역에 사과들이 흩어져 있다고 가정)
+  // 캐노피 영역 (스포트라이트 상단 25-50% 영역에 사과들이 흔어져 있다고 가정)
   const treeTop = sRect.top + sRect.height * 0.32;
-  // 화분 근처 (스포트라이트 하단 80% 즈음)
+  // 화분 근처 (스포트라이트 하단 80% 즐음)
   const groundY = sRect.top + sRect.height * 0.78;
   const basketX = bRect.left + bRect.width / 2;
   const basketY = bRect.top + bRect.height * 0.32;
