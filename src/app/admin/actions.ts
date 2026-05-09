@@ -1,7 +1,7 @@
 "use server";
 
 // Admin 화면에서 호출하는 Server Actions
-// - 포인트 적립/차감
+// - 포인트 적립/차감 (대기열 등록)
 // - 학생 추가/수정/삭제
 // 모든 액션은 isAdminAuthenticated() 로 보호됩니다.
 
@@ -31,15 +31,17 @@ export async function logoutAction() {
   clearAdminCookie();
 }
 
-/* ============== 포인트 적립 ============== */
+/* ============== 포인트 적립 (대기열 등록) ============== */
 
 /**
- * 포인트 적립/차감 액션.
- * 1) garden_point_logs 에 기록
- * 2) garden_students 의 total_points / current_stage 갱신
+ * 포인트 적립/차감 액션 — 즉시 적용하지 않고 garden_pending_points 에 등록만 한다.
  *
- * 단계 자동 계산은 클라이언트에서 미리 보낸 값을 신뢰하지 않고
- * 서버에서 다시 calculateStage() 로 계산합니다 (위·변조 방지).
+ * 학생이 /tree/me 에서 "받기" 버튼을 누르면 그제서야:
+ *   1) garden_point_logs 에 로그가 추가되고
+ *   2) garden_students.total_points / current_stage 가 갱신된다 (claimPointAction)
+ *
+ * 이 흐름의 의도: 학생이 화분이 자라는 순간을 직접 체험하게 하기 위함.
+ * 결과적으로 TV 화면도 학생이 받기 누른 시점에 갱신된다.
  */
 export async function addPointsAction(args: {
   studentId: string;
@@ -54,51 +56,33 @@ export async function addPointsAction(args: {
 
   const sb = createSupabaseServiceClient();
 
-  // 1) 학생 현재 정보
+  // 학생 존재 확인
   const { data: student, error: e1 } = await sb
     .from("garden_students")
-    .select("id, total_points")
+    .select("id")
     .eq("id", studentId)
     .single();
   if (e1 || !student) {
     return { ok: false as const, message: "학생을 찾을 수 없어요." };
   }
 
-  // 2) 새 누적 포인트 / 단계 계산
-  const newTotal = Math.max(0, (student.total_points ?? 0) + Math.trunc(delta));
-  const newStage = calculateStage(newTotal);
-
-  // 3) 로그 추가
-  const { error: e2 } = await sb.from("garden_point_logs").insert({
+  // pending 등록 (즉시 적용하지 않음)
+  const { error: e2 } = await sb.from("garden_pending_points").insert({
     student_id: studentId,
     points: Math.trunc(delta),
     reason: reason?.trim() ? reason.trim() : null,
   });
   if (e2) {
-    return { ok: false as const, message: `포인트 기록 실패: ${e2.message}` };
-  }
-
-  // 4) 학생 캐시 업데이트
-  const { error: e3 } = await sb
-    .from("garden_students")
-    .update({ total_points: newTotal, current_stage: newStage })
-    .eq("id", studentId);
-  if (e3) {
-    return { ok: false as const, message: `학생 정보 갱신 실패: ${e3.message}` };
+    return { ok: false as const, message: `적립 등록 실패: ${e2.message}` };
   }
 
   revalidatePath("/admin");
-  revalidatePath("/");
-  return { ok: true as const, newTotal, newStage };
+  return { ok: true as const, pending: true };
 }
 
 /* ============== 수확 ============== */
 
-// 8단계(380pt 이상) 학생을 수확 처리합니다.
-// - garden_harvests 에 사과 6개 기록
-// - 학생 total_points 를 130(5단계 큰나무) 으로 리셋 → 다시 꽃 → 열매 → 수확 사이클이 반복됨
-// - apples_harvested 누적 카운터 +6
-// 수확 사과 개수와 리셋 포인트는 한 곳에서 변경할 수 있게 상수화.
+// 8단계(380pt 이상) 학생을 수확 처리합니다 (즉시 적용 — 수확은 admin 직권).
 const HARVEST_APPLES = 6;
 const HARVEST_RESET_POINTS = 130;
 
@@ -126,7 +110,6 @@ export async function harvestStudentAction(args: { studentId: string }) {
     };
   }
 
-  // 1) 수확 기록
   const { error: e2 } = await sb.from("garden_harvests").insert({
     student_id: studentId,
     apples_count: HARVEST_APPLES,
@@ -135,7 +118,6 @@ export async function harvestStudentAction(args: { studentId: string }) {
     return { ok: false as const, message: `수확 기록 실패: ${e2.message}` };
   }
 
-  // 2) 학생 상태 리셋 (총 사과 누적 + 포인트는 5단계로)
   const newTotal = HARVEST_RESET_POINTS;
   const newStage = calculateStage(newTotal);
   const newApples = (student.apples_harvested ?? 0) + HARVEST_APPLES;

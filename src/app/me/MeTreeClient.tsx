@@ -5,11 +5,9 @@
 // 이후 garden_students UPDATE 를 Realtime 구독해 포인트/단계/사과 수 변화를
 // 페이지 새로고침 없이 반영한다.
 //
-// Phase 1: 시각적 풍부 — AppleTree SVG, 단계별 액센트, 단계 배지, 수확 배지.
-// Phase 2: 정보 풍부 — 이번 주/이번 달 통계, 최근 활동 타임라인, 수확 히스토리.
-// Phase 3: 동기부여 — 격려 멘트, 다음 단계 미리보기, 마일스톤 뱃지.
-// Phase 4: 인터랙션 — 실시간 +pt 토스트, 단계업 컨페티/배너, 수확 가능 펄스, 수확 배너.
-// Phase 4.1: 나무가 반응하는 효과 — +pt 시 분무기 미스트, -pt 시 시들음, 점수 카운트업.
+// Phase 1~4: 시각/정보/동기부여/인터랙션 (이전 PR).
+// Claim flow: garden_pending_points 의 받기 대기열을 학생이 직접 버튼으로
+// 클릭해야 garden_point_logs + garden_students 가 갱신됨.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
@@ -22,6 +20,7 @@ import {
   stageProgress,
 } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { claimPointAction } from "./actions";
 
 type Row = {
   id: string;
@@ -44,6 +43,13 @@ type Harvest = {
   harvested_at: string;
 };
 
+type PendingClaim = {
+  id: string;
+  points: number;
+  reason: string | null;
+  created_at: string;
+};
+
 type Toast = {
   id: string;
   points: number;
@@ -62,7 +68,6 @@ type HarvestBanner = {
   applesCount: number;
 };
 
-// 나무에 직접 비치는 반응(분무기/시들음/델타칩) — 일정 시간 동안만 활성
 type Highlight = {
   id: string;
   delta: number;
@@ -86,78 +91,17 @@ const STAGE_ACCENT: Record<
     emoji: string;
   }
 > = {
-  1: {
-    pageBg: "#fffaf2",
-    pageBgEnd: "#fef0d6",
-    badgeBg: "#fef9ed",
-    badgeText: "#8a6f52",
-    barFill: "linear-gradient(90deg, #b8a382, #d6c2a0)",
-    emoji: "🪴",
-  },
-  2: {
-    pageBg: "#fef9ed",
-    pageBgEnd: "#f3eadc",
-    badgeBg: "#f3eadc",
-    badgeText: "#3d2818",
-    barFill: "linear-gradient(90deg, #a87454, #d6a888)",
-    emoji: "🌱",
-  },
-  3: {
-    pageBg: "#f7fcec",
-    pageBgEnd: "#dbecc1",
-    badgeBg: "#dbecc1",
-    badgeText: "#4a8030",
-    barFill: "linear-gradient(90deg, #5e9c38, #a8e070)",
-    emoji: "🌿",
-  },
-  4: {
-    pageBg: "#f4fae6",
-    pageBgEnd: "#cfe6a8",
-    badgeBg: "#cfe6a8",
-    badgeText: "#4a8030",
-    barFill: "linear-gradient(90deg, #5e9c38, #a8e070)",
-    emoji: "🌳",
-  },
-  5: {
-    pageBg: "#f0f8e0",
-    pageBgEnd: "#bfdc8a",
-    badgeBg: "#bfdc8a",
-    badgeText: "#4a8030",
-    barFill: "linear-gradient(90deg, #4a8030, #8ec85c)",
-    emoji: "🌳",
-  },
-  6: {
-    pageBg: "#fef0f6",
-    pageBgEnd: "#f8d8e8",
-    badgeBg: "#f8d8e8",
-    badgeText: "#b0398e",
-    barFill: "linear-gradient(90deg, #c87fdb, #ffb8d4)",
-    emoji: "🌸",
-  },
-  7: {
-    pageBg: "#fff0eb",
-    pageBgEnd: "#ffd6c8",
-    badgeBg: "#ffd6c8",
-    badgeText: "#b02020",
-    barFill: "linear-gradient(90deg, #f04848, #ffb0a0)",
-    emoji: "🍎",
-  },
-  8: {
-    pageBg: "#fffadd",
-    pageBgEnd: "#f7d878",
-    badgeBg: "#f0c050",
-    badgeText: "#3d2818",
-    barFill: "linear-gradient(90deg, #e8a020, #f0c050)",
-    emoji: "★",
-  },
+  1: { pageBg: "#fffaf2", pageBgEnd: "#fef0d6", badgeBg: "#fef9ed", badgeText: "#8a6f52", barFill: "linear-gradient(90deg, #b8a382, #d6c2a0)", emoji: "🪴" },
+  2: { pageBg: "#fef9ed", pageBgEnd: "#f3eadc", badgeBg: "#f3eadc", badgeText: "#3d2818", barFill: "linear-gradient(90deg, #a87454, #d6a888)", emoji: "🌱" },
+  3: { pageBg: "#f7fcec", pageBgEnd: "#dbecc1", badgeBg: "#dbecc1", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #5e9c38, #a8e070)", emoji: "🌿" },
+  4: { pageBg: "#f4fae6", pageBgEnd: "#cfe6a8", badgeBg: "#cfe6a8", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #5e9c38, #a8e070)", emoji: "🌳" },
+  5: { pageBg: "#f0f8e0", pageBgEnd: "#bfdc8a", badgeBg: "#bfdc8a", badgeText: "#4a8030", barFill: "linear-gradient(90deg, #4a8030, #8ec85c)", emoji: "🌳" },
+  6: { pageBg: "#fef0f6", pageBgEnd: "#f8d8e8", badgeBg: "#f8d8e8", badgeText: "#b0398e", barFill: "linear-gradient(90deg, #c87fdb, #ffb8d4)", emoji: "🌸" },
+  7: { pageBg: "#fff0eb", pageBgEnd: "#ffd6c8", badgeBg: "#ffd6c8", badgeText: "#b02020", barFill: "linear-gradient(90deg, #f04848, #ffb0a0)", emoji: "🍎" },
+  8: { pageBg: "#fffadd", pageBgEnd: "#f7d878", badgeBg: "#f0c050", badgeText: "#3d2818", barFill: "linear-gradient(90deg, #e8a020, #f0c050)", emoji: "★" },
 };
 
-type Milestone = {
-  key: string;
-  emoji: string;
-  name: string;
-  achieved: boolean;
-};
+type Milestone = { key: string; emoji: string; name: string; achieved: boolean };
 
 function buildMilestones(maxStageEver: number, applesHarvested: number): Milestone[] {
   return [
@@ -179,47 +123,29 @@ function pickEncouragement(args: {
   weekTotal: number;
   monthTotal: number;
   hasAnyLogs: boolean;
+  pendingCount: number;
 }): { text: string; tone: "celebrate" | "warm" | "neutral" | "soft" } {
-  const { isHarvest, applesHarvested, weekTotal, monthTotal, hasAnyLogs } = args;
-  if (isHarvest && applesHarvested === 0) {
+  const { isHarvest, applesHarvested, weekTotal, monthTotal, hasAnyLogs, pendingCount } = args;
+  if (pendingCount > 0) {
     return {
-      text: "🎉 8단계 도달 축하해요! 곧 사과를 딸 수 있어요",
+      text: `🎁 받을 포인트가 ${pendingCount}개 있어요! 받기 버튼을 눌러 화분을 키워봐요`,
       tone: "celebrate",
     };
+  }
+  if (isHarvest && applesHarvested === 0) {
+    return { text: "🎉 8단계 도달 축하해요! 곧 사과를 딸 수 있어요", tone: "celebrate" };
   }
   if (isHarvest && applesHarvested > 0) {
-    return {
-      text: "🍎 또 수확할 수 있어요! 멋진 페이스예요",
-      tone: "celebrate",
-    };
+    return { text: "🍎 또 수확할 수 있어요! 멋진 페이스예요", tone: "celebrate" };
   }
   if (weekTotal >= 30) {
-    return {
-      text: "🔥 이번 주 정말 열심히 하고 있어요! 멋져요",
-      tone: "celebrate",
-    };
+    return { text: "🔥 이번 주 정말 열심히 하고 있어요! 멋져요", tone: "celebrate" };
   }
-  if (weekTotal >= 15) {
-    return { text: "💪 좋은 페이스로 자라고 있어요", tone: "warm" };
-  }
-  if (weekTotal >= 5) {
-    return { text: "🌱 한 발씩 차근차근 자라는 중!", tone: "warm" };
-  }
-  if (weekTotal < 0) {
-    return {
-      text: "🌧 이번 주는 살짝 차감이 있었어요. 다시 한 걸음씩 가봐요",
-      tone: "soft",
-    };
-  }
-  if (!hasAnyLogs) {
-    return {
-      text: "🌟 사과정원에 오신 걸 환영해요! 첫 포인트를 기다리고 있어요",
-      tone: "neutral",
-    };
-  }
-  if (monthTotal > 0) {
-    return { text: "💡 이번 주 새 도전을 시작해 봐요!", tone: "neutral" };
-  }
+  if (weekTotal >= 15) return { text: "💪 좋은 페이스로 자라고 있어요", tone: "warm" };
+  if (weekTotal >= 5) return { text: "🌱 한 발씩 차근차근 자라는 중!", tone: "warm" };
+  if (weekTotal < 0) return { text: "🌧 이번 주는 살짝 차감이 있었어요. 다시 한 걸음씩 가봐요", tone: "soft" };
+  if (!hasAnyLogs) return { text: "🌟 사과정원에 오신 걸 환영해요! 첫 포인트를 기다리고 있어요", tone: "neutral" };
+  if (monthTotal > 0) return { text: "💡 이번 주 새 도전을 시작해 봐요!", tone: "neutral" };
   return { text: "🌳 천천히 자라는 게 좋은 거예요", tone: "neutral" };
 }
 
@@ -252,30 +178,13 @@ function fireConfetti(harvest: boolean) {
   if (harvest) {
     const end = Date.now() + 2_500;
     const tick = () => {
-      confetti({
-        particleCount: 5,
-        angle: 60,
-        spread: 65,
-        origin: { x: 0, y: 0.7 },
-        colors,
-      });
-      confetti({
-        particleCount: 5,
-        angle: 120,
-        spread: 65,
-        origin: { x: 1, y: 0.7 },
-        colors,
-      });
+      confetti({ particleCount: 5, angle: 60, spread: 65, origin: { x: 0, y: 0.7 }, colors });
+      confetti({ particleCount: 5, angle: 120, spread: 65, origin: { x: 1, y: 0.7 }, colors });
       if (Date.now() < end) requestAnimationFrame(tick);
     };
     tick();
   } else {
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.55 },
-      colors,
-    });
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.55 }, colors });
   }
 }
 
@@ -284,21 +193,23 @@ export function MeTreeClient({
   studentName,
   initialPointLogs,
   initialHarvests,
+  initialPending,
 }: {
   initialRow: Row | null;
   studentName: string;
   initialPointLogs: PointLog[];
   initialHarvests: Harvest[];
+  initialPending: PendingClaim[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
-  // 실시간 인터랙션 상태
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [stageUp, setStageUp] = useState<StageUpBanner | null>(null);
   const [harvestBanner, setHarvestBanner] = useState<HarvestBanner | null>(null);
-  // 나무에 직접 보이는 반응 (분무기/시들음/델타칩)
   const [highlight, setHighlight] = useState<Highlight | null>(null);
-  // 단계 변화 감지용 (단계 증가 시 컨페티 + 배너)
+  const [pending, setPending] = useState<PendingClaim[]>(initialPending);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   useEffect(() => {
@@ -315,88 +226,78 @@ export function MeTreeClient({
 
     const channel = sb
       .channel(`me:${initialRow.id}`)
+      // 본인 행 갱신
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "garden_students",
-          filter: `id=eq.${initialRow.id}`,
-        },
+        { event: "UPDATE", schema: "public", table: "garden_students", filter: `id=eq.${initialRow.id}` },
         (payload) => {
           const next = payload.new as Partial<Row> | null;
           if (!next) return;
-          // 단계 상승 감지 → 컨페티 + 배너 (수확 후 5단계로 떨어지는 건 무시)
           const prevStage = prevStageRef.current;
           const newStage = next.current_stage ?? prevStage;
           if (newStage > prevStage) {
-            const info = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
+            const stInfo = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
             const isHarvestUp = newStage === 8;
-            setStageUp({
-              id: `${Date.now()}`,
-              stage: newStage,
-              name: info.name,
-              isHarvest: isHarvestUp,
-            });
+            setStageUp({ id: `${Date.now()}`, stage: newStage, name: stInfo.name, isHarvest: isHarvestUp });
             fireConfetti(isHarvestUp);
           }
           prevStageRef.current = newStage;
-
           setRow((prev) => ({
             id: initialRow.id,
             total_points: next.total_points ?? prev?.total_points ?? 0,
             current_stage: newStage,
-            apples_harvested:
-              next.apples_harvested ?? prev?.apples_harvested ?? 0,
+            apples_harvested: next.apples_harvested ?? prev?.apples_harvested ?? 0,
             grade: next.grade ?? prev?.grade ?? null,
           }));
         },
       )
+      // 본인 포인트 적립 로그 → 토스트 + 나무 반응 (받기 클릭 후 발생)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "garden_point_logs",
-          filter: `student_id=eq.${initialRow.id}`,
-        },
+        { event: "INSERT", schema: "public", table: "garden_point_logs", filter: `student_id=eq.${initialRow.id}` },
         (payload) => {
           const log = payload.new as PointLog;
           if (!log) return;
           const id = `${log.id}-${Date.now()}`;
-          // 1) 토스트
-          setToasts((prev) => [
-            ...prev,
-            { id, points: log.points, reason: log.reason },
-          ]);
+          setToasts((prev) => [...prev, { id, points: log.points, reason: log.reason }]);
           window.setTimeout(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
           }, TOAST_MS);
-          // 2) 나무 반응 (분무기 또는 시들음)
-          setHighlight({
-            id,
-            delta: log.points,
-            reason: log.reason,
-            expiresAt: Date.now() + HIGHLIGHT_MS,
-          });
+          setHighlight({ id, delta: log.points, reason: log.reason, expiresAt: Date.now() + HIGHLIGHT_MS });
         },
       )
+      // 본인 수확 기록 → 수확 배너
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "garden_harvests",
-          filter: `student_id=eq.${initialRow.id}`,
-        },
+        { event: "INSERT", schema: "public", table: "garden_harvests", filter: `student_id=eq.${initialRow.id}` },
         (payload) => {
           const h = payload.new as { apples_count: number; id: string };
           if (!h) return;
-          setHarvestBanner({
-            id: `${h.id}-${Date.now()}`,
-            applesCount: h.apples_count,
-          });
+          setHarvestBanner({ id: `${h.id}-${Date.now()}`, applesCount: h.apples_count });
           fireConfetti(true);
+        },
+      )
+      // 받기 대기열 INSERT → 새로 등장한 받기 버튼
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
+        (payload) => {
+          const p = payload.new as PendingClaim;
+          if (!p) return;
+          setPending((prev) => {
+            if (prev.some((x) => x.id === p.id)) return prev;
+            return [...prev, p].sort((a, b) => a.created_at.localeCompare(b.created_at));
+          });
+        },
+      )
+      // 받기 대기열 DELETE → 받기 후 (또는 admin 취소 후) 버튼 사라짐
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
+        (payload) => {
+          const old = payload.old as { id: string } | null;
+          if (!old) return;
+          setPending((prev) => prev.filter((x) => x.id !== old.id));
         },
       )
       .subscribe();
@@ -406,12 +307,10 @@ export function MeTreeClient({
     };
   }, [initialRow]);
 
-  // 만료된 highlight 정리 (now 가 1초마다 갱신될 때 함께 검사)
+  // 만료된 highlight 정리
   useEffect(() => {
     if (!highlight || !now) return;
-    if (highlight.expiresAt <= now.getTime()) {
-      setHighlight(null);
-    }
+    if (highlight.expiresAt <= now.getTime()) setHighlight(null);
   }, [now, highlight]);
 
   // 단계 상승 배너 자동 dismiss
@@ -434,6 +333,34 @@ export function MeTreeClient({
     return () => clearTimeout(t);
   }, [harvestBanner]);
 
+  // claimingId 가 더 이상 pending 에 없으면 (DELETE 된 경우) 리셋
+  useEffect(() => {
+    if (claimingId && !pending.some((p) => p.id === claimingId)) {
+      setClaimingId(null);
+    }
+  }, [pending, claimingId]);
+
+  const onClaim = async (pendingId: string) => {
+    if (claimingId) return;
+    setClaimingId(pendingId);
+    setClaimError(null);
+    try {
+      const res = await claimPointAction({ pendingId });
+      if (!res.ok) {
+        setClaimError(res.message);
+        setClaimingId(null);
+        // 5초 후 에러 메시지 자동 제거
+        window.setTimeout(() => setClaimError(null), 5000);
+        return;
+      }
+      // 성공: Realtime DELETE 이벤트가 pending 에서 제거 + UPDATE/INSERT 가 애니메이션 트리거
+    } catch (e) {
+      setClaimError(`오류: ${(e as Error).message}`);
+      setClaimingId(null);
+      window.setTimeout(() => setClaimError(null), 5000);
+    }
+  };
+
   const points = row?.total_points ?? 0;
   const stage = calculateStage(points);
   const info = getStageInfo(stage);
@@ -448,15 +375,10 @@ export function MeTreeClient({
   const nextInfo = nextStage ? getStageInfo(nextStage) : null;
   const nextAccent = nextStage ? STAGE_ACCENT[nextStage] : null;
 
-  // 나무 반응 상태
   const isFresh = !!(highlight && now && highlight.expiresAt > now.getTime());
   const isPositive = isFresh && highlight!.delta > 0;
   const isNegative = isFresh && highlight!.delta < 0;
-  const treeMood: AppleTreeMood = isNegative
-    ? "sad"
-    : isPositive
-      ? "surprised"
-      : "happy";
+  const treeMood: AppleTreeMood = isNegative ? "sad" : isPositive ? "surprised" : "happy";
 
   const stats = useMemo(() => {
     if (!now) return { weekTotal: 0, monthTotal: 0 };
@@ -484,8 +406,9 @@ export function MeTreeClient({
       weekTotal: stats.weekTotal,
       monthTotal: stats.monthTotal,
       hasAnyLogs: initialPointLogs.length > 0,
+      pendingCount: pending.length,
     });
-  }, [now, isHarvestStage, applesHarvested, stats, initialPointLogs.length]);
+  }, [now, isHarvestStage, applesHarvested, stats, initialPointLogs.length, pending.length]);
 
   return (
     <main
@@ -496,8 +419,7 @@ export function MeTreeClient({
         alignItems: "flex-start",
         justifyContent: "center",
         padding: 20,
-        fontFamily:
-          '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         transition: "background 600ms ease",
       }}
     >
@@ -516,28 +438,12 @@ export function MeTreeClient({
       >
         {/* 헤더 */}
         <div style={{ textAlign: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>
-            나의 사과정원
-          </div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              color: "#1f2937",
-              marginTop: 4,
-            }}
-          >
+          <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>나의 사과정원</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginTop: 4 }}>
             {studentName}
           </div>
           {row?.grade && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#9a8b6c",
-                marginTop: 2,
-                fontWeight: 600,
-              }}
-            >
+            <div style={{ fontSize: 13, color: "#9a8b6c", marginTop: 2, fontWeight: 600 }}>
               {row.grade}
             </div>
           )}
@@ -562,15 +468,7 @@ export function MeTreeClient({
         ) : (
           <>
             {/* 단계 배지 + 수확 가능 배지 */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                gap: 8,
-                marginBottom: 8,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
               <span
                 style={{
                   display: "inline-flex",
@@ -587,9 +485,7 @@ export function MeTreeClient({
                 }}
               >
                 <span>{accent.emoji}</span>
-                <span>
-                  {stage}단계 · {info.name}
-                </span>
+                <span>{stage}단계 · {info.name}</span>
               </span>
               {isHarvestStage && (
                 <span
@@ -612,39 +508,29 @@ export function MeTreeClient({
               )}
             </div>
 
-            {/* AppleTree SVG + 반응 효과 (분무기/델타칩) */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                margin: "8px 0 12px",
-              }}
-            >
+            {/* AppleTree SVG + 반응 효과 */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", margin: "8px 0 12px" }}>
               <div style={{ position: "relative", display: "inline-block" }}>
-                <AppleTree
-                  stage={stage}
-                  size="xl"
-                  mood={treeMood}
-                  wilted={isNegative}
-                  growthBoost={progress}
-                />
-                {/* +pt 시 분무기 미스트 (TVScreen 의 SprayWater 와 동일 톤) */}
+                <AppleTree stage={stage} size="xl" mood={treeMood} wilted={isNegative} growthBoost={progress} />
                 {isPositive && <SprayWater />}
-                {/* 델타 칩 (+10pt 또는 -5pt) */}
                 {isFresh && highlight && (
                   <DeltaChip delta={highlight.delta} reason={highlight.reason} />
                 )}
               </div>
             </div>
 
-            {/* 격려 멘트 */}
-            {encouragement && (
-              <EncouragementCard
-                text={encouragement.text}
-                tone={encouragement.tone}
+            {/* 받기 버튼 영역 (가장 눈에 띄는 위치) */}
+            {pending.length > 0 && (
+              <PendingClaimSection
+                pending={pending}
+                claimingId={claimingId}
+                error={claimError}
+                onClaim={onClaim}
               />
             )}
+
+            {/* 격려 멘트 */}
+            {encouragement && <EncouragementCard text={encouragement.text} tone={encouragement.tone} />}
 
             {/* 단계 정보 */}
             <div style={{ textAlign: "center", marginBottom: 14 }}>
@@ -654,36 +540,17 @@ export function MeTreeClient({
             </div>
 
             {/* 통계 카드 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               <AnimatedStat label="누적 포인트" value={points} unit="P" />
-              <Stat
-                label="수확한 사과"
-                value={`${applesHarvested}개`}
-                tone="primary"
-              />
+              <Stat label="수확한 사과" value={`${applesHarvested}개`} tone="primary" />
               <Stat
                 label="이번 주 적립"
-                value={
-                  now === null
-                    ? "—"
-                    : `${stats.weekTotal >= 0 ? "+" : ""}${stats.weekTotal} P`
-                }
+                value={now === null ? "—" : `${stats.weekTotal >= 0 ? "+" : ""}${stats.weekTotal} P`}
                 tone={stats.weekTotal >= 0 ? "positive" : "negative"}
               />
               <Stat
                 label="이번 달 적립"
-                value={
-                  now === null
-                    ? "—"
-                    : `${stats.monthTotal >= 0 ? "+" : ""}${stats.monthTotal} P`
-                }
+                value={now === null ? "—" : `${stats.monthTotal >= 0 ? "+" : ""}${stats.monthTotal} P`}
                 tone={stats.monthTotal >= 0 ? "positive" : "negative"}
               />
             </div>
@@ -717,9 +584,7 @@ export function MeTreeClient({
                   fontWeight: 600,
                 }}
               >
-                {info.nextThreshold === null
-                  ? "🎉 최고 단계 도달!"
-                  : `다음 단계까지 ${remain} P`}
+                {info.nextThreshold === null ? "🎉 최고 단계 도달!" : `다음 단계까지 ${remain} P`}
               </div>
             </div>
 
@@ -737,13 +602,7 @@ export function MeTreeClient({
 
             {/* 마일스톤 */}
             <Section title="🏆 마일스톤">
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 8,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                 {milestones.map((m) => (
                   <MilestoneBadge key={m.key} {...m} />
                 ))}
@@ -755,16 +614,7 @@ export function MeTreeClient({
               {initialPointLogs.length === 0 ? (
                 <Empty text="이번 달 활동 기록이 없어요" />
               ) : (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   {initialPointLogs.slice(0, 10).map((log) => (
                     <LogRow key={log.id} log={log} now={now} />
                   ))}
@@ -775,16 +625,7 @@ export function MeTreeClient({
             {/* 수확 히스토리 */}
             {initialHarvests.length > 0 && (
               <Section title="🍎 수확 히스토리">
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   {initialHarvests.slice(0, 5).map((h) => (
                     <HarvestRow key={h.id} harvest={h} now={now} />
                   ))}
@@ -797,19 +638,14 @@ export function MeTreeClient({
         <div style={{ marginTop: 20, textAlign: "center" }}>
           <a
             href="https://www.themonster.kr/student"
-            style={{
-              fontSize: 13,
-              color: "#F26522",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
+            style={{ fontSize: 13, color: "#F26522", textDecoration: "none", fontWeight: 700 }}
           >
             ← 학생 홈으로
           </a>
         </div>
       </div>
 
-      {/* 토스트 스택 (하단 가운데) */}
+      {/* 토스트 스택 */}
       <div
         aria-live="polite"
         style={{
@@ -829,7 +665,6 @@ export function MeTreeClient({
         ))}
       </div>
 
-      {/* 단계 상승 배너 */}
       {stageUp && (
         <StageUpModal
           stage={stageUp.stage}
@@ -840,7 +675,6 @@ export function MeTreeClient({
         />
       )}
 
-      {/* 수확 배너 */}
       {harvestBanner && (
         <HarvestModal
           applesCount={harvestBanner.applesCount}
@@ -853,10 +687,172 @@ export function MeTreeClient({
 }
 
 /* ================================================================
-   Phase 4.1: 나무 반응 효과 — 분무기 미스트 / 델타 칩 / 카운트업 통계
+   받기 버튼 섹션 — 학생이 직접 클릭해서 점수를 적용
 ================================================================ */
 
-// 누적 포인트 통계 카드 — 값 변화 시 부드럽게 카운트업되고 살짝 튀어오름.
+function PendingClaimSection({
+  pending,
+  claimingId,
+  error,
+  onClaim,
+}: {
+  pending: PendingClaim[];
+  claimingId: string | null;
+  error: string | null;
+  onClaim: (id: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div
+        style={{
+          fontSize: 12,
+          color: "#8a6f52",
+          fontWeight: 800,
+          marginBottom: 8,
+          letterSpacing: "0.02em",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>🎁 받을 포인트</span>
+        <span
+          style={{
+            background: "#f0c050",
+            color: "#3d2818",
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 800,
+            border: "1.5px solid #3d2818",
+          }}
+        >
+          {pending.length}개
+        </span>
+      </div>
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          margin: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        {pending.map((p) => (
+          <PendingClaimCard
+            key={p.id}
+            p={p}
+            claiming={claimingId === p.id}
+            disabled={!!claimingId && claimingId !== p.id}
+            onClaim={() => onClaim(p.id)}
+          />
+        ))}
+      </ul>
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            background: "#fef2f0",
+            border: "1.5px solid #f5cdc4",
+            color: "#b04020",
+            borderRadius: 10,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PendingClaimCard({
+  p,
+  claiming,
+  disabled,
+  onClaim,
+}: {
+  p: PendingClaim;
+  claiming: boolean;
+  disabled: boolean;
+  onClaim: () => void;
+}) {
+  const isPositive = p.points > 0;
+  const palette = isPositive
+    ? { bg: "#fff8e8", border: "#f0c050", btnBg: "#5e9c38", numColor: "#4a8030" }
+    : { bg: "#fef2f0", border: "#f5cdc4", btnBg: "#b04020", numColor: "#b04020" };
+
+  return (
+    <li
+      className="banner-pop"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 12px",
+        background: palette.bg,
+        border: `2px solid ${palette.border}`,
+        borderRadius: 14,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 800,
+          color: palette.numColor,
+          fontVariantNumeric: "tabular-nums",
+          minWidth: 60,
+          textAlign: "center",
+        }}
+      >
+        {isPositive ? "+" : ""}
+        {p.points} P
+      </div>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          fontWeight: 700,
+          color: "#3d2818",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {p.reason ?? (isPositive ? "포인트 적립" : "포인트 차감")}
+      </div>
+      <button
+        onClick={onClaim}
+        disabled={claiming || disabled}
+        style={{
+          padding: "8px 18px",
+          borderRadius: 999,
+          background: claiming || disabled ? "#d6c2a0" : palette.btnBg,
+          color: "#fff",
+          border: "2px solid #3d2818",
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: claiming || disabled ? "not-allowed" : "pointer",
+          minWidth: 70,
+          flexShrink: 0,
+        }}
+      >
+        {claiming ? "적용 중…" : isPositive ? "받기" : "확인"}
+      </button>
+    </li>
+  );
+}
+
+/* ================================================================
+   나무 반응 효과 — 분무기/델타칩/카운트업
+================================================================ */
+
 function AnimatedStat({
   label,
   value,
@@ -880,7 +876,6 @@ function AnimatedStat({
     let raf = 0;
     const tick = (ts: number) => {
       const t = Math.min(1, (ts - start) / duration);
-      // ease-out cubic
       const eased = 1 - Math.pow(1 - t, 3);
       const cur = Math.round(from + (to - from) * eased);
       setDisplay(cur);
@@ -901,9 +896,7 @@ function AnimatedStat({
         border: "1.5px solid #f1e8d8",
       }}
     >
-      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>
-        {label}
-      </div>
+      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>{label}</div>
       <div
         key={popKey}
         className={popKey > 0 ? "number-pop" : undefined}
@@ -921,14 +914,7 @@ function AnimatedStat({
   );
 }
 
-// 델타 칩: 나무 우상단에 +10pt 또는 -5pt 떠올랐다 사라짐
-function DeltaChip({
-  delta,
-  reason,
-}: {
-  delta: number;
-  reason: string | null;
-}) {
+function DeltaChip({ delta, reason }: { delta: number; reason: string | null }) {
   const isPositive = delta > 0;
   return (
     <div
@@ -959,48 +945,29 @@ function DeltaChip({
         {delta} P
       </span>
       {reason && (
-        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.9 }}>
-          · {reason}
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.9 }}>· {reason}</span>
       )}
     </div>
   );
 }
 
-// 분무기 + 미스트 (TVScreen 의 SprayWater 동일 톤, /tree/me 의 xl 사이즈에 맞춤).
-// 나무 우상단 코너에서 좌하단 부채꼴로 미스트가 뿜어져 나옴.
 function SprayWater() {
   const particleCount = 14;
   const bottlePx = 56;
   return (
     <div
       aria-hidden
-      style={{
-        pointerEvents: "none",
-        position: "absolute",
-        inset: 0,
-        overflow: "visible",
-        zIndex: 4,
-      }}
+      style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "visible", zIndex: 4 }}
     >
-      {/* 분무기 (우상단) */}
       <div
         className="spray-wiggle"
-        style={{
-          position: "absolute",
-          top: 6,
-          right: 4,
-          width: bottlePx,
-          height: bottlePx,
-        }}
+        style={{ position: "absolute", top: 6, right: 4, width: bottlePx, height: bottlePx }}
       >
         <SprayBottleSVG />
       </div>
-      {/* 미스트 입자들 */}
       {Array.from({ length: particleCount }).map((_, i) => {
         const nozzleTop = 14;
         const nozzleRight = 38;
-        // 부채꼴: -160 ~ -200 도 (좌하단)
         const angleDeg = -160 - (i / particleCount) * 80 + ((i * 13) % 7) * 2;
         const angleRad = (angleDeg * Math.PI) / 180;
         const distance = 64 + ((i * 7) % 11) * 2;
@@ -1042,52 +1009,21 @@ function SprayBottleSVG() {
           <stop offset="100%" stopColor="#5cb8e8" />
         </linearGradient>
       </defs>
-      <rect
-        x="36"
-        y="40"
-        width="44"
-        height="48"
-        rx="6"
-        fill="url(#me-bottle-grad)"
-        stroke="#3d2818"
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="42"
-        y="56"
-        width="32"
-        height="18"
-        rx="2"
-        fill="#fff"
-        stroke="#3d2818"
-        strokeWidth="1.6"
-      />
+      <rect x="36" y="40" width="44" height="48" rx="6" fill="url(#me-bottle-grad)" stroke="#3d2818" strokeWidth="3" strokeLinejoin="round" />
+      <rect x="42" y="56" width="32" height="18" rx="2" fill="#fff" stroke="#3d2818" strokeWidth="1.6" />
       <line x1="46" y1="61" x2="70" y2="61" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
       <line x1="46" y1="65" x2="66" y2="65" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
       <line x1="46" y1="69" x2="68" y2="69" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
       <rect x="46" y="32" width="20" height="10" fill="#5cb8e8" stroke="#3d2818" strokeWidth="2.5" />
-      <path
-        d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z"
-        fill="#7fc6e8"
-        stroke="#3d2818"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z"
-        fill="#5cb8e8"
-        stroke="#3d2818"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
+      <path d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z" fill="#7fc6e8" stroke="#3d2818" strokeWidth="2.5" strokeLinejoin="round" />
+      <path d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z" fill="#5cb8e8" stroke="#3d2818" strokeWidth="2.5" strokeLinejoin="round" />
       <circle cx="13" cy="26" r="1.4" fill="#3d2818" />
     </svg>
   );
 }
 
 /* ================================================================
-   Phase 4: Toast / StageUpModal / HarvestModal
+   Toast / StageUpModal / HarvestModal
 ================================================================ */
 
 function ToastCard({ toast }: { toast: Toast }) {
@@ -1119,13 +1055,7 @@ function ToastCard({ toast }: { toast: Toast }) {
       {toast.reason && (
         <>
           <span style={{ opacity: 0.6 }}>·</span>
-          <span
-            style={{
-              fontWeight: 600,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
             {toast.reason}
           </span>
         </>
@@ -1183,33 +1113,13 @@ function StageUpModal({
         <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 8 }}>
           {isHarvest ? "🎉" : accent.emoji}
         </div>
-        <div
-          style={{
-            fontSize: 14,
-            color: "#8a6f52",
-            fontWeight: 700,
-            marginBottom: 4,
-          }}
-        >
+        <div style={{ fontSize: 14, color: "#8a6f52", fontWeight: 700, marginBottom: 4 }}>
           축하해요!
         </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 800,
-            color: "#3d2818",
-            marginBottom: 8,
-          }}
-        >
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#3d2818", marginBottom: 8 }}>
           {studentName} 학생
         </div>
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 800,
-            color: "#3d2818",
-          }}
-        >
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#3d2818" }}>
           {isHarvest ? (
             <>
               사과를 <span style={{ color: "#b02020" }}>수확</span>할 수 있어요!
@@ -1281,35 +1191,14 @@ function HarvestModal({
         }}
       >
         <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 8 }}>🍎</div>
-        <div
-          style={{
-            fontSize: 14,
-            color: "#8a6f52",
-            fontWeight: 700,
-            marginBottom: 4,
-          }}
-        >
+        <div style={{ fontSize: 14, color: "#8a6f52", fontWeight: 700, marginBottom: 4 }}>
           수확 완료!
         </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 800,
-            color: "#3d2818",
-            marginBottom: 8,
-          }}
-        >
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#3d2818", marginBottom: 8 }}>
           {studentName} 학생
         </div>
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 800,
-            color: "#3d2818",
-          }}
-        >
-          사과 <span style={{ color: "#b02020" }}>{applesCount}개</span> 를
-          수확했어요!
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#3d2818" }}>
+          사과 <span style={{ color: "#b02020" }}>{applesCount}개</span> 를 수확했어요!
         </div>
         <button
           onClick={onClose}
@@ -1333,7 +1222,7 @@ function HarvestModal({
 }
 
 /* ================================================================
-   기존 Phase 1~3 부품들
+   기존 부품들
 ================================================================ */
 
 function EncouragementCard({
@@ -1416,34 +1305,13 @@ function NextStagePreview({
         {emoji}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            color: "#9a8b6c",
-            fontWeight: 700,
-            letterSpacing: "0.02em",
-          }}
-        >
+        <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 700, letterSpacing: "0.02em" }}>
           다음 단계
         </div>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 800,
-            color: "#1f2937",
-            marginTop: 2,
-          }}
-        >
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#1f2937", marginTop: 2 }}>
           {stage}단계 · {name}
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "#9a8b6c",
-            fontWeight: 600,
-            marginTop: 1,
-          }}
-        >
+        <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600, marginTop: 1 }}>
           {threshold}P 도달 시 자라남
         </div>
       </div>
@@ -1475,14 +1343,7 @@ function MilestoneBadge({
         transition: "all 240ms ease",
       }}
     >
-      <div
-        style={{
-          fontSize: 22,
-          filter: achieved ? "none" : "grayscale(0.7)",
-        }}
-      >
-        {emoji}
-      </div>
+      <div style={{ fontSize: 22, filter: achieved ? "none" : "grayscale(0.7)" }}>{emoji}</div>
       <div
         style={{
           fontSize: 10,
@@ -1522,9 +1383,7 @@ function Stat({
         border: `1.5px solid ${palette.border}`,
       }}
     >
-      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>
-        {label}
-      </div>
+      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600 }}>{label}</div>
       <div
         style={{
           fontSize: 16,
@@ -1540,13 +1399,7 @@ function Stat({
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginTop: 18 }}>
       <div
@@ -1624,27 +1477,14 @@ function LogRow({ log, now }: { log: PointLog; now: Date | null }) {
           {log.reason ?? (isPositive ? "포인트 적립" : "포인트 차감")}
         </div>
       </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: "#9a8b6c",
-          fontWeight: 600,
-          flexShrink: 0,
-        }}
-      >
+      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600, flexShrink: 0 }}>
         {now ? formatRelative(log.logged_at, now) : ""}
       </div>
     </li>
   );
 }
 
-function HarvestRow({
-  harvest,
-  now,
-}: {
-  harvest: Harvest;
-  now: Date | null;
-}) {
+function HarvestRow({ harvest, now }: { harvest: Harvest; now: Date | null }) {
   return (
     <li
       style={{
@@ -1658,24 +1498,10 @@ function HarvestRow({
       }}
     >
       <div style={{ fontSize: 18 }}>🍎</div>
-      <div
-        style={{
-          flex: 1,
-          fontSize: 13,
-          fontWeight: 800,
-          color: "#3d2818",
-        }}
-      >
+      <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: "#3d2818" }}>
         사과 {harvest.apples_count}개 수확!
       </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: "#8a6f52",
-          fontWeight: 600,
-          flexShrink: 0,
-        }}
-      >
+      <div style={{ fontSize: 11, color: "#8a6f52", fontWeight: 600, flexShrink: 0 }}>
         {now ? formatRelative(harvest.harvested_at, now) : ""}
       </div>
     </li>

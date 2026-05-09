@@ -6,8 +6,7 @@
 // 포인트/단계/사과 수 변화를 새로고침 없이 반영한다 (MeTreeClient).
 //
 // Phase 2: 이번 달 적립 로그 + 모든 수확 기록도 함께 SSR 으로 주입한다.
-// 클라이언트는 이 데이터로 "이번 주/이번 달 통계" 와 "최근 활동 타임라인",
-// "수확 히스토리" 를 그린다.
+// Claim flow: garden_pending_points (받기 대기열) 도 함께 주입.
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -33,15 +32,14 @@ export default async function MyTreePage() {
 
   let pointLogs: Array<{ id: string; points: number; reason: string | null; logged_at: string }> = [];
   let harvests: Array<{ id: string; apples_count: number; harvested_at: string }> = [];
+  let pendingPoints: Array<{ id: string; points: number; reason: string | null; created_at: string }> = [];
 
   if (row) {
-    // 이번 달 1일 00:00 부터의 로그를 가져와 클라이언트에서 주간/월간 통계 계산.
-    // 학생당 월별 로그가 일반적으로 100건을 넘기 어려우므로 한 번에 다 가져온다.
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const [logsResult, harvestsResult] = await Promise.all([
+    const [logsResult, harvestsResult, pendingResult] = await Promise.all([
       sb
         .from('garden_point_logs')
         .select('id, points, reason, logged_at')
@@ -55,9 +53,16 @@ export default async function MyTreePage() {
         .eq('student_id', row.id)
         .order('harvested_at', { ascending: false })
         .limit(50),
+      sb
+        .from('garden_pending_points')
+        .select('id, points, reason, created_at')
+        .eq('student_id', row.id)
+        .order('created_at', { ascending: true })
+        .limit(50),
     ]);
     pointLogs = logsResult.data ?? [];
     harvests = harvestsResult.data ?? [];
+    pendingPoints = pendingResult.data ?? [];
   }
 
   return (
@@ -66,6 +71,7 @@ export default async function MyTreePage() {
       studentName={payload!.name}
       initialPointLogs={pointLogs}
       initialHarvests={harvests}
+      initialPending={pendingPoints}
     />
   );
 }
