@@ -226,7 +226,6 @@ export function MeTreeClient({
 
     const channel = sb
       .channel(`me:${initialRow.id}`)
-      // 본인 행 갱신
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "garden_students", filter: `id=eq.${initialRow.id}` },
@@ -251,7 +250,6 @@ export function MeTreeClient({
           }));
         },
       )
-      // 본인 포인트 적립 로그 → 토스트 + 나무 반응 (받기 클릭 후 발생)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "garden_point_logs", filter: `student_id=eq.${initialRow.id}` },
@@ -266,7 +264,6 @@ export function MeTreeClient({
           setHighlight({ id, delta: log.points, reason: log.reason, expiresAt: Date.now() + HIGHLIGHT_MS });
         },
       )
-      // 본인 수확 기록 → 수확 배너
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "garden_harvests", filter: `student_id=eq.${initialRow.id}` },
@@ -277,7 +274,6 @@ export function MeTreeClient({
           fireConfetti(true);
         },
       )
-      // 받기 대기열 INSERT → 새로 등장한 받기 버튼
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
@@ -290,7 +286,6 @@ export function MeTreeClient({
           });
         },
       )
-      // 받기 대기열 DELETE → 받기 후 (또는 admin 취소 후) 버튼 사라짐
       .on(
         "postgres_changes",
         { event: "DELETE", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
@@ -307,13 +302,11 @@ export function MeTreeClient({
     };
   }, [initialRow]);
 
-  // 만료된 highlight 정리
   useEffect(() => {
     if (!highlight || !now) return;
     if (highlight.expiresAt <= now.getTime()) setHighlight(null);
   }, [now, highlight]);
 
-  // 단계 상승 배너 자동 dismiss
   useEffect(() => {
     if (!stageUp) return;
     const id = stageUp.id;
@@ -323,7 +316,6 @@ export function MeTreeClient({
     return () => clearTimeout(t);
   }, [stageUp]);
 
-  // 수확 배너 자동 dismiss
   useEffect(() => {
     if (!harvestBanner) return;
     const id = harvestBanner.id;
@@ -333,7 +325,6 @@ export function MeTreeClient({
     return () => clearTimeout(t);
   }, [harvestBanner]);
 
-  // claimingId 가 더 이상 pending 에 없으면 (DELETE 된 경우) 리셋
   useEffect(() => {
     if (claimingId && !pending.some((p) => p.id === claimingId)) {
       setClaimingId(null);
@@ -349,11 +340,9 @@ export function MeTreeClient({
       if (!res.ok) {
         setClaimError(res.message);
         setClaimingId(null);
-        // 5초 후 에러 메시지 자동 제거
         window.setTimeout(() => setClaimError(null), 5000);
         return;
       }
-      // 성공: Realtime DELETE 이벤트가 pending 에서 제거 + UPDATE/INSERT 가 애니메이션 트리거
     } catch (e) {
       setClaimError(`오류: ${(e as Error).message}`);
       setClaimingId(null);
@@ -436,7 +425,6 @@ export function MeTreeClient({
           border: `2px solid ${isHarvestStage ? "#e8a020" : "#f1e8d8"}`,
         }}
       >
-        {/* 헤더 */}
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>나의 사과정원</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginTop: 4 }}>
@@ -467,7 +455,6 @@ export function MeTreeClient({
           </div>
         ) : (
           <>
-            {/* 단계 배지 + 수확 가능 배지 */}
             <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
               <span
                 style={{
@@ -508,7 +495,6 @@ export function MeTreeClient({
               )}
             </div>
 
-            {/* AppleTree SVG + 반응 효과 */}
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", margin: "8px 0 12px" }}>
               <div style={{ position: "relative", display: "inline-block" }}>
                 <AppleTree stage={stage} size="xl" mood={treeMood} wilted={isNegative} growthBoost={progress} />
@@ -519,7 +505,6 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 받기 버튼 영역 (가장 눈에 띄는 위치) */}
             {pending.length > 0 && (
               <PendingClaimSection
                 pending={pending}
@@ -529,17 +514,14 @@ export function MeTreeClient({
               />
             )}
 
-            {/* 격려 멘트 */}
             {encouragement && <EncouragementCard text={encouragement.text} tone={encouragement.tone} />}
 
-            {/* 단계 정보 */}
             <div style={{ textAlign: "center", marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: "#9a8b6c" }}>
                 {STAGE_TABLE.length}단계 중 {stage}단계
               </div>
             </div>
 
-            {/* 통계 카드 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               <AnimatedStat label="누적 포인트" value={points} unit="P" />
               <Stat label="수확한 사과" value={`${applesHarvested}개`} tone="primary" />
@@ -555,7 +537,6 @@ export function MeTreeClient({
               />
             </div>
 
-            {/* 진행도 바 */}
             <div style={{ marginBottom: 14 }}>
               <div
                 style={{
@@ -588,7 +569,6 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 다음 단계 미리보기 */}
             {nextStage && nextInfo && nextAccent && (
               <NextStagePreview
                 stage={nextStage}
@@ -600,16 +580,14 @@ export function MeTreeClient({
               />
             )}
 
-            {/* 마일스톤 */}
             <Section title="🏆 마일스톤">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {milestones.map((m) => (
-                  <MilestoneBadge key={m.key} {...m} />
+                {milestones.map(({ key, ...rest }) => (
+                  <MilestoneBadge key={key} {...rest} />
                 ))}
               </div>
             </Section>
 
-            {/* 최근 활동 */}
             <Section title="📋 최근 활동">
               {initialPointLogs.length === 0 ? (
                 <Empty text="이번 달 활동 기록이 없어요" />
@@ -622,7 +600,6 @@ export function MeTreeClient({
               )}
             </Section>
 
-            {/* 수확 히스토리 */}
             {initialHarvests.length > 0 && (
               <Section title="🍎 수확 히스토리">
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -645,7 +622,6 @@ export function MeTreeClient({
         </div>
       </div>
 
-      {/* 토스트 스택 */}
       <div
         aria-live="polite"
         style={{
@@ -687,7 +663,7 @@ export function MeTreeClient({
 }
 
 /* ================================================================
-   받기 버튼 섹션 — 학생이 직접 클릭해서 점수를 적용
+   받기 버튼 섹션
 ================================================================ */
 
 function PendingClaimSection({
@@ -850,7 +826,7 @@ function PendingClaimCard({
 }
 
 /* ================================================================
-   나무 반응 효과 — 분무기/델타칩/카운트업
+   나무 반응 효과
 ================================================================ */
 
 function AnimatedStat({
