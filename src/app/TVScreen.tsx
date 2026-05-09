@@ -1,22 +1,12 @@
 "use client";
 
-// TV 화면 (1920×1080 풌스크린 가로 모드 가정)
-//
-// 레이아웃:
-//   [헤더: 타이틀 / TOP 학생 / 오늘 수확 / 시계]
-//   ┌─────────────────────┬─────────────────────────────────┐
-//   │   SPOTLIGHT (좌)    │   STUDENTS GRID (우)              │
-//   │   한 학생씩 큰 사과나무 │   모든 학생을 컴팩트 카드로 한 번에 │
-//   │   4초마다 자동 교체    │   현재 스포트라이트 학생 강조        │
-//   └─────────────────────┴─────────────────────────────────┘
-//                                                  [수확 바구니]
+// TV 화면 (1920×1080 풀스크린 가로 모드 가정)
 //
 // Realtime:
-// - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컴페티
+// - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
 // - garden_point_logs: +pt 강조 (3초)
 // - garden_harvests: 사과가 카드 → 바구니로 포물선 비행
 
-import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
@@ -30,8 +20,10 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { STAGE_ACCENT } from "@/features/garden/stage-accent";
+import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
+import { fireConfetti } from "@/features/garden/effects/confetti";
 
-// 화면 폭 매체 쿼리 훅 (TV 풌HD 가정의 데스크탑 vs 모바일)
+// 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
 function useMediaQuery(query: string): boolean {
   const [match, setMatch] = useState(false);
   useEffect(() => {
@@ -45,11 +37,11 @@ function useMediaQuery(query: string): boolean {
   return match;
 }
 
-const SPOTLIGHT_INTERVAL_MS = 4_000; // 한 학생당 스포트라이트 노출 시간
+const SPOTLIGHT_INTERVAL_MS = 4_000;
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
 const HARVEST_BANNER_MS = 10_000;
-const FLY_DURATION_MS = 3_500; // 2s 떨어짐(중력) + 1.5s 바구니로 비행
+const FLY_DURATION_MS = 3_500;
 
 type Highlight = { delta: number; expiresAt: number };
 type Banner = {
@@ -59,19 +51,14 @@ type Banner = {
   stageName: string;
   expiresAt: number;
 };
-// 수확 시퀀스: tree → ground → basket (3 keyframe trajectory)
 type FlyingApple = {
   id: string;
-  // Phase 1 시작: 캐노피 위
   treeX: number;
   treeY: number;
-  // Phase 1 끝 / Phase 2 시작: 화분 근처 바닥
   groundX: number;
   groundY: number;
-  // Phase 2 끝: 바구니
   basketX: number;
   basketY: number;
-  // 사과들이 시간차로 떨어지게 (후두두 효과)
   delay: number;
 };
 
@@ -87,31 +74,23 @@ export function TVScreen({
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [todayApples, setTodayApples] = useState<number>(initialTodayHarvest);
-  const [bumpBasket, setBumpBasket] = useState(0); // 바구니 살짝 흔들기 트리거
+  const [bumpBasket, setBumpBasket] = useState(0);
   const [flyingApples, setFlyingApples] = useState<FlyingApple[]>([]);
-  // SSR/CSR 시각 mismatch 방지 - 마운트 전엔 0
   const [now, setNow] = useState(0);
 
-  // 모바일/데스크탑 분기 (1024px 미만 = 모바일)
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const prevStageRef = useRef<Record<string, number>>({});
-  // sorted 의 최신 값 ref (Realtime 핸들러는 마운트 시 한 번만 등록되므로 stale closure 방지)
   const sortedRef = useRef<GardenStudent[]>(initialStudents);
-  // 카드 DOM 참조 (사과 비행 시작점 계산용)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  // 헤더의 "오늘 수확" 알약 DOM 참조 (사과 비행 도착점)
   const basketRef = useRef<HTMLDivElement | null>(null);
-  // 스포트라이트 패널 참조 (수확 시 사과가 떨어지는 위치)
   const spotlightRef = useRef<HTMLDivElement | null>(null);
-  // 현재 흔들리는 학생 (수확 시작 1초 동안)
   const [shakingId, setShakingId] = useState<string | null>(null);
 
   useEffect(() => {
     for (const s of initialStudents) prevStageRef.current[s.id] = s.current_stage;
   }, [initialStudents]);
 
-  // 1초마다 시각 갱신
   useEffect(() => {
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -126,7 +105,6 @@ export function TVScreen({
     [students],
   );
 
-  // 스포트라이트 자동 순환 - 전체 학생을 한 명씩
   useEffect(() => {
     if (sorted.length <= 1) return;
     const t = setInterval(() => {
@@ -135,27 +113,22 @@ export function TVScreen({
     return () => clearInterval(t);
   }, [sorted.length]);
 
-  // 학생 수가 줄어들어 인덱스가 범위를 벗어나면 보정
   useEffect(() => {
     if (focusedIdx >= sorted.length) setFocusedIdx(0);
   }, [focusedIdx, sorted.length]);
 
-  // sorted 의 최신 값을 ref 에 저장 (Realtime 핸들러에서 사용)
   useEffect(() => {
     sortedRef.current = sorted;
   }, [sorted]);
 
-  // Realtime 구독
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
     if (!sb) return;
 
-    // 수확 시퀀스: 스포트라이트 점프 → 흔들림(1s) → 후두두 떨어짐 + 바구니 비행(3.5s) → 배너
     function triggerHarvestSequence(studentId: string, count: number) {
       const idx = sortedRef.current.findIndex((s) => s.id === studentId);
       if (idx >= 0) setFocusedIdx(idx);
 
-      // 스포트라이트가 새 학생으로 리렌더된 직후 흔들림 시작
       window.setTimeout(() => {
         setShakingId(studentId);
         window.setTimeout(() => {
@@ -163,7 +136,6 @@ export function TVScreen({
         }, 1000);
       }, 120);
 
-      // 흔들림 종료(~1100ms 후) 시점에 사과들을 후두두 떨어뜨림
       window.setTimeout(() => {
         const items = buildFallingApples(
           count,
@@ -173,7 +145,6 @@ export function TVScreen({
         if (items.length > 0) {
           setFlyingApples((prev) => [...prev, ...items]);
         } else {
-          // refs 가 준비 안 된 fallback - 바구니 카운트만 즉시 +N
           setTodayApples((c) => c + count);
           setBumpBasket((k) => k + 1);
         }
@@ -210,7 +181,6 @@ export function TVScreen({
                 expiresAt: Date.now() + (isHarvest ? HARVEST_BANNER_MS : BANNER_MS),
               },
             ]);
-            // 컴페티
             fireConfetti(isHarvest);
           }
           prevStageRef.current[next.id] = next.current_stage;
@@ -237,8 +207,6 @@ export function TVScreen({
               expiresAt: Date.now() + HIGHLIGHT_MS,
             },
           }));
-          // 포인트 적립 시 해당 학생을 즉시 스포트라이트로 점프
-          // (정상 사이클은 다음 SPOTLIGHT_INTERVAL_MS 후에 다시 진행)
           const idx = sortedRef.current.findIndex((s) => s.id === log.student_id);
           if (idx >= 0) setFocusedIdx(idx);
         },
@@ -262,7 +230,6 @@ export function TVScreen({
     };
   }, []);
 
-  // 만료 정리
   useEffect(() => {
     setHighlights((h) => {
       const cleaned: Record<string, Highlight> = {};
@@ -279,10 +246,8 @@ export function TVScreen({
 
   return (
     <main className="kiosk h-screen flex flex-col overflow-hidden relative">
-      {/* 배경 데코 닭 (절제 있게 4개) */}
       <DecorDots />
 
-      {/* 헤더 - 모바일에서는 컴팩트, 데스크탑에서는 풌 */}
       <header className="relative z-10 flex-shrink-0 px-3 sm:px-8 pt-3 sm:pt-6 pb-2 sm:pb-3 flex items-center justify-between gap-2">
         <TitlePill />
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
@@ -298,14 +263,12 @@ export function TVScreen({
         </div>
       </header>
 
-      {/* 본문: 좌측 스포트라이트 (full height) + 우측 [그리드 + 기준 바] */}
       {sorted.length === 0 ? (
         <EmptyState />
       ) : (
         <section
           className="relative z-10 flex-1 min-h-0 px-3 sm:px-8 pb-3 gap-3 lg:gap-6 flex flex-col lg:grid lg:[grid-template-columns:minmax(420px,_36%)_1fr]"
         >
-          {/* 스포트라이트: 모바일에서는 viewport 의 약 45vh, 데스크탑은 그리드 row 자동 */}
           <div className="h-[44vh] lg:h-auto min-h-0 shrink-0 lg:shrink">
             <Spotlight
               ref={spotlightRef}
@@ -317,7 +280,6 @@ export function TVScreen({
               compact={!isDesktop}
             />
           </div>
-          {/* 우측(데스크탑) / 아래쪽(모바일): 그리드 + 기준 바(데스크탑만) */}
           <div className="flex flex-col gap-3 min-h-0 flex-1">
             <div className="flex-1 min-h-0">
               <CompactGrid
@@ -331,7 +293,6 @@ export function TVScreen({
                 maxCols={isDesktop ? undefined : 3}
               />
             </div>
-            {/* 기준 바: 모바일은 너무 좁아 숨김 */}
             <div className="hidden lg:block">
               <CriteriaBar />
             </div>
@@ -340,7 +301,6 @@ export function TVScreen({
       )}
 
 
-      {/* 사과 비행 layer (포물선) */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 z-40 overflow-hidden"
@@ -358,20 +318,14 @@ export function TVScreen({
         ))}
       </div>
 
-      {/* 단계 상승 모달 배너 */}
       {banners.map((b) => (
         <StageUpBanner key={b.id} banner={b} />
       ))}
 
-      {/* 관리자 페이지 진입 버튼 (우하단, 학생들 시야에 산만하지 않게 반투명·연한 톤) */}
       <AdminLink />
     </main>
   );
 }
-
-/* ================================================================
-   좌측 스포트라이트 (큰 카드 1개, 4초마다 학생 교체)
-================================================================ */
 
 const Spotlight = forwardRef<
   HTMLDivElement,
@@ -381,7 +335,6 @@ const Spotlight = forwardRef<
     now: number;
     cycleLabel: string;
     isShaking: boolean;
-    /** 모바일 등 좁은 화면에서 폰트/트리 크기 축소 */
     compact?: boolean;
   }
 >(function Spotlight({ student, highlight, now, cycleLabel, isShaking, compact = false }, ref) {
@@ -422,13 +375,11 @@ const Spotlight = forwardRef<
           : "bg-[var(--card-bg)] shadow-card",
       ].join(" ")}
     >
-      {/* 우상단 사이클 인디케이터 */}
       <div className="absolute top-2 right-3 sm:top-4 sm:right-5 flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--ink-soft)] tabular-nums">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--apple-base)] animate-pulse" />
         {cycleLabel}
       </div>
 
-      {/* 단계 배지 + 수확 배지 */}
       <div className="flex items-center gap-2 mt-1">
         <span
           className={[
@@ -449,7 +400,6 @@ const Spotlight = forwardRef<
         )}
       </div>
 
-      {/* 사과나무 (학생 교체 시 부드러운 페이드/스케일 전환) */}
       <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3">
         <AnimatePresence mode="wait">
           <motion.div
@@ -472,7 +422,7 @@ const Spotlight = forwardRef<
                 <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
                   +{highlight!.delta}pt ✨
                 </div>
-                <SprayWater />
+                <SprayWaterTv />
               </>
             )}
             {isNegative && (
@@ -484,7 +434,6 @@ const Spotlight = forwardRef<
         </AnimatePresence>
       </div>
 
-      {/* 학생 정보 + 진행도 (학생 교체 시 같이 페이드) */}
       <AnimatePresence mode="wait">
         <motion.div
           key={`${student.id}-info`}
@@ -523,14 +472,12 @@ const Spotlight = forwardRef<
             </span>
             <span className={["font-bold text-[var(--ink-soft)]", compact ? "text-base" : "text-xl"].join(" ")}>pt</span>
           </div>
-          {/* 누적 수확 사과 수 */}
           {student.apples_harvested > 0 && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--card-bg-hero)] border-[2px] border-[var(--ink)] text-[var(--ink)] text-sm font-extrabold tabular-nums">
               🍎 × {student.apples_harvested}개
             </div>
           )}
 
-          {/* 진행도 바 / 수확 알약 */}
           <div className="mt-5 mx-auto w-full max-w-[78%]">
             {isHarvest ? (
               <div className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 rounded-full bg-[var(--accent-gold)] border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-base font-extrabold">
@@ -559,10 +506,6 @@ const Spotlight = forwardRef<
   );
 });
 
-/* ================================================================
-   우측 컴팩트 그리드 (모든 학생을 한 화면에)
-================================================================ */
-
 function CompactGrid({
   students,
   spotlightId,
@@ -576,7 +519,6 @@ function CompactGrid({
   highlights: Record<string, Highlight>;
   now: number;
   registerRef: (id: string, el: HTMLDivElement | null) => void;
-  /** 컬럼 수 상한 (모바일에서 카드가 너무 작아지지 않게) */
   maxCols?: number;
 }) {
   const cols = Math.min(colsFor(students.length), maxCols ?? Infinity);
@@ -650,7 +592,6 @@ function CompactCard({
         !isSpotlight && isHarvest ? "!border-[var(--accent-gold-deep)]" : "",
       ].join(" ")}
     >
-      {/* 좌상단 순위 (Top 3 색상) */}
       <div
         className={[
           "absolute top-1 left-1 min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-extrabold flex items-center justify-center tabular-nums border-[1.5px] border-[var(--ink)]",
@@ -666,21 +607,18 @@ function CompactCard({
         {rank}
       </div>
 
-      {/* 우상단 수확 별 */}
       {isHarvest && (
         <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-[var(--accent-gold)] border-[1.5px] border-[var(--ink)] text-[var(--ink)] flex items-center justify-center text-[12px] font-extrabold">
           ★
         </div>
       )}
 
-      {/* +pt 강조 */}
       {isFresh && (
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[var(--accent-success)] border-[1.5px] border-[var(--ink)] text-white text-[11px] font-extrabold animate-pop-in shadow-card">
           {(highlight!.delta > 0 ? "+" : "") + highlight!.delta}
         </div>
       )}
 
-      {/* 사과나무 */}
       <div className="flex-1 flex items-center justify-center w-full pt-3 relative">
         <AppleTree
           stage={stage}
@@ -689,10 +627,9 @@ function CompactCard({
           wilted={isNegative}
           growthBoost={progress}
         />
-        {isPositive && <SprayWater compact />}
+        {isPositive && <SprayWaterTv compact />}
       </div>
 
-      {/* 이름 + pt + 사과 누적 */}
       <div className="text-center w-full">
         <div className="text-[12px] font-extrabold truncate leading-tight">
           {student.name}
@@ -711,7 +648,6 @@ function CompactCard({
   );
 }
 
-// 학생 수에 맞춰 그리드 컬럼 수를 결정 (최대 10열)
 function colsFor(count: number): number {
   if (count <= 6) return 3;
   if (count <= 12) return 4;
@@ -753,40 +689,6 @@ function ProgressBar({
   );
 }
 
-function BurstLines() {
-  const lines = useMemo(
-    () =>
-      Array.from({ length: 8 }).map((_, i) => {
-        const angle = (i / 8) * 360;
-        return { angle, delay: i * 30 };
-      }),
-    [],
-  );
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 overflow-visible"
-    >
-      {lines.map((l, i) => (
-        <div
-          key={i}
-          className="burst-line absolute left-1/2 top-1/2"
-          style={{
-            transform: `translate(-50%, -50%) rotate(${l.angle}deg) translateY(-60px)`,
-            animationDelay: `${l.delay}ms`,
-          }}
-        >
-          <div className="w-[3px] h-[14px] rounded-full bg-[var(--accent-gold)] border border-[var(--ink)]/30" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ================================================================
-   헤더 부품
-================================================================ */
-
 function TitlePill() {
   return (
     <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card">
@@ -820,8 +722,6 @@ function TopStudentPill({
   );
 }
 
-// 헤더의 "오늘 수확 N개" 알약. 비행 사과의 도착점이기도 함 (ref 노출).
-// bump 가 바눌 때마다 살짝 흔들리며 강조.
 const TodayHarvestPill = forwardRef<HTMLDivElement, { count: number; bump: number }>(
   function TodayHarvestPill({ count, bump }, ref) {
     return (
@@ -841,20 +741,13 @@ const TodayHarvestPill = forwardRef<HTMLDivElement, { count: number; bump: numbe
   },
 );
 
-/* ================================================================
-   하단 포인트 적립 기준 바 (placeholder - 양희쌌이 알려주시면 교체)
-================================================================ */
-
-// 더몬스터학원 사과정원 포인트 적립 기준 (양희쌌 기준)
-// 같은 +1 점인 출석/숨제는 한 줄로 묶어 단순화 (4개 항목)
 const CRITERIA: ReadonlyArray<{ label: string; pts: string }> = [
-  { label: "출석·숨제", pts: "+1" },
+  { label: "출석·숙제", pts: "+1" },
   { label: "일일테스트", pts: "+1~4" },
   { label: "단원평가 만점", pts: "+10" },
   { label: "주간·월말", pts: "+2~5" },
 ];
 
-// 한 줄 짜리 미니 정보 바 - 표 형식 제거, 가벍운 구분점만
 function CriteriaBar() {
   return (
     <div className="flex items-center justify-center gap-4 px-4 py-2.5 rounded-full bg-white/85 border-[2px] border-[var(--ink)] backdrop-blur-sm shadow-card text-sm whitespace-nowrap overflow-x-auto">
@@ -874,242 +767,6 @@ function CriteriaBar() {
   );
 }
 
-/* ================================================================
-   분무기 + 미스트 (포인트 적립 시 나무에 물 뿌리기)
-================================================================ */
-
-function SprayWater({ compact = false }: { compact?: boolean }) {
-  // compact=true: 컴팩트 카드용 (작게), false: 스포트라이트용 (크게)
-  const particleCount = compact ? 8 : 16;
-  // 분무기 노즘 위치 (우상단). 미스트는 여기서 좌하단 부채꿴로 뿜겨져 나옴
-  const bottlePx = compact ? 28 : 56;
-  // 미스트 부채꾴 범위 (좌하단으로 -130도 ~ -200도)
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 overflow-visible z-30"
-    >
-      {/* 분무기 SVG (우상단) */}
-      <div
-        className="absolute spray-wiggle"
-        style={{
-          top: compact ? 0 : 6,
-          right: compact ? -2 : 12,
-          width: bottlePx,
-          height: bottlePx,
-        }}
-      >
-        <SprayBottleSVG />
-      </div>
-
-      {/* 미스트 입자들 (분무기 노즘에서 좌하단 부채꾴로) */}
-      {Array.from({ length: particleCount }).map((_, i) => {
-        // 노즘 화면상 좌표 (분무기 좌상단 코너 근처)
-        const nozzleTop = compact ? 6 : 14;
-        const nozzleRight = compact ? 16 : 38;
-        // 부채꾴 각도: -160도 ~ -200도 (좌하단 방향)
-        const angleDeg = -160 - (i / particleCount) * 80 + ((i * 13) % 7) * 2;
-        const angleRad = (angleDeg * Math.PI) / 180;
-        const distance = (compact ? 26 : 60) + ((i * 7) % 11) * 2;
-        const dx = Math.cos(angleRad) * distance;
-        const dy = -Math.sin(angleRad) * distance; // 화면 y 는 아래로
-        const delay = i * 35;
-        const dotSize = compact ? 3.5 : 6;
-        return (
-          <div
-            key={i}
-            className="spray-mist absolute rounded-full"
-            style={{
-              top: nozzleTop,
-              right: nozzleRight,
-              width: dotSize,
-              height: dotSize,
-              background: "#7fc6e8",
-              border: "1.2px solid var(--ink)",
-              opacity: 0,
-              animationDelay: `${delay}ms`,
-              ["--spray-x" as string]: `${dx}px`,
-              ["--spray-y" as string]: `${dy}px`,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function SprayBottleSVG() {
-  // 단순 분무기: 본체 + 노즘 + 트리거
-  return (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
-      <defs>
-        <linearGradient id="bottle-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#a8e0ff" />
-          <stop offset="100%" stopColor="#5cb8e8" />
-        </linearGradient>
-      </defs>
-      {/* 본체 (라운드 사각형) */}
-      <rect
-        x="36"
-        y="40"
-        width="44"
-        height="48"
-        rx="6"
-        fill="url(#bottle-grad)"
-        stroke="var(--ink)"
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      {/* 라벨 */}
-      <rect x="42" y="56" width="32" height="18" rx="2" fill="#fff" stroke="var(--ink)" strokeWidth="1.6" />
-      <line x1="46" y1="61" x2="70" y2="61" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="46" y1="65" x2="66" y2="65" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="46" y1="69" x2="68" y2="69" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      {/* 목 */}
-      <rect x="46" y="32" width="20" height="10" fill="#5cb8e8" stroke="var(--ink)" strokeWidth="2.5" />
-      {/* 트리거 손잡이 */}
-      <path
-        d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z"
-        fill="#7fc6e8"
-        stroke="var(--ink)"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-      {/* 노즘 (좌상단) */}
-      <path
-        d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z"
-        fill="#5cb8e8"
-        stroke="var(--ink)"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-      {/* 노즘 입구 점 */}
-      <circle cx="13" cy="26" r="1.4" fill="var(--ink)" />
-    </svg>
-  );
-}
-
-/* ================================================================
-   수확 바구니 (우하단 고정) + 비행 사과
-================================================================ */
-
-// 우하단 큰 바구니. 사과가 도착하면 살짝 튀어오르며 카운트가 +1 됨.
-const HarvestBasket = forwardRef<HTMLDivElement, { count: number; bumpKey: number }>(
-  function HarvestBasket({ count, bumpKey }, ref) {
-    return (
-      <motion.div
-        ref={ref}
-        animate={{ rotate: bumpKey > 0 ? [0, -3, 3, 0] : 0, y: bumpKey > 0 ? [0, -6, 0] : 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        // 기준 바(우측 컬럼 하단) 의 우측 빈 칸 위로 떠있게 배치
-        className="fixed bottom-3 right-6 z-30 pointer-events-none select-none"
-      >
-        <div className="relative">
-          <BasketSVG />
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-[var(--ink)] border-[2.5px] border-[var(--ink)] text-[var(--accent-gold)] text-base font-extrabold shadow-card-pop tabular-nums whitespace-nowrap">
-            🍎 {count}
-          </div>
-        </div>
-      </motion.div>
-    );
-  },
-);
-
-function BasketSVG() {
-  return (
-    <svg
-      viewBox="0 0 200 160"
-      width={140}
-      height={112}
-      role="img"
-      aria-label="수확 바구니"
-    >
-      <defs>
-        <linearGradient id="basket-side" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#c9924f" />
-          <stop offset="100%" stopColor="#8a5a26" />
-        </linearGradient>
-        <linearGradient id="basket-rim" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#d8a868" />
-          <stop offset="100%" stopColor="#a4753a" />
-        </linearGradient>
-      </defs>
-
-      {/* 그림자 */}
-      <ellipse cx="100" cy="148" rx="78" ry="6" fill="var(--ink)" opacity="0.18" />
-
-      {/* 바구니 본체 (사다리꼴) */}
-      <path
-        d="M 26 60 L 174 60 L 162 142 L 38 142 Z"
-        fill="url(#basket-side)"
-        stroke="var(--ink)"
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      {/* 바구니 위빙 라인 */}
-      {[78, 96, 114, 132].map((y) => (
-        <path
-          key={y}
-          d={`M ${30 + (y - 60) * 0.18} ${y} L ${170 - (y - 60) * 0.18} ${y}`}
-          stroke="var(--ink)"
-          strokeWidth="1.5"
-          opacity="0.45"
-        />
-      ))}
-      {[60, 90, 120, 150].map((x) => (
-        <path
-          key={x}
-          d={`M ${x} 60 L ${x - 6} 142`}
-          stroke="var(--ink)"
-          strokeWidth="1.5"
-          opacity="0.35"
-        />
-      ))}
-      {/* 위쪽 가장자리 림 */}
-      <ellipse
-        cx="100"
-        cy="60"
-        rx="76"
-        ry="12"
-        fill="url(#basket-rim)"
-        stroke="var(--ink)"
-        strokeWidth="3"
-      />
-      <ellipse cx="100" cy="58" rx="68" ry="7" fill="#5a3a1a" opacity="0.55" />
-
-      {/* 안쪽 사과 더미 (장식) */}
-      <g>
-        <circle cx="78" cy="56" r="9" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
-        <circle cx="76" cy="54" r="2.5" fill="#fff" opacity="0.7" />
-        <circle cx="100" cy="50" r="11" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
-        <circle cx="97" cy="47" r="3" fill="#fff" opacity="0.8" />
-        <circle cx="124" cy="55" r="9" fill="var(--apple-base)" stroke="var(--ink)" strokeWidth="2" />
-        <circle cx="122" cy="53" r="2.5" fill="#fff" opacity="0.7" />
-      </g>
-
-      {/* 손잡이 */}
-      <path
-        d="M 30 60 Q 100 -30 170 60"
-        fill="none"
-        stroke="url(#basket-rim)"
-        strokeWidth="9"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 30 60 Q 100 -30 170 60"
-        fill="none"
-        stroke="var(--ink)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        opacity="0.85"
-      />
-    </svg>
-  );
-}
-
-// 사과가 캐노피 → 바닥(후두두) → 바구니로 3-페이즈로 이동.
-// 각 사과는 fa.delay (0..700ms) 만큼 늦게 시작해 "후두두" 효과를 낸다.
-// times 0..0.57: 떨어지기 (2s, gravity), 0.57..1: 바구니로 비행 (1.5s)
 function FlyingAppleNode({
   fa,
   onArrive,
@@ -1177,12 +834,6 @@ function FlyingAppleSVG() {
   );
 }
 
-/* ================================================================
-   관리자 페이지 진입 버튼 (우하단 고정, 반투명·연한 톤)
-   - 평소어 거의 투명 → 마우스/포커스 시 또렷해짐
-   - /admin 라우트는 비밀번호로 보호되어 있으므로 단순 이동만 담당
-================================================================ */
-
 function AdminLink() {
   return (
     <Link
@@ -1208,10 +859,6 @@ function AdminLink() {
   );
 }
 
-/* ================================================================
-   배경 데코
-================================================================ */
-
 function DecorDots() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
@@ -1223,10 +870,6 @@ function DecorDots() {
     </div>
   );
 }
-
-/* ================================================================
-   단계업 배너 (모달형)
-================================================================ */
 
 function StageUpBanner({ banner }: { banner: Banner }) {
   const isHarvest = banner.stage === 8;
@@ -1240,7 +883,6 @@ function StageUpBanner({ banner }: { banner: Banner }) {
       transition={{ duration: 0.4 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-10 pointer-events-none"
     >
-      {/* 살짝 어둡게 + blur */}
       <div className="absolute inset-0 bg-[var(--ink)]/30 backdrop-blur-[2px]" />
 
       <motion.div
@@ -1284,15 +926,6 @@ function StageUpBanner({ banner }: { banner: Banner }) {
   );
 }
 
-/* ================================================================
-   유틸
-================================================================ */
-
-// 수확 시퀀스용 사과 생성:
-// - 시작: 스포트라이트 캐노피 위쪽
-// - 중간: 화분/바닥 근처 (떨어진 상태)
-// - 도착: 바구니
-// 사과마다 0~700ms 시간차로 떨어져 "후두두" 효과
 function buildFallingApples(
   count: number,
   spotlightEl: HTMLDivElement | null,
@@ -1302,9 +935,7 @@ function buildFallingApples(
   const sRect = spotlightEl.getBoundingClientRect();
   const bRect = basketEl.getBoundingClientRect();
   const treeCenterX = sRect.left + sRect.width / 2;
-  // 캐노피 영역 (스포트라이트 상단 25-50% 영역에 사과들이 흔어져 있다고 가정)
   const treeTop = sRect.top + sRect.height * 0.32;
-  // 화분 근처 (스포트라이트 하단 80% 즐음)
   const groundY = sRect.top + sRect.height * 0.78;
   const basketX = bRect.left + bRect.width / 2;
   const basketY = bRect.top + bRect.height * 0.32;
@@ -1320,42 +951,9 @@ function buildFallingApples(
       groundY: groundY + (Math.random() - 0.5) * 14,
       basketX: basketX + (Math.random() - 0.5) * bRect.width * 0.55,
       basketY: basketY + (Math.random() - 0.5) * 8,
-      delay: i * 110, // 사과들이 시간차로
+      delay: i * 110,
     };
   });
-}
-
-function fireConfetti(harvest: boolean) {
-  const colors = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
-  if (harvest) {
-    // 수확: 화면 양쪽에서 풍성하게
-    const end = Date.now() + 2_500;
-    const tick = () => {
-      confetti({
-        particleCount: 5,
-        angle: 60,
-        spread: 65,
-        origin: { x: 0, y: 0.7 },
-        colors,
-      });
-      confetti({
-        particleCount: 5,
-        angle: 120,
-        spread: 65,
-        origin: { x: 1, y: 0.7 },
-        colors,
-      });
-      if (Date.now() < end) requestAnimationFrame(tick);
-    };
-    tick();
-  } else {
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors,
-    });
-  }
 }
 
 function EmptyState() {

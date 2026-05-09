@@ -3,17 +3,8 @@
 // /tree/me 클라이언트 렌더러.
 // 초기 데이터는 서버에서 SSR 으로 주입하고,
 // 이후 Realtime 구독으로 점수/단계/사과/대기열 변화를 반영한다.
-//
-// Phase 1~4 + Claim flow + WOW 효과:
-// - 받기 버튼 클릭 시 optimistic update 로 카드 즉시 제거 (Realtime DELETE 안 와도 OK)
-// - 큰 분무기 + 많은 미스트
-// - 큰 "+5 P" 텍스트가 위로 떠오르며 사라짐 (게임 인디케이터)
-// - 글로우 링이 나무 뒤로 퍼져 나감
-// - 물방울 컨페티 샤워
-// - 나무 흔들림
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import confetti from "canvas-confetti";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import {
   STAGE_TABLE,
@@ -24,6 +15,8 @@ import {
 } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { STAGE_ACCENT } from "@/features/garden/stage-accent";
+import { SprayWaterMe } from "@/features/garden/effects/SprayWater";
+import { fireConfetti, firePtCelebration } from "@/features/garden/effects/confetti";
 import { claimPointAction } from "./actions";
 
 type Row = {
@@ -45,7 +38,7 @@ type Highlight = { id: string; delta: number; reason: string | null; expiresAt: 
 const TOAST_MS = 3500;
 const STAGE_UP_BANNER_MS = 4500;
 const HARVEST_BANNER_MS = 5000;
-const HIGHLIGHT_MS = 2400; // pt-float 애니메이션과 맞춤
+const HIGHLIGHT_MS = 2400;
 
 type Milestone = { key: string; emoji: string; name: string; achieved: boolean };
 
@@ -116,59 +109,6 @@ function formatRelative(iso: string, now: Date): string {
   return `${m}/${dd}`;
 }
 
-function fireConfetti(harvest: boolean) {
-  const colors = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
-  if (harvest) {
-    const end = Date.now() + 2_500;
-    const tick = () => {
-      confetti({ particleCount: 5, angle: 60, spread: 65, origin: { x: 0, y: 0.7 }, colors });
-      confetti({ particleCount: 5, angle: 120, spread: 65, origin: { x: 1, y: 0.7 }, colors });
-      if (Date.now() < end) requestAnimationFrame(tick);
-    };
-    tick();
-  } else {
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.55 }, colors });
-  }
-}
-
-// +pt 이벤트 시 화려한 물방울 + 잎사귀 컨페티 샤워.
-// 화면 중앙 위쪽에서 두 번 burst 해서 파티클이 아래로 내려오며 흩어짐.
-function firePtCelebration() {
-  const waterColors = ["#7fc6e8", "#5cb8e8", "#a8e0ff", "#c8eba0", "#a8e070", "#ffffff"];
-  // 1차: 화면 위쪽 중앙에서 큰 burst (워터 + 잎사귀)
-  confetti({
-    particleCount: 120,
-    spread: 110,
-    startVelocity: 38,
-    origin: { x: 0.5, y: 0.25 },
-    colors: waterColors,
-    scalar: 1.3,
-    gravity: 0.9,
-    ticks: 220,
-  });
-  // 2차: 살짝 늦게 좌우에서 추가 burst
-  setTimeout(() => {
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      startVelocity: 35,
-      angle: 60,
-      origin: { x: 0.1, y: 0.4 },
-      colors: waterColors,
-      scalar: 1.1,
-    });
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      startVelocity: 35,
-      angle: 120,
-      origin: { x: 0.9, y: 0.4 },
-      colors: waterColors,
-      scalar: 1.1,
-    });
-  }, 180);
-}
-
 export function MeTreeClient({
   initialRow,
   studentName,
@@ -191,7 +131,6 @@ export function MeTreeClient({
   const [pending, setPending] = useState<PendingClaim[]>(initialPending);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
-  // 트리 흔들림 트리거 (값이 바뀔 때마다 className key 가 바뀌어 재실행)
   const [shakeKey, setShakeKey] = useState(0);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
@@ -201,7 +140,6 @@ export function MeTreeClient({
     return () => clearInterval(t);
   }, []);
 
-  // Realtime 구독
   useEffect(() => {
     if (!initialRow) return;
     const sb = createSupabaseBrowserClient();
@@ -221,7 +159,7 @@ export function MeTreeClient({
             const stInfo = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
             const isHarvestUp = newStage === 8;
             setStageUp({ id: `${Date.now()}`, stage: newStage, name: stInfo.name, isHarvest: isHarvestUp });
-            fireConfetti(isHarvestUp);
+            fireConfetti(isHarvestUp, 0.55);
           }
           prevStageRef.current = newStage;
           setRow((prev) => ({
@@ -240,16 +178,12 @@ export function MeTreeClient({
           const log = payload.new as PointLog;
           if (!log) return;
           const id = `${log.id}-${Date.now()}`;
-          // 토스트
           setToasts((prev) => [...prev, { id, points: log.points, reason: log.reason }]);
           window.setTimeout(() => {
             setToasts((prev) => prev.filter((t) => t.id !== id));
           }, TOAST_MS);
-          // 나무 반응 (분무기 + DeltaChip + glow ring)
           setHighlight({ id, delta: log.points, reason: log.reason, expiresAt: Date.now() + HIGHLIGHT_MS });
-          // 나무 흔들림
           setShakeKey((k) => k + 1);
-          // 화려한 물방울 컨페티 (양수일 때만)
           if (log.points > 0) firePtCelebration();
         },
       )
@@ -260,7 +194,7 @@ export function MeTreeClient({
           const h = payload.new as { apples_count: number; id: string };
           if (!h) return;
           setHarvestBanner({ id: `${h.id}-${Date.now()}`, applesCount: h.apples_count });
-          fireConfetti(true);
+          fireConfetti(true, 0.55);
         },
       )
       .on(
@@ -320,9 +254,6 @@ export function MeTreeClient({
     }
   }, [pending, claimingId]);
 
-  // 받기 클릭: optimistic update — 성공 시 즉시 pending 제거 + claimingId 초기화.
-  // Realtime DELETE 가 안 와도 (REPLICA IDENTITY DEFAULT 인 경우) 이 학생 탭은 정상 동작.
-  // 다른 탭 동기화는 0008 마이그레이션(REPLICA IDENTITY FULL) 이후 동작.
   const onClaim = async (pendingId: string) => {
     if (claimingId) return;
     setClaimingId(pendingId);
@@ -335,7 +266,6 @@ export function MeTreeClient({
         window.setTimeout(() => setClaimError(null), 5000);
         return;
       }
-      // 성공: 로컬 상태에서 즉시 제거 + claimingId 해제
       setPending((prev) => prev.filter((p) => p.id !== pendingId));
       setClaimingId(null);
     } catch (e) {
@@ -490,12 +420,9 @@ export function MeTreeClient({
               )}
             </div>
 
-            {/* 나무 영역 */}
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", margin: "8px 0 12px" }}>
               <div style={{ position: "relative", display: "inline-block" }}>
-                {/* 글로우 링 — +pt 시 나무 뒤에서 동심원이 퍼져 나감 */}
                 {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
-                {/* 나무 (key 가 shakeKey 일 때마다 흔들림 재시작) */}
                 <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                   <AppleTree
                     stage={stage}
@@ -505,9 +432,7 @@ export function MeTreeClient({
                     growthBoost={progress}
                   />
                 </div>
-                {/* 분무기 + 미스트 */}
-                {isPositive && <SprayWater />}
-                {/* 큰 +N P 텍스트가 위로 떠오름 */}
+                {isPositive && <SprayWaterMe />}
                 {isFresh && highlight && (
                   <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                 )}
@@ -671,10 +596,6 @@ export function MeTreeClient({
   );
 }
 
-/* ================================================================
-   받기 버튼 섹션
-================================================================ */
-
 function PendingClaimSection({
   pending,
   claimingId,
@@ -834,10 +755,6 @@ function PendingClaimCard({
   );
 }
 
-/* ================================================================
-   나무 반응 효과 — 큰 분무기 + 큰 점수 + 글로우 링
-================================================================ */
-
 function AnimatedStat({
   label,
   value,
@@ -899,7 +816,6 @@ function AnimatedStat({
   );
 }
 
-// 큰 "+N P" 가 나무 위쪽 중앙에서 떠오르며 페이드아웃 (게임 인디케이터 스타일)
 function PtFloat({ delta, reason }: { delta: number; reason: string | null }) {
   const isPositive = delta > 0;
   return (
@@ -955,7 +871,6 @@ function PtFloat({ delta, reason }: { delta: number; reason: string | null }) {
   );
 }
 
-// 글로우 링 — 동심원이 나무 뒤에서 퍼져 나감 (3개 ring 시간차)
 function GlowRing() {
   return (
     <div
@@ -987,84 +902,6 @@ function GlowRing() {
     </div>
   );
 }
-
-// 더 크고 임팩트 있는 분무기. 90px 본체, 28개 미스트 입자, 더 넓은 분사.
-function SprayWater() {
-  const particleCount = 28;
-  const bottlePx = 90;
-  return (
-    <div
-      aria-hidden
-      style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "visible", zIndex: 4 }}
-    >
-      <div
-        className="spray-wiggle"
-        style={{ position: "absolute", top: -4, right: -8, width: bottlePx, height: bottlePx, filter: "drop-shadow(0 6px 12px rgba(61,40,24,0.30))" }}
-      >
-        <SprayBottleSVG />
-      </div>
-      {Array.from({ length: particleCount }).map((_, i) => {
-        const nozzleTop = 14;
-        const nozzleRight = 60;
-        // 부채꼴: -150 ~ -210 도 (좌하단)
-        const angleDeg = -150 - (i / particleCount) * 90 + ((i * 17) % 11) * 1.5;
-        const angleRad = (angleDeg * Math.PI) / 180;
-        const distance = 100 + ((i * 11) % 13) * 6;
-        const dx = Math.cos(angleRad) * distance;
-        const dy = -Math.sin(angleRad) * distance;
-        const delay = i * 28;
-        const dotSize = 6 + ((i * 7) % 5);
-        return (
-          <div
-            key={i}
-            className="spray-mist"
-            style={{
-              position: "absolute",
-              top: nozzleTop,
-              right: nozzleRight,
-              width: dotSize,
-              height: dotSize,
-              borderRadius: 999,
-              background: i % 4 === 0 ? "#a8e0ff" : "#7fc6e8",
-              border: "1.5px solid #3d2818",
-              opacity: 0,
-              animationDelay: `${delay}ms`,
-              ["--spray-x" as string]: `${dx}px`,
-              ["--spray-y" as string]: `${dy}px`,
-              boxShadow: "0 2px 4px rgba(61,40,24,0.25)",
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function SprayBottleSVG() {
-  return (
-    <svg viewBox="0 0 100 100" width="100%" height="100%">
-      <defs>
-        <linearGradient id="me-bottle-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#a8e0ff" />
-          <stop offset="100%" stopColor="#5cb8e8" />
-        </linearGradient>
-      </defs>
-      <rect x="36" y="40" width="44" height="48" rx="6" fill="url(#me-bottle-grad)" stroke="#3d2818" strokeWidth="3" strokeLinejoin="round" />
-      <rect x="42" y="56" width="32" height="18" rx="2" fill="#fff" stroke="#3d2818" strokeWidth="1.6" />
-      <line x1="46" y1="61" x2="70" y2="61" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="46" y1="65" x2="66" y2="65" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="46" y1="69" x2="68" y2="69" stroke="#5cb8e8" strokeWidth="1.4" strokeLinecap="round" />
-      <rect x="46" y="32" width="20" height="10" fill="#5cb8e8" stroke="#3d2818" strokeWidth="2.5" />
-      <path d="M 36 44 L 24 44 L 22 56 L 30 56 L 34 50 Z" fill="#7fc6e8" stroke="#3d2818" strokeWidth="2.5" strokeLinejoin="round" />
-      <path d="M 46 32 L 46 22 L 18 22 L 12 26 L 18 30 L 46 30 Z" fill="#5cb8e8" stroke="#3d2818" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx="13" cy="26" r="1.4" fill="#3d2818" />
-    </svg>
-  );
-}
-
-/* ================================================================
-   Toast / StageUpModal / HarvestModal
-================================================================ */
 
 function ToastCard({ toast }: { toast: Toast }) {
   const isPositive = toast.points >= 0;
@@ -1260,10 +1097,6 @@ function HarvestModal({
     </div>
   );
 }
-
-/* ================================================================
-   기존 부품들
-================================================================ */
 
 function EncouragementCard({
   text,
