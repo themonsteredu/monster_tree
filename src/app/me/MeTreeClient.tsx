@@ -8,8 +8,10 @@
 // Phase 1: 시각적 풍부 — AppleTree SVG, 단계별 액센트, 단계 배지, 수확 배지.
 // Phase 2: 정보 풍부 — 이번 주/이번 달 통계, 최근 활동 타임라인, 수확 히스토리.
 // Phase 3: 동기부여 — 격려 멘트, 다음 단계 미리보기, 마일스톤 뱃지.
+// Phase 4: 인터랙션 — 실시간 +pt 토스트, 단계업 컨페티/배너, 수확 가능 펄스, 수확 배너.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import confetti from "canvas-confetti";
 import { AppleTree } from "@/components/AppleTree";
 import {
   STAGE_TABLE,
@@ -40,6 +42,28 @@ type Harvest = {
   apples_count: number;
   harvested_at: string;
 };
+
+type Toast = {
+  id: string;
+  points: number;
+  reason: string | null;
+};
+
+type StageUpBanner = {
+  id: string;
+  stage: number;
+  name: string;
+  isHarvest: boolean;
+};
+
+type HarvestBanner = {
+  id: string;
+  applesCount: number;
+};
+
+const TOAST_MS = 3500;
+const STAGE_UP_BANNER_MS = 4500;
+const HARVEST_BANNER_MS = 5000;
 
 const STAGE_ACCENT: Record<
   number,
@@ -118,7 +142,6 @@ const STAGE_ACCENT: Record<
   },
 };
 
-// 마일스톤 정의: 단계별 + 수확 카운트 별
 type Milestone = {
   key: string;
   emoji: string;
@@ -132,7 +155,7 @@ function buildMilestones(maxStageEver: number, applesHarvested: number): Milesto
     { key: "s3", emoji: "🌿", name: "새싹", achieved: maxStageEver >= 3 },
     { key: "s4", emoji: "🌳", name: "어린나무", achieved: maxStageEver >= 4 },
     { key: "s5", emoji: "🌳", name: "큰나무", achieved: maxStageEver >= 5 },
-    { key: "s6", emoji: "🌸", name: "꽃피움", achieved: maxStageEver >= 7 || maxStageEver === 6 },
+    { key: "s6", emoji: "🌸", name: "꽃피움", achieved: maxStageEver >= 6 },
     { key: "s7", emoji: "🍎", name: "열매", achieved: maxStageEver >= 7 },
     { key: "h1", emoji: "🏆", name: "첫 수확", achieved: applesHarvested >= 1 },
     { key: "h5", emoji: "🥇", name: "사과왕", achieved: applesHarvested >= 5 },
@@ -140,7 +163,6 @@ function buildMilestones(maxStageEver: number, applesHarvested: number): Milesto
   ];
 }
 
-// 격려 멘트 — 우선순위 순서대로 첫 매치 사용
 function pickEncouragement(args: {
   isHarvest: boolean;
   applesHarvested: number;
@@ -215,6 +237,38 @@ function formatRelative(iso: string, now: Date): string {
   return `${m}/${dd}`;
 }
 
+function fireConfetti(harvest: boolean) {
+  const colors = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
+  if (harvest) {
+    const end = Date.now() + 2_500;
+    const tick = () => {
+      confetti({
+        particleCount: 5,
+        angle: 60,
+        spread: 65,
+        origin: { x: 0, y: 0.7 },
+        colors,
+      });
+      confetti({
+        particleCount: 5,
+        angle: 120,
+        spread: 65,
+        origin: { x: 1, y: 0.7 },
+        colors,
+      });
+      if (Date.now() < end) requestAnimationFrame(tick);
+    };
+    tick();
+  } else {
+    confetti({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.55 },
+      colors,
+    });
+  }
+}
+
 export function MeTreeClient({
   initialRow,
   studentName,
@@ -228,6 +282,12 @@ export function MeTreeClient({
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
+  // 실시간 인터랙션 상태
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [stageUp, setStageUp] = useState<StageUpBanner | null>(null);
+  const [harvestBanner, setHarvestBanner] = useState<HarvestBanner | null>(null);
+  // 단계 변화 감지용 (단계 증가 시 컨페티 + 배너)
+  const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   useEffect(() => {
     setNow(new Date());
@@ -235,13 +295,15 @@ export function MeTreeClient({
     return () => clearInterval(t);
   }, []);
 
+  // Realtime 구독
   useEffect(() => {
     if (!initialRow) return;
     const sb = createSupabaseBrowserClient();
     if (!sb) return;
 
     const channel = sb
-      .channel(`garden_students:me:${initialRow.id}`)
+      .channel(`me:${initialRow.id}`)
+      // 본인 행 갱신 (포인트/단계/사과 수)
       .on(
         "postgres_changes",
         {
@@ -253,14 +315,72 @@ export function MeTreeClient({
         (payload) => {
           const next = payload.new as Partial<Row> | null;
           if (!next) return;
+          // 단계 상승 감지 → 컨페티 + 배너 (수확 후 5단계로 떨어지는 건 무시)
+          const prevStage = prevStageRef.current;
+          const newStage = next.current_stage ?? prevStage;
+          if (newStage > prevStage) {
+            const info = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
+            const isHarvest = newStage === 8;
+            setStageUp({
+              id: `${Date.now()}`,
+              stage: newStage,
+              name: info.name,
+              isHarvest,
+            });
+            fireConfetti(isHarvest);
+          }
+          prevStageRef.current = newStage;
+
           setRow((prev) => ({
             id: initialRow.id,
             total_points: next.total_points ?? prev?.total_points ?? 0,
-            current_stage: next.current_stage ?? prev?.current_stage ?? 1,
+            current_stage: newStage,
             apples_harvested:
               next.apples_harvested ?? prev?.apples_harvested ?? 0,
             grade: next.grade ?? prev?.grade ?? null,
           }));
+        },
+      )
+      // 본인 포인트 적립/차감 로그 → 토스트
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "garden_point_logs",
+          filter: `student_id=eq.${initialRow.id}`,
+        },
+        (payload) => {
+          const log = payload.new as PointLog;
+          if (!log) return;
+          const id = `${log.id}-${Date.now()}`;
+          setToasts((prev) => [
+            ...prev,
+            { id, points: log.points, reason: log.reason },
+          ]);
+          // 자동 dismiss
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((t) => t.id !== id));
+          }, TOAST_MS);
+        },
+      )
+      // 본인 수확 기록 → 수확 배너
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "garden_harvests",
+          filter: `student_id=eq.${initialRow.id}`,
+        },
+        (payload) => {
+          const h = payload.new as { apples_count: number; id: string };
+          if (!h) return;
+          setHarvestBanner({
+            id: `${h.id}-${Date.now()}`,
+            applesCount: h.apples_count,
+          });
+          fireConfetti(true);
         },
       )
       .subscribe();
@@ -270,6 +390,26 @@ export function MeTreeClient({
     };
   }, [initialRow]);
 
+  // 단계 상승 배너 자동 dismiss
+  useEffect(() => {
+    if (!stageUp) return;
+    const id = stageUp.id;
+    const t = window.setTimeout(() => {
+      setStageUp((cur) => (cur?.id === id ? null : cur));
+    }, STAGE_UP_BANNER_MS);
+    return () => clearTimeout(t);
+  }, [stageUp]);
+
+  // 수확 배너 자동 dismiss
+  useEffect(() => {
+    if (!harvestBanner) return;
+    const id = harvestBanner.id;
+    const t = window.setTimeout(() => {
+      setHarvestBanner((cur) => (cur?.id === id ? null : cur));
+    }, HARVEST_BANNER_MS);
+    return () => clearTimeout(t);
+  }, [harvestBanner]);
+
   const points = row?.total_points ?? 0;
   const stage = calculateStage(points);
   const info = getStageInfo(stage);
@@ -278,11 +418,8 @@ export function MeTreeClient({
   const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
   const isHarvest = stage === 8;
   const applesHarvested = row?.apples_harvested ?? 0;
-
-  // 한 번이라도 8단계를 도달했다면 max stage = 8 (수확 후 5단계로 내려와 있어도)
   const maxStageEver = applesHarvested > 0 ? 8 : stage;
 
-  // 다음 단계 정보
   const nextStage = stage < 8 ? ((stage + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) : null;
   const nextInfo = nextStage ? getStageInfo(nextStage) : null;
   const nextAccent = nextStage ? STAGE_ACCENT[nextStage] : null;
@@ -390,7 +527,7 @@ export function MeTreeClient({
           </div>
         ) : (
           <>
-            {/* 단계 배지 + 수확 가능 배지 */}
+            {/* 단계 배지 + 수확 가능 배지 (8단계는 펄스 애니메이션) */}
             <div
               style={{
                 display: "flex",
@@ -422,6 +559,7 @@ export function MeTreeClient({
               </span>
               {isHarvest && (
                 <span
+                  className="harvest-pulse"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -433,7 +571,6 @@ export function MeTreeClient({
                     fontSize: 13,
                     fontWeight: 800,
                     border: "2px solid #3d2818",
-                    boxShadow: "0 4px 12px rgba(232,160,32,0.45)",
                   }}
                 >
                   ★ 수확 가능!
@@ -473,7 +610,7 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 통계 카드 - 4개 그리드 */}
+            {/* 통계 카드 */}
             <div
               style={{
                 display: "grid",
@@ -482,11 +619,7 @@ export function MeTreeClient({
                 marginBottom: 14,
               }}
             >
-              <Stat
-                label="누적 포인트"
-                value={`${points} P`}
-                tone="primary"
-              />
+              <Stat label="누적 포인트" value={`${points} P`} tone="primary" />
               <Stat
                 label="수확한 사과"
                 value={`${applesHarvested}개`}
@@ -632,9 +765,299 @@ export function MeTreeClient({
           </a>
         </div>
       </div>
+
+      {/* 토스트 스택 (하단 가운데) */}
+      <div
+        aria-live="polite"
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 24,
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "column-reverse",
+          gap: 8,
+          zIndex: 50,
+          pointerEvents: "none",
+        }}
+      >
+        {toasts.map((t) => (
+          <ToastCard key={t.id} toast={t} />
+        ))}
+      </div>
+
+      {/* 단계 상승 배너 */}
+      {stageUp && (
+        <StageUpModal
+          stage={stageUp.stage}
+          name={stageUp.name}
+          isHarvest={stageUp.isHarvest}
+          studentName={studentName}
+          onClose={() => setStageUp(null)}
+        />
+      )}
+
+      {/* 수확 배너 */}
+      {harvestBanner && (
+        <HarvestModal
+          applesCount={harvestBanner.applesCount}
+          studentName={studentName}
+          onClose={() => setHarvestBanner(null)}
+        />
+      )}
     </main>
   );
 }
+
+/* ================================================================
+   Phase 4: Toast / StageUpModal / HarvestModal
+================================================================ */
+
+function ToastCard({ toast }: { toast: Toast }) {
+  const isPositive = toast.points >= 0;
+  return (
+    <div
+      className="toast-in"
+      style={{
+        background: isPositive ? "#5e9c38" : "#b04020",
+        color: "#fff",
+        padding: "10px 16px",
+        borderRadius: 999,
+        fontSize: 14,
+        fontWeight: 800,
+        boxShadow: "0 8px 20px rgba(61,40,24,0.25)",
+        border: "2px solid #3d2818",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        whiteSpace: "nowrap",
+        maxWidth: "calc(100vw - 40px)",
+      }}
+    >
+      <span style={{ fontSize: 16 }}>{isPositive ? "✨" : "⚠️"}</span>
+      <span style={{ fontVariantNumeric: "tabular-nums" }}>
+        {isPositive ? "+" : ""}
+        {toast.points} P
+      </span>
+      {toast.reason && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span
+            style={{
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {toast.reason}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StageUpModal({
+  stage,
+  name,
+  isHarvest,
+  studentName,
+  onClose,
+}: {
+  stage: number;
+  name: string;
+  isHarvest: boolean;
+  studentName: string;
+  onClose: () => void;
+}) {
+  const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(61,40,24,0.35)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 100,
+        cursor: "pointer",
+      }}
+    >
+      <div
+        className="banner-pop"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: isHarvest
+            ? "linear-gradient(180deg, #fff5d6 0%, #f0c050 100%)"
+            : "linear-gradient(180deg, #fff 0%, #fff5d6 100%)",
+          border: `3px solid ${isHarvest ? "#e8a020" : "#3d2818"}`,
+          borderRadius: 28,
+          padding: "32px 28px",
+          textAlign: "center",
+          maxWidth: 360,
+          boxShadow: "0 20px 60px rgba(61,40,24,0.35)",
+          cursor: "default",
+        }}
+      >
+        <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 8 }}>
+          {isHarvest ? "🎉" : accent.emoji}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            color: "#8a6f52",
+            fontWeight: 700,
+            marginBottom: 4,
+          }}
+        >
+          축하해요!
+        </div>
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 800,
+            color: "#3d2818",
+            marginBottom: 8,
+          }}
+        >
+          {studentName} 학생
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 800,
+            color: "#3d2818",
+          }}
+        >
+          {isHarvest ? (
+            <>
+              사과를 <span style={{ color: "#b02020" }}>수확</span>할 수 있어요!
+            </>
+          ) : (
+            <>
+              <span style={{ color: "#4a8030" }}>{name}</span> 단계로 성장!
+            </>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 18,
+            padding: "8px 20px",
+            borderRadius: 999,
+            background: "#3d2818",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HarvestModal({
+  applesCount,
+  studentName,
+  onClose,
+}: {
+  applesCount: number;
+  studentName: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(61,40,24,0.35)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 100,
+        cursor: "pointer",
+      }}
+    >
+      <div
+        className="banner-pop"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "linear-gradient(180deg, #fff5d6 0%, #f7d878 100%)",
+          border: "3px solid #e8a020",
+          borderRadius: 28,
+          padding: "32px 28px",
+          textAlign: "center",
+          maxWidth: 360,
+          boxShadow: "0 20px 60px rgba(61,40,24,0.35)",
+          cursor: "default",
+        }}
+      >
+        <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 8 }}>🍎</div>
+        <div
+          style={{
+            fontSize: 14,
+            color: "#8a6f52",
+            fontWeight: 700,
+            marginBottom: 4,
+          }}
+        >
+          수확 완료!
+        </div>
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 800,
+            color: "#3d2818",
+            marginBottom: 8,
+          }}
+        >
+          {studentName} 학생
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 800,
+            color: "#3d2818",
+          }}
+        >
+          사과 <span style={{ color: "#b02020" }}>{applesCount}개</span> 를
+          수확했어요!
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 18,
+            padding: "8px 20px",
+            borderRadius: 999,
+            background: "#3d2818",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   기존 Phase 1~3 부품들
+================================================================ */
 
 function EncouragementCard({
   text,
