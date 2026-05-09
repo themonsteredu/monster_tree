@@ -2,7 +2,7 @@
 
 // TV 화면 (1920×1080 풀스크린 가로 모드 가정)
 //
-// Realtime:
+// Realtime (useTvRealtime 훅):
 // - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
 // - garden_point_logs: +pt 강조 (3초)
 // - garden_harvests: 사과가 카드 → 바구니로 포물선 비행
@@ -17,11 +17,11 @@ import {
   pointsToNextStage,
   stageProgress,
 } from "@/lib/garden";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import type { GardenPointLog, GardenStudent } from "@/lib/types";
+import type { GardenStudent } from "@/lib/types";
 import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
 import { fireConfetti } from "@/features/garden/effects/confetti";
+import { useTvRealtime } from "@/features/garden/hooks/useTvRealtime";
 
 // 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
 function useMediaQuery(query: string): boolean {
@@ -121,114 +121,85 @@ export function TVScreen({
     sortedRef.current = sorted;
   }, [sorted]);
 
-  useEffect(() => {
-    const sb = createSupabaseBrowserClient();
-    if (!sb) return;
+  // 수확 시퀀스: 스포트라이트 점프 → 흔들림(1s) → 후두두 떨어짐 + 바구니 비행(3.5s) → 배너
+  function triggerHarvestSequence(studentId: string, count: number) {
+    const idx = sortedRef.current.findIndex((s) => s.id === studentId);
+    if (idx >= 0) setFocusedIdx(idx);
 
-    function triggerHarvestSequence(studentId: string, count: number) {
-      const idx = sortedRef.current.findIndex((s) => s.id === studentId);
-      if (idx >= 0) setFocusedIdx(idx);
-
+    window.setTimeout(() => {
+      setShakingId(studentId);
       window.setTimeout(() => {
-        setShakingId(studentId);
-        window.setTimeout(() => {
-          setShakingId((cur) => (cur === studentId ? null : cur));
-        }, 1000);
-      }, 120);
+        setShakingId((cur) => (cur === studentId ? null : cur));
+      }, 1000);
+    }, 120);
 
-      window.setTimeout(() => {
-        const items = buildFallingApples(
-          count,
-          spotlightRef.current,
-          basketRef.current,
+    window.setTimeout(() => {
+      const items = buildFallingApples(
+        count,
+        spotlightRef.current,
+        basketRef.current,
+      );
+      if (items.length > 0) {
+        setFlyingApples((prev) => [...prev, ...items]);
+      } else {
+        setTodayApples((c) => c + count);
+        setBumpBasket((k) => k + 1);
+      }
+    }, 1100);
+  }
+
+  useTvRealtime({
+    onStudentEvent: (eventType, next, old) => {
+      if (eventType === "DELETE" && old) {
+        setStudents((prev) => prev.filter((s) => s.id !== old.id));
+        return;
+      }
+      if (!next) return;
+
+      const prevStage = prevStageRef.current[next.id] ?? next.current_stage;
+      if (next.current_stage > prevStage) {
+        const info = getStageInfo(
+          next.current_stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
         );
-        if (items.length > 0) {
-          setFlyingApples((prev) => [...prev, ...items]);
-        } else {
-          setTodayApples((c) => c + count);
-          setBumpBasket((k) => k + 1);
-        }
-      }, 1100);
-    }
+        const isHarvest = next.current_stage === 8;
+        setBanners((b) => [
+          ...b,
+          {
+            id: `${next.id}-${next.current_stage}-${Date.now()}`,
+            name: next.name,
+            stage: next.current_stage,
+            stageName: info.name,
+            expiresAt: Date.now() + (isHarvest ? HARVEST_BANNER_MS : BANNER_MS),
+          },
+        ]);
+        fireConfetti(isHarvest);
+      }
+      prevStageRef.current[next.id] = next.current_stage;
 
-    const channel = sb
-      .channel("garden-tv")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "garden_students" },
-        (payload) => {
-          const next = payload.new as GardenStudent | null;
-          const old = payload.old as GardenStudent | null;
-          if (payload.eventType === "DELETE" && old) {
-            setStudents((prev) => prev.filter((s) => s.id !== old.id));
-            return;
-          }
-          if (!next) return;
-
-          const prevStage = prevStageRef.current[next.id] ?? next.current_stage;
-          if (next.current_stage > prevStage) {
-            const info = getStageInfo(
-              next.current_stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
-            );
-            const isHarvest = next.current_stage === 8;
-            setBanners((b) => [
-              ...b,
-              {
-                id: `${next.id}-${next.current_stage}-${Date.now()}`,
-                name: next.name,
-                stage: next.current_stage,
-                stageName: info.name,
-                expiresAt: Date.now() + (isHarvest ? HARVEST_BANNER_MS : BANNER_MS),
-              },
-            ]);
-            fireConfetti(isHarvest);
-          }
-          prevStageRef.current[next.id] = next.current_stage;
-
-          setStudents((prev) => {
-            const idx = prev.findIndex((s) => s.id === next.id);
-            if (idx === -1) return [...prev, next];
-            const copy = prev.slice();
-            copy[idx] = next;
-            return copy;
-          });
+      setStudents((prev) => {
+        const idx = prev.findIndex((s) => s.id === next.id);
+        if (idx === -1) return [...prev, next];
+        const copy = prev.slice();
+        copy[idx] = next;
+        return copy;
+      });
+    },
+    onPointLog: (log) => {
+      if (!log?.student_id) return;
+      setHighlights((h) => ({
+        ...h,
+        [log.student_id]: {
+          delta: (h[log.student_id]?.delta ?? 0) + log.points,
+          expiresAt: Date.now() + HIGHLIGHT_MS,
         },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "garden_point_logs" },
-        (payload) => {
-          const log = payload.new as GardenPointLog;
-          if (!log?.student_id) return;
-          setHighlights((h) => ({
-            ...h,
-            [log.student_id]: {
-              delta: (h[log.student_id]?.delta ?? 0) + log.points,
-              expiresAt: Date.now() + HIGHLIGHT_MS,
-            },
-          }));
-          const idx = sortedRef.current.findIndex((s) => s.id === log.student_id);
-          if (idx >= 0) setFocusedIdx(idx);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "garden_harvests" },
-        (payload) => {
-          const harvest = payload.new as {
-            student_id: string;
-            apples_count: number;
-          } | null;
-          if (!harvest?.student_id) return;
-          triggerHarvestSequence(harvest.student_id, harvest.apples_count);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      sb.removeChannel(channel);
-    };
-  }, []);
+      }));
+      const idx = sortedRef.current.findIndex((s) => s.id === log.student_id);
+      if (idx >= 0) setFocusedIdx(idx);
+    },
+    onHarvest: (h) => {
+      triggerHarvestSequence(h.student_id, h.apples_count);
+    },
+  });
 
   useEffect(() => {
     setHighlights((h) => {
