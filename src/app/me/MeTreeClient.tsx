@@ -2,7 +2,7 @@
 
 // /tree/me 클라이언트 렌더러.
 // 초기 데이터는 서버에서 SSR 으로 주입하고,
-// 이후 Realtime 구독으로 점수/단계/사과/대기열 변화를 반영한다.
+// 이후 useStudentRealtime 훅으로 점수/단계/사과/대기열 변화를 반영한다.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
@@ -13,10 +13,10 @@ import {
   pointsToNextStage,
   stageProgress,
 } from "@/lib/garden";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterMe } from "@/features/garden/effects/SprayWater";
 import { fireConfetti, firePtCelebration } from "@/features/garden/effects/confetti";
+import { useStudentRealtime } from "@/features/garden/hooks/useStudentRealtime";
 import { claimPointAction } from "./actions";
 
 type Row = {
@@ -140,90 +140,50 @@ export function MeTreeClient({
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (!initialRow) return;
-    const sb = createSupabaseBrowserClient();
-    if (!sb) return;
-
-    const channel = sb
-      .channel(`me:${initialRow.id}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "garden_students", filter: `id=eq.${initialRow.id}` },
-        (payload) => {
-          const next = payload.new as Partial<Row> | null;
-          if (!next) return;
-          const prevStage = prevStageRef.current;
-          const newStage = next.current_stage ?? prevStage;
-          if (newStage > prevStage) {
-            const stInfo = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
-            const isHarvestUp = newStage === 8;
-            setStageUp({ id: `${Date.now()}`, stage: newStage, name: stInfo.name, isHarvest: isHarvestUp });
-            fireConfetti(isHarvestUp, 0.55);
-          }
-          prevStageRef.current = newStage;
-          setRow((prev) => ({
-            id: initialRow.id,
-            total_points: next.total_points ?? prev?.total_points ?? 0,
-            current_stage: newStage,
-            apples_harvested: next.apples_harvested ?? prev?.apples_harvested ?? 0,
-            grade: next.grade ?? prev?.grade ?? null,
-          }));
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "garden_point_logs", filter: `student_id=eq.${initialRow.id}` },
-        (payload) => {
-          const log = payload.new as PointLog;
-          if (!log) return;
-          const id = `${log.id}-${Date.now()}`;
-          setToasts((prev) => [...prev, { id, points: log.points, reason: log.reason }]);
-          window.setTimeout(() => {
-            setToasts((prev) => prev.filter((t) => t.id !== id));
-          }, TOAST_MS);
-          setHighlight({ id, delta: log.points, reason: log.reason, expiresAt: Date.now() + HIGHLIGHT_MS });
-          setShakeKey((k) => k + 1);
-          if (log.points > 0) firePtCelebration();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "garden_harvests", filter: `student_id=eq.${initialRow.id}` },
-        (payload) => {
-          const h = payload.new as { apples_count: number; id: string };
-          if (!h) return;
-          setHarvestBanner({ id: `${h.id}-${Date.now()}`, applesCount: h.apples_count });
-          fireConfetti(true, 0.55);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
-        (payload) => {
-          const p = payload.new as PendingClaim;
-          if (!p) return;
-          setPending((prev) => {
-            if (prev.some((x) => x.id === p.id)) return prev;
-            return [...prev, p].sort((a, b) => a.created_at.localeCompare(b.created_at));
-          });
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "garden_pending_points", filter: `student_id=eq.${initialRow.id}` },
-        (payload) => {
-          const old = payload.old as { id: string } | null;
-          if (!old) return;
-          setPending((prev) => prev.filter((x) => x.id !== old.id));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      sb.removeChannel(channel);
-    };
-  }, [initialRow]);
+  useStudentRealtime(initialRow?.id, {
+    onStudentUpdate: (next) => {
+      const prevStage = prevStageRef.current;
+      const newStage = next.current_stage ?? prevStage;
+      if (newStage > prevStage) {
+        const stInfo = getStageInfo(newStage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
+        const isHarvestUp = newStage === 8;
+        setStageUp({ id: `${Date.now()}`, stage: newStage, name: stInfo.name, isHarvest: isHarvestUp });
+        fireConfetti(isHarvestUp, 0.55);
+      }
+      prevStageRef.current = newStage;
+      if (!initialRow) return;
+      setRow((prev) => ({
+        id: initialRow.id,
+        total_points: next.total_points ?? prev?.total_points ?? 0,
+        current_stage: newStage,
+        apples_harvested: next.apples_harvested ?? prev?.apples_harvested ?? 0,
+        grade: next.grade ?? prev?.grade ?? null,
+      }));
+    },
+    onPointLog: (log) => {
+      const id = `${log.id}-${Date.now()}`;
+      setToasts((prev) => [...prev, { id, points: log.points, reason: log.reason }]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, TOAST_MS);
+      setHighlight({ id, delta: log.points, reason: log.reason, expiresAt: Date.now() + HIGHLIGHT_MS });
+      setShakeKey((k) => k + 1);
+      if (log.points > 0) firePtCelebration();
+    },
+    onHarvest: (h) => {
+      setHarvestBanner({ id: `${h.id}-${Date.now()}`, applesCount: h.apples_count });
+      fireConfetti(true, 0.55);
+    },
+    onPendingInsert: (p) => {
+      setPending((prev) => {
+        if (prev.some((x) => x.id === p.id)) return prev;
+        return [...prev, p].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      });
+    },
+    onPendingDelete: (id) => {
+      setPending((prev) => prev.filter((x) => x.id !== id));
+    },
+  });
 
   useEffect(() => {
     if (!highlight || !now) return;
