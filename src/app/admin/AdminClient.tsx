@@ -4,6 +4,7 @@
 // - 반(class) 필터
 // - 가로 행 학생 카드 + 빠른 적립 버튼 (+1, +2, +3, +5, -1)
 // - 길게 누르면 사유 입력 모달
+// - 선택 모드 시 여러 학생 일괄 +pt 적립
 // - 점수 적립 시 카드 초록 플래시 + 포인트 카운트업
 // - 단계 상승 시 큰 모달 + 컨페티
 // - 하단 시트로 "오늘 입력 기록" 펼치기
@@ -16,7 +17,7 @@ import { AppleTree } from "@/components/AppleTree";
 import { calculateStage, getStageInfo, stageProgress } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
-import { addPointsAction, harvestStudentAction } from "./actions";
+import { addPointsAction, addPointsBulkAction, harvestStudentAction } from "./actions";
 
 const QUICK_BUTTONS = [1, 2, 3, 4, 5] as const;
 const LONG_PRESS_MS = 500;
@@ -53,12 +54,17 @@ export function AdminClient({
     studentId: string;
     delta: number;
   } | null>(null);
+  const [bulkReasonDelta, setBulkReasonDelta] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [stageUp, setStageUp] = useState<StageUp | null>(null);
   const [harvestTarget, setHarvestTarget] = useState<GardenStudent | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // 선택 모드 (다중 +pt)
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const prevStageRef = useRef<Record<string, number>>({});
   useEffect(() => {
@@ -175,11 +181,52 @@ export function AdminClient({
     });
   };
 
+  const submitBulk = (delta: number, reason?: string) => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    triggerHaptic(delta > 0 ? "tap" : "warning");
+    startTransition(async () => {
+      const res = await addPointsBulkAction({
+        studentIds: ids,
+        delta,
+        reason: reason ?? null,
+      });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast(`${res.count}명 ${delta > 0 ? "+" : ""}${delta}pt 적립`);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const s of visible) next.add(s.id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
   return (
     <div className="max-w-2xl mx-auto pb-20">
       {/* sticky 헤더: 검색 + 반 필터 (스크롤 시에도 항상 보임) */}
       <div className="sticky top-0 z-20 -mx-0 px-4 pt-3 pb-2 bg-gradient-to-b from-[var(--bg-warm-start)] via-[var(--bg-warm-start)]/95 to-[var(--bg-warm-start)]/0 backdrop-blur-sm">
-        {/* 한 줄: 타이틀 알약 + 검색창 */}
+        {/* 한 줄: 타이틀 알약 + 검색창 + 선택 토글 */}
         <div className="flex items-center gap-2 mb-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card shrink-0">
             <span className="text-lg">🌳</span>
@@ -208,6 +255,24 @@ export function AdminClient({
               </button>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectMode((m) => {
+                if (m) setSelectedIds(new Set());
+                return !m;
+              });
+            }}
+            aria-pressed={selectMode}
+            className={[
+              "shrink-0 px-3 py-2 rounded-full font-extrabold text-sm border-[2.5px] border-[var(--ink)] shadow-card",
+              selectMode
+                ? "bg-[var(--accent-success)] text-white"
+                : "bg-white text-[var(--ink)]",
+            ].join(" ")}
+          >
+            {selectMode ? "선택 종료" : "선택"}
+          </button>
         </div>
 
         {/* 반 필터 (가로 스크롤) */}
@@ -236,6 +301,34 @@ export function AdminClient({
             {search && <span> · "{search}"</span>}
           </div>
         )}
+
+        {/* 선택 모드 안내 + 전체 선택 / 해제 */}
+        {selectMode && (
+          <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
+            <div className="text-xs font-bold text-[var(--ink)]">
+              {selectedIds.size}명 선택됨
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={selectAllVisible}
+                disabled={visible.length === 0}
+                className="text-xs font-extrabold text-[var(--ink)] underline disabled:opacity-40"
+              >
+                보이는 {visible.length}명 전체 선택
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-xs font-extrabold text-[var(--ink-soft)] underline"
+                >
+                  해제
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 본문 영역 */}
@@ -254,6 +347,9 @@ export function AdminClient({
             student={s}
             disabled={pending}
             isFlash={flashId === s.id}
+            selectMode={selectMode}
+            selected={selectedIds.has(s.id)}
+            onToggleSelect={() => toggleSelect(s.id)}
             onQuick={(delta) => submitPoints(s.id, delta)}
             onLongPress={(delta) => setReasonModal({ studentId: s.id, delta })}
             onHarvest={() => setHarvestTarget(s)}
@@ -261,13 +357,22 @@ export function AdminClient({
         ))}
       </div>
 
-      {/* 하단 고정: 오늘 기록 시트 토글 */}
-      <button
-        onClick={() => setSheetOpen(true)}
-        className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm"
-      >
-        오늘 입력 기록
-      </button>
+      {/* 하단 고정: 선택 모드면 일괄 적립 바, 아니면 오늘 기록 시트 토글 */}
+      {selectMode && selectedIds.size > 0 ? (
+        <BulkActionBar
+          count={selectedIds.size}
+          disabled={pending}
+          onQuick={(n) => submitBulk(n)}
+          onLongPress={(n) => setBulkReasonDelta(n)}
+        />
+      ) : (
+        <button
+          onClick={() => setSheetOpen(true)}
+          className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm"
+        >
+          오늘 입력 기록
+        </button>
+      )}
 
       {/* 토스트 */}
       <AnimatePresence>
@@ -283,14 +388,29 @@ export function AdminClient({
         )}
       </AnimatePresence>
 
-      {/* 사유 입력 모달 */}
+      {/* 사유 입력 모달 (단일) */}
       {reasonModal && (
         <ReasonModal
           delta={reasonModal.delta}
+          title={`${reasonModal.delta > 0 ? `+${reasonModal.delta}` : reasonModal.delta}pt 적립 사유`}
           onCancel={() => setReasonModal(null)}
           onConfirm={(reason) => {
             submitPoints(reasonModal.studentId, reasonModal.delta, reason);
             setReasonModal(null);
+          }}
+        />
+      )}
+
+      {/* 사유 입력 모달 (일괄) */}
+      {bulkReasonDelta !== null && (
+        <ReasonModal
+          delta={bulkReasonDelta}
+          title={`${selectedIds.size}명에게 ${bulkReasonDelta > 0 ? `+${bulkReasonDelta}` : bulkReasonDelta}pt 적립 사유`}
+          onCancel={() => setBulkReasonDelta(null)}
+          onConfirm={(reason) => {
+            const d = bulkReasonDelta;
+            setBulkReasonDelta(null);
+            submitBulk(d, reason);
           }}
         />
       )}
@@ -362,6 +482,9 @@ function StudentRow({
   student,
   disabled,
   isFlash,
+  selectMode,
+  selected,
+  onToggleSelect,
   onQuick,
   onLongPress,
   onHarvest,
@@ -369,6 +492,9 @@ function StudentRow({
   student: GardenStudent;
   disabled: boolean;
   isFlash: boolean;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onQuick: (delta: number) => void;
   onLongPress: (delta: number) => void;
   onHarvest: () => void;
@@ -378,18 +504,22 @@ function StudentRow({
   const progress = stageProgress(student.total_points);
   const isHarvest = stage === 8;
 
-  return (
-    <div
-      className={[
-        "relative rounded-[18px] p-3 border-[2.5px] border-[var(--ink)] transition-colors duration-300",
-        isHarvest
-          ? "bg-[var(--card-bg-hero)]"
-          : "bg-white",
-        isFlash ? "!bg-[#dff5d0]" : "",
-        "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
-      ].join(" ")}
-    >
+  const cardBody = (
+    <>
       <div className="flex items-center gap-3">
+        {selectMode && (
+          <div
+            aria-hidden
+            className={[
+              "shrink-0 w-7 h-7 rounded-full border-[2.5px] border-[var(--ink)] flex items-center justify-center text-sm font-extrabold",
+              selected
+                ? "bg-[var(--accent-success)] text-white"
+                : "bg-white text-transparent",
+            ].join(" ")}
+          >
+            ✓
+          </div>
+        )}
         <AppleTree stage={stage} size="small" />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
@@ -422,6 +552,40 @@ function StudentRow({
           )}
         </div>
       </div>
+    </>
+  );
+
+  if (selectMode) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-pressed={selected}
+        className={[
+          "w-full text-left relative rounded-[18px] p-3 border-[2.5px] transition-colors duration-300",
+          selected
+            ? "border-[var(--accent-success)] bg-[#dff5d0]"
+            : "border-[var(--ink)] bg-white",
+          "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
+        ].join(" ")}
+      >
+        {cardBody}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        "relative rounded-[18px] p-3 border-[2.5px] border-[var(--ink)] transition-colors duration-300",
+        isHarvest
+          ? "bg-[var(--card-bg-hero)]"
+          : "bg-white",
+        isFlash ? "!bg-[#dff5d0]" : "",
+        "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
+      ].join(" ")}
+    >
+      {cardBody}
 
       {/* 수확 가능 학생 (8단계) 전용 버튼 */}
       {isHarvest && (
@@ -471,6 +635,63 @@ function StudentRow({
         >
           −1
         </button>
+      </div>
+    </div>
+  );
+}
+
+function BulkActionBar({
+  count,
+  disabled,
+  onQuick,
+  onLongPress,
+}: {
+  count: number;
+  disabled: boolean;
+  onQuick: (delta: number) => void;
+  onLongPress: (delta: number) => void;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-30 px-3 pb-3 pt-2 bg-gradient-to-t from-[var(--bg-warm-start)] via-[var(--bg-warm-start)]/95 to-[var(--bg-warm-start)]/0">
+      <div className="max-w-2xl mx-auto bg-white rounded-[20px] border-[2.5px] border-[var(--ink)] shadow-card-pop p-3">
+        <div className="text-xs font-extrabold text-[var(--ink)] mb-2 px-1">
+          {count}명에게 일괄 적립 (길게 누르면 사유 입력)
+        </div>
+        <div className="grid grid-cols-5 gap-2">
+          {QUICK_BUTTONS.map((n) => (
+            <LongPressButton
+              key={n}
+              disabled={disabled}
+              onClick={() => onQuick(n)}
+              onLongPress={() => onLongPress(n)}
+              className={[
+                "min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] font-extrabold text-base",
+                "active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation",
+                quickClass(n),
+              ].join(" ")}
+            >
+              +{n}
+            </LongPressButton>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <LongPressButton
+            disabled={disabled}
+            onClick={() => onQuick(10)}
+            onLongPress={() => onLongPress(10)}
+            className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
+          >
+            🏆 +10
+          </LongPressButton>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onQuick(-1)}
+            className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[#ffe4dc] text-[var(--apple-deep)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
+          >
+            −1
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -587,10 +808,12 @@ const REASON_PRESETS = [
 
 function ReasonModal({
   delta,
+  title,
   onCancel,
   onConfirm,
 }: {
   delta: number;
+  title?: string;
   onCancel: () => void;
   onConfirm: (reason: string) => void;
 }) {
@@ -599,7 +822,7 @@ function ReasonModal({
     <div className="fixed inset-0 z-50 bg-[var(--ink)]/40 flex items-end sm:items-center justify-center p-4 backdrop-blur-[1px]">
       <div className="w-full max-w-sm bg-white rounded-[24px] border-[2.5px] border-[var(--ink)] shadow-card-pop p-5">
         <div className="text-lg font-extrabold mb-1 text-[var(--ink)]">
-          {delta > 0 ? `+${delta}` : delta}pt 적립 사유
+          {title ?? `${delta > 0 ? `+${delta}` : delta}pt 적립 사유`}
         </div>
         <p className="text-sm text-[var(--ink-soft)] mb-3">
           자주 쓰는 사유를 누르거나 직접 입력해주세요.

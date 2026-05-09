@@ -1,7 +1,7 @@
 "use server";
 
 // Admin 화면에서 호출하는 Server Actions
-// - 포인트 적립/차감 (대기열 등록)
+// - 포인트 적립/차감 (대기열 등록) — 단일 / 일괄
 // - 학생 추가/수정/삭제
 // - 수확 (RPC 로 atomic 처리)
 // 모든 액션은 isAdminAuthenticated() 로 보호됩니다.
@@ -31,18 +31,8 @@ export async function logoutAction() {
   clearAdminCookie();
 }
 
-/* ============== 포인트 적립 (대기열 등록) ============== */
+/* ============== 포인트 적립 (단일 / 일괄) ============== */
 
-/**
- * 포인트 적립/차감 액션 — 즉시 적용하지 않고 garden_pending_points 에 등록만 한다.
- *
- * 학생이 /tree/me 에서 "받기" 버튼을 누르면 그제서야:
- *   1) garden_point_logs 에 로그가 추가되고
- *   2) garden_students.total_points / current_stage 가 갱신된다 (claimPointAction)
- *
- * 이 흐름의 의도: 학생이 화분이 자라는 순간을 직접 체험하게 하기 위함.
- * 결과적으로 TV 화면도 학생이 받기 누른 시점에 갱신된다.
- */
 export async function addPointsAction(args: {
   studentId: string;
   delta: number;
@@ -56,7 +46,6 @@ export async function addPointsAction(args: {
 
   const sb = createSupabaseServiceClient();
 
-  // 학생 존재 확인
   const { data: student, error: e1 } = await sb
     .from("garden_students")
     .select("id")
@@ -66,7 +55,6 @@ export async function addPointsAction(args: {
     return { ok: false as const, message: "학생을 찾을 수 없어요." };
   }
 
-  // pending 등록 (즉시 적용하지 않음)
   const { error: e2 } = await sb.from("garden_pending_points").insert({
     student_id: studentId,
     points: Math.trunc(delta),
@@ -80,10 +68,40 @@ export async function addPointsAction(args: {
   return { ok: true as const, pending: true };
 }
 
+/**
+ * 여러 학생에게 동일 포인트를 한 트랜잭션에 pending 등록.
+ * studentIds 에 중복이 있으면 그대로 두 번 적립됨 (이는 호출자가 제거해야 함).
+ */
+export async function addPointsBulkAction(args: {
+  studentIds: string[];
+  delta: number;
+  reason?: string | null;
+}) {
+  ensureAuth();
+  const { studentIds, delta, reason } = args;
+  if (!Array.isArray(studentIds) || studentIds.length === 0) {
+    return { ok: false as const, message: "선택된 학생이 없어요." };
+  }
+  if (!Number.isFinite(delta)) {
+    return { ok: false as const, message: "잘못된 포인트입니다." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb.rpc("garden_award_pending_bulk", {
+    p_student_ids: studentIds,
+    p_points: Math.trunc(delta),
+    p_reason: reason ?? null,
+  });
+  if (error) {
+    return { ok: false as const, message: `일괄 적립 실패: ${error.message}` };
+  }
+
+  revalidatePath("/admin");
+  return { ok: true as const, count: (data as number | null) ?? studentIds.length };
+}
+
 /* ============== 수확 ============== */
 
-// 8단계(380pt 이상) 학생을 atomic 하게 수확 처리합니다.
-// 실제 트랜잭션은 garden_harvest_student RPC 가 단일 단위로 수행.
 export async function harvestStudentAction(args: { studentId: string }) {
   ensureAuth();
   const { studentId } = args;
