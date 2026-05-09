@@ -20,6 +20,7 @@ type Row = {
   total_points: number | null;
   current_stage: number | null;
   apples_harvested: number | null;
+  grade: string | null;
 };
 
 export function MeTreeClient({
@@ -55,6 +56,7 @@ export function MeTreeClient({
             current_stage: next.current_stage ?? prev?.current_stage ?? 1,
             apples_harvested:
               next.apples_harvested ?? prev?.apples_harvested ?? 0,
+            grade: next.grade ?? prev?.grade ?? null,
           }));
         },
       )
@@ -107,6 +109,18 @@ export function MeTreeClient({
           >
             {studentName}
           </div>
+          {row?.grade && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "#9a8b6c",
+                marginTop: 2,
+                fontWeight: 600,
+              }}
+            >
+              {row.grade}
+            </div>
+          )}
         </div>
 
         {!row ? (
