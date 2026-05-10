@@ -2,6 +2,7 @@
 
 // Admin 화면에서 호출하는 Server Actions
 // - 포인트 적립/차감 (대기열 등록) — 단일 / 일괄
+// - pending 취소 / 적용된 로그 되돌리기
 // - 학생 추가/수정/삭제
 // - 수확 (RPC 로 atomic 처리)
 // 모든 액션은 isAdminAuthenticated() 로 보호됩니다.
@@ -98,6 +99,70 @@ export async function addPointsBulkAction(args: {
 
   revalidatePath("/admin");
   return { ok: true as const, count: (data as number | null) ?? studentIds.length };
+}
+
+/* ============== 되돌리기 / 취소 ============== */
+
+/**
+ * 아직 받기 누르지 않은 pending 행 삭제.
+ * Realtime DELETE 가 학생 화면의 받기 카드를 자동 제거.
+ */
+export async function cancelPendingAction(args: { pendingId: string }) {
+  ensureAuth();
+  if (!args.pendingId) {
+    return { ok: false as const, message: "잘못된 입력이에요." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_pending_points")
+    .delete()
+    .eq("id", args.pendingId);
+  if (error) {
+    return { ok: false as const, message: `취소 실패: ${error.message}` };
+  }
+  revalidatePath("/admin");
+  return { ok: true as const };
+}
+
+/**
+ * 이미 적용된 garden_point_logs 행을 되돌림.
+ * 보상 로그(부호 반전) + 학생 total_points/stage 갱신을 단일 트랜잭션 처리.
+ * 원본 로그는 보존 (감사 흔적).
+ */
+export async function undoLogAction(args: { logId: string }) {
+  ensureAuth();
+  if (!args.logId) {
+    return { ok: false as const, message: "잘못된 입력이에요." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb.rpc("garden_undo_log", {
+    p_log_id: args.logId,
+  });
+  if (error) {
+    if (error.message?.includes("log_not_found")) {
+      return { ok: false as const, message: "이미 사라진 기록이에요." };
+    }
+    if (error.message?.includes("student_not_found")) {
+      return { ok: false as const, message: "학생을 찾을 수 없어요." };
+    }
+    return { ok: false as const, message: `되돌리기 실패: ${error.message}` };
+  }
+  const result = data as {
+    ok: true;
+    reverted_points: number;
+    new_total: number;
+    new_stage: number;
+    student_id: string;
+  };
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return {
+    ok: true as const,
+    revertedPoints: result.reverted_points,
+    newTotal: result.new_total,
+    newStage: result.new_stage,
+    studentId: result.student_id,
+  };
 }
 
 /* ============== 수확 ============== */
