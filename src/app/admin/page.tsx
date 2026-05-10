@@ -77,6 +77,9 @@ export default async function AdminPage({
             <Link href="/admin/students" className="text-ink-soft hover:text-apple">
               학생 관리
             </Link>
+            <Link href="/admin/reset" className="text-ink-soft hover:text-apple">
+              학기 리셋
+            </Link>
             <Link href="/" target="_blank" className="text-ink-soft hover:text-apple">
               TV 화면 보기 ↗
             </Link>
