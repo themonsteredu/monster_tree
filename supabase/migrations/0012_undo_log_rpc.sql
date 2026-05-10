@@ -4,9 +4,9 @@
 --   2) 학생 FOR UPDATE 락
 --   3) 보상 로그(-points) INSERT 으로 이력 보존
 --   4) 학생 total_points / current_stage 갱신
---   원본 로그는 삭제하지 않는다 (감사 경적 보존).
+--   원본 로그는 삭제하지 않는다 (감사 흔적 보존).
 --
--- 멉등성: 동일 로그를 두 번 undo 하면 둘 다 적용됨 (각각 반대 로그 생성).
+-- 멱등성: 동일 로그를 두 번 undo 하면 둘 다 적용됨 (각각 반대 로그 생성).
 -- 호출자가 이미 되돌린 로그를 다시 되돌리지 않도록 UI 에서 제한 필요.
 
 create or replace function public.garden_undo_log(p_log_id uuid)
@@ -32,7 +32,7 @@ begin
     raise exception 'log_not_found' using errcode = 'P0001';
   end if;
 
-  -- 학생 행 락 + 관식
+  -- 학생 행 락
   select total_points into v_total
     from garden_students
     where id = v_student_id
@@ -46,7 +46,7 @@ begin
     values (
       v_student_id,
       -v_points,
-      "되돌리기: " || coalesce(v_reason, "")
+      '되돌리기: ' || coalesce(v_reason, '')
     );
 
   -- total_points / stage 갱신
