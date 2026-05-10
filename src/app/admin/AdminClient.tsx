@@ -8,6 +8,7 @@
 // - 점수 적립 시 카드 초록 플래시 + 포인트 카운트업
 // - 단계 상승 시 큰 모달 + 컨페티
 // - 하단 시트로 "오늘 입력 기록" + "대기 중" 펼치기 + 되돌리기/취소
+// - 대기 중 포인트가 12시간 / 3일 묵으면 색으로 강조 (미수령 모니터링)
 // - Realtime 으로 다른 화면에서 입력해도 즉시 갱신됨
 
 import confetti from "canvas-confetti";
@@ -28,6 +29,32 @@ import {
 const QUICK_BUTTONS = [1, 2, 3, 4, 5] as const;
 const LONG_PRESS_MS = 500;
 const FLASH_MS = 600;
+
+// 미수령 모니터링 임계값
+const STALE_THRESHOLD_HOURS = 72; // 3일 이상 → 빨강
+const WARM_THRESHOLD_HOURS = 12; // 12시간 이상 → 노랑
+
+type PendingSeverity = "fresh" | "warm" | "stale";
+
+function pendingAge(createdAtIso: string, now: number): { label: string; severity: PendingSeverity } {
+  const created = new Date(createdAtIso).getTime();
+  const diffMs = Math.max(0, now - created);
+  const min = Math.floor(diffMs / 60_000);
+  const hour = Math.floor(min / 60);
+  const day = Math.floor(hour / 24);
+
+  let label: string;
+  if (min < 1) label = "방금";
+  else if (min < 60) label = `${min}분 전`;
+  else if (hour < 24) label = `${hour}시간 전`;
+  else label = `${day}일 전`;
+
+  let severity: PendingSeverity = "fresh";
+  if (hour >= STALE_THRESHOLD_HOURS) severity = "stale";
+  else if (hour >= WARM_THRESHOLD_HOURS) severity = "warm";
+
+  return { label, severity };
+}
 
 type StudentMini = { name: string; class_name: string | null };
 
@@ -83,6 +110,22 @@ export function AdminClient({
   // 선택 모드 (다중 +pt)
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 미수령 묵음 표시용 시계 (1분마다 갱신)
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // 묵은 pending 카운트 (3일 이상)
+  const stalePendingCount = useMemo(
+    () =>
+      pendingPoints.filter(
+        (p) => pendingAge(p.created_at, nowTick).severity === "stale",
+      ).length,
+    [pendingPoints, nowTick],
+  );
 
   const prevStageRef = useRef<Record<string, number>>({});
   useEffect(() => {
@@ -379,6 +422,21 @@ export function AdminClient({
           </div>
         )}
 
+        {/* 묵은 미수령 알림 (3일 이상이 1개 이상) */}
+        {stalePendingCount > 0 && !selectMode && (
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="mt-1.5 w-full text-left px-3 py-2 rounded-xl bg-[#fef2f0] border-[1.5px] border-[var(--apple-deep)] text-xs font-extrabold text-[var(--apple-deep)] flex items-center gap-2"
+          >
+            <span>⚠️</span>
+            <span className="flex-1 truncate">
+              3일 넘게 안 받은 포인트 {stalePendingCount}개 — 시트에서 확인
+            </span>
+            <span aria-hidden>→</span>
+          </button>
+        )}
+
         {/* 선택 모드 안내 + 전체 선택 / 해제 */}
         {selectMode && (
           <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
@@ -445,11 +503,18 @@ export function AdminClient({
       ) : (
         <button
           onClick={() => setSheetOpen(true)}
-          className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm"
+          className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm flex items-center gap-2"
         >
-          오늘 기록 / 되돌리기
+          <span>오늘 기록 / 되돌리기</span>
           {pendingPoints.length > 0 && (
-            <span className="ml-1.5 inline-block min-w-[20px] px-1.5 py-0.5 rounded-full bg-[var(--accent-success)] text-white text-[11px] font-extrabold tabular-nums">
+            <span
+              className={[
+                "inline-block min-w-[20px] px-1.5 py-0.5 rounded-full text-white text-[11px] font-extrabold tabular-nums",
+                stalePendingCount > 0
+                  ? "bg-[var(--apple-deep)]"
+                  : "bg-[var(--accent-success)]",
+              ].join(" ")}
+            >
               {pendingPoints.length}
             </span>
           )}
@@ -970,14 +1035,38 @@ function RecentLogsSheet({
   onUndoLog: (logId: string) => void;
   onClose: () => void;
 }) {
-  const today = useMemo(() => {
+  // 시트 자체에서 1분마다 시계 갱신 (묵음 표시 실시간)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const todayStart = useMemo(() => {
     const t = new Date();
     t.setHours(0, 0, 0, 0);
     return t.getTime();
   }, []);
   const todayLogs = logs.filter(
-    (l) => new Date(l.logged_at).getTime() >= today,
+    (l) => new Date(l.logged_at).getTime() >= todayStart,
   );
+
+  // pending 정렬: 묵은 순 (오래된 것 위로) — 묵음 알림이 잘 보이게
+  const sortedPending = useMemo(
+    () =>
+      [...pendingPoints].sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [pendingPoints],
+  );
+
+  const staleCount = sortedPending.filter(
+    (p) => pendingAge(p.created_at, now).severity === "stale",
+  ).length;
+  const warmCount = sortedPending.filter(
+    (p) => pendingAge(p.created_at, now).severity === "warm",
+  ).length;
 
   return (
     <div
@@ -1002,27 +1091,52 @@ function RecentLogsSheet({
 
         {/* 대기 중 (아직 학생이 받기 안 누름) */}
         <section className="mb-4">
-          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2">
+          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2 flex-wrap">
             <span>🎁 대기 중</span>
             <span className="text-xs font-bold text-[var(--ink-soft)]">
-              ({pendingPoints.length}) — 학생이 아직 받기 안 누른 포인트
+              ({sortedPending.length})
             </span>
+            {staleCount > 0 && (
+              <span className="text-xs font-extrabold text-[var(--apple-deep)] bg-[#fef2f0] border border-[var(--apple-deep)] rounded-full px-2 py-0.5">
+                ⚠️ 3일+ {staleCount}개
+              </span>
+            )}
+            {warmCount > 0 && (
+              <span className="text-xs font-extrabold text-[var(--accent-warning)] bg-[var(--accent-warning-bg)] border border-[var(--accent-warning)] rounded-full px-2 py-0.5">
+                12h+ {warmCount}개
+              </span>
+            )}
           </div>
-          {pendingPoints.length === 0 ? (
+          {sortedPending.length === 0 ? (
             <p className="text-center text-[var(--ink-soft)] py-4 text-sm">
               대기 중인 포인트가 없어요.
             </p>
           ) : (
             <ul className="divide-y divide-[var(--ink)]/10">
-              {pendingPoints.map((p) => {
+              {sortedPending.map((p) => {
                 const m = studentMap[p.student_id];
-                const t = new Date(p.created_at);
-                const hh = t.getHours().toString().padStart(2, "0");
-                const mm = t.getMinutes().toString().padStart(2, "0");
+                const age = pendingAge(p.created_at, now);
+                const ageColor =
+                  age.severity === "stale"
+                    ? "text-[var(--apple-deep)]"
+                    : age.severity === "warm"
+                      ? "text-[var(--accent-warning)]"
+                      : "text-[var(--ink-soft)]";
+                const rowBg =
+                  age.severity === "stale"
+                    ? "bg-[#fef2f0]"
+                    : age.severity === "warm"
+                      ? "bg-[var(--accent-warning-bg)]"
+                      : "";
                 return (
-                  <li key={p.id} className="py-2 flex items-center gap-3">
-                    <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
-                      {hh}:{mm}
+                  <li
+                    key={p.id}
+                    className={`py-2 px-2 -mx-2 rounded-lg flex items-center gap-3 ${rowBg}`}
+                  >
+                    <div
+                      className={`text-xs font-extrabold tabular-nums w-16 text-right ${ageColor}`}
+                    >
+                      {age.label}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-extrabold truncate text-[var(--ink)]">
