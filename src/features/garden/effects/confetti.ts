@@ -4,12 +4,21 @@
 //   harvest=true:  좌우 풍성한 2.5초 컨페티 샤워 (수확/단계업 8단계)
 //   harvest=false: 단일 burst — TV 는 y=0.6, /me 는 y=0.55 호출
 // firePtCelebration: /me 전용 — +pt 시 워터/잎 컨페티 큰 샤워.
+//
+// prefers-reduced-motion=reduce 사용자에게는 컨페티 자체를 그리지 않음
+// (canvas 라 CSS 미디어 쿼리로 막을 수 없음 → JS 에서 직접 가드).
 
 import confetti from "canvas-confetti";
 
 const BASE_COLORS = ["#f0c050", "#f04848", "#5e9c38", "#c87fdb", "#ffb8d4"];
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
 export function fireConfetti(harvest: boolean, nonHarvestY: number = 0.6): void {
+  if (prefersReducedMotion()) return;
   if (harvest) {
     const end = Date.now() + 2_500;
     const tick = () => {
@@ -43,6 +52,7 @@ export function fireConfetti(harvest: boolean, nonHarvestY: number = 0.6): void 
 // /me 의 +pt 화려한 컨페티 (워터 + 잎 색).
 // 화면 위쪽 중앙 큰 burst 1차 + 살짝 늦은 좌우 burst 2차.
 export function firePtCelebration(): void {
+  if (prefersReducedMotion()) return;
   const waterColors = ["#7fc6e8", "#5cb8e8", "#a8e0ff", "#c8eba0", "#a8e070", "#ffffff"];
   confetti({
     particleCount: 120,
