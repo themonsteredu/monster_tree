@@ -3,6 +3,7 @@
 // TV 화면 (1920×1080 풀스크린 가로 모드 가정)
 //
 // 모바일(<640px)에서 접속하면 깨진 레이아웃 대신 깔끔한 안내 + 링크 제공.
+// 지점 (BRANCH_ID env, prop 으로 주입) 학생만 표시 — Realtime 이벤트도 필터.
 //
 // Realtime (useTvRealtime 훅):
 // - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
@@ -68,9 +69,11 @@ type FlyingApple = {
 export function TVScreen({
   initialStudents,
   initialTodayHarvest = 0,
+  branchId,
 }: {
   initialStudents: GardenStudent[];
   initialTodayHarvest?: number;
+  branchId: string;
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -96,6 +99,8 @@ export function TVScreen({
 
   const prevStageRef = useRef<Record<string, number>>({});
   const sortedRef = useRef<GardenStudent[]>(initialStudents);
+  // 지점 학생 ID 집합 (Realtime log/harvest 이벤트 필터용)
+  const branchStudentIdsRef = useRef<Set<string>>(new Set(initialStudents.map((s) => s.id)));
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const basketRef = useRef<HTMLDivElement | null>(null);
   const spotlightRef = useRef<HTMLDivElement | null>(null);
@@ -103,6 +108,7 @@ export function TVScreen({
 
   useEffect(() => {
     for (const s of initialStudents) prevStageRef.current[s.id] = s.current_stage;
+    branchStudentIdsRef.current = new Set(initialStudents.map((s) => s.id));
   }, [initialStudents]);
 
   useEffect(() => {
@@ -133,7 +139,8 @@ export function TVScreen({
 
   useEffect(() => {
     sortedRef.current = sorted;
-  }, [sorted]);
+    branchStudentIdsRef.current = new Set(students.map((s) => s.id));
+  }, [sorted, students]);
 
   // 수확 시퀀스: 스포트라이트 점프 → 흔들림(1s) → 후두두 떨어짐 + 바구니 비행(3.5s) → 배너
   function triggerHarvestSequence(studentId: string, count: number) {
@@ -164,11 +171,14 @@ export function TVScreen({
 
   useTvRealtime({
     onStudentEvent: (eventType, next, old) => {
+      // 지점 필터: 이벤트의 branch_id 가 우리 지점이 아니면 무시
       if (eventType === "DELETE" && old) {
+        if (old.branch_id && old.branch_id !== branchId) return;
         setStudents((prev) => prev.filter((s) => s.id !== old.id));
         return;
       }
       if (!next) return;
+      if (next.branch_id !== branchId) return;
 
       const prevStage = prevStageRef.current[next.id] ?? next.current_stage;
       if (next.current_stage > prevStage) {
@@ -200,6 +210,8 @@ export function TVScreen({
     },
     onPointLog: (log) => {
       if (!log?.student_id) return;
+      // 지점 필터: 우리 지점 학생의 로그만
+      if (!branchStudentIdsRef.current.has(log.student_id)) return;
       setHighlights((h) => ({
         ...h,
         [log.student_id]: {
@@ -211,6 +223,8 @@ export function TVScreen({
       if (idx >= 0) setFocusedIdx(idx);
     },
     onHarvest: (h) => {
+      // 지점 필터: 우리 지점 학생의 수확만
+      if (!branchStudentIdsRef.current.has(h.student_id)) return;
       triggerHarvestSequence(h.student_id, h.apples_count);
     },
   });

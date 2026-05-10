@@ -3,19 +3,31 @@
 // Admin 화면에서 호출하는 Server Actions
 // - 포인트 적립/차감 (대기열 등록) — 단일 / 일괄
 // - pending 취소 / 적용된 로그 되돌리기
-// - 학생 추가/수정/삭제
+// - 학생 추가/수정/삭제 (지점 스코프)
 // - 수확 (RPC 로 atomic 처리)
-// - 학기 리셋 (위험 작업)
+// - 학기 리셋 (지점 스코프 위험 작업)
 // 모든 액션은 isAdminAuthenticated() 로 보호됩니다.
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { getBranchId } from "@/lib/branch";
 import { isAdminAuthenticated, setAdminCookie, clearAdminCookie, isAdminKey } from "./auth";
 
 function ensureAuth() {
   if (!isAdminAuthenticated()) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
+}
+
+function ensureBranch(): { ok: true; branchId: string } | { ok: false; message: string } {
+  const branchId = getBranchId();
+  if (!branchId) {
+    return {
+      ok: false,
+      message: "BRANCH_ID 환경변수가 설정되지 않았어요. (Vercel 설정 필요)",
+    };
+  }
+  return { ok: true, branchId };
 }
 
 /* ============== 로그인 / 로그아웃 ============== */
@@ -70,10 +82,6 @@ export async function addPointsAction(args: {
   return { ok: true as const, pending: true };
 }
 
-/**
- * 여러 학생에게 동일 포인트를 한 트랜잭션에 pending 등록.
- * studentIds 에 중복이 있으면 그대로 두 번 적립됨 (이는 호출자가 제거해야 함).
- */
 export async function addPointsBulkAction(args: {
   studentIds: string[];
   delta: number;
@@ -201,13 +209,17 @@ export async function harvestStudentAction(args: { studentId: string }) {
   };
 }
 
-/* ============== 학생 CRUD ============== */
+/* ============== 학생 CRUD (지점 스코프) ============== */
 
 export async function createStudentAction(args: {
   name: string;
   className?: string | null;
 }) {
   ensureAuth();
+  const branchCheck = ensureBranch();
+  if (!branchCheck.ok) {
+    return { ok: false as const, message: branchCheck.message };
+  }
   const name = args.name.trim();
   if (!name) return { ok: false as const, message: "이름을 입력해주세요." };
 
@@ -215,6 +227,7 @@ export async function createStudentAction(args: {
   const { error } = await sb.from("garden_students").insert({
     name,
     class_name: args.className?.trim() ? args.className.trim() : null,
+    branch_id: branchCheck.branchId,
     total_points: 0,
     current_stage: 1,
     is_active: true,
@@ -267,22 +280,25 @@ export async function deleteStudentAction(args: { id: string }) {
   return { ok: true as const };
 }
 
-/* ============== 학기 리셋 (위험) ============== */
+/* ============== 학기 리셋 (지점 스코프) ============== */
 
-/**
- * 모든 활성 학생을 0pt / 1단계 / 사과 0개로 초기화하고,
- * 미수령 pending_points 를 모두 삭제. logs / harvests 는 보존.
- *
- * confirmText 는 정확히 "학기 리셋" 이어야 함 (UI 안전 가드).
- */
 export async function resetSemesterAction(args: { confirmText: string }) {
   ensureAuth();
   if (args.confirmText !== "학기 리셋") {
     return { ok: false as const, message: "확인 문구가 일치하지 않아요." };
   }
+  const branchCheck = ensureBranch();
+  if (!branchCheck.ok) {
+    return { ok: false as const, message: branchCheck.message };
+  }
   const sb = createSupabaseServiceClient();
-  const { data, error } = await sb.rpc("garden_reset_semester");
+  const { data, error } = await sb.rpc("garden_reset_semester", {
+    p_branch_id: branchCheck.branchId,
+  });
   if (error) {
+    if (error.message?.includes("branch_id_required")) {
+      return { ok: false as const, message: "지점 ID 누락 (서버 설정 오류)" };
+    }
     return { ok: false as const, message: `리셋 실패: ${error.message}` };
   }
   const result = data as {
