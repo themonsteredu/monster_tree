@@ -2,6 +2,7 @@
 // 인증 체크 후 ResetClient 렌더링.
 
 import Link from "next/link";
+import { getMonsterSiteUrl } from "@/lib/monster-site";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
 import { ResetClient } from "./ResetClient";
@@ -17,15 +18,25 @@ export default function ResetPage({
   if (!isAdminAuthenticated(searchParams.key)) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
+  const monsterUrl = getMonsterSiteUrl();
   return (
     <main className="min-h-screen px-4 py-6">
       <div className="max-w-md mx-auto">
-        <Link
-          href="/admin"
-          className="text-sm text-[var(--ink-soft)] underline"
-        >
-          ← 돌아가기
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link
+            href="/admin"
+            className="text-sm text-[var(--ink-soft)] underline"
+          >
+            ← 돌아가기
+          </Link>
+          <a
+            href={monsterUrl}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card"
+            aria-label="monster-site 지점 관리자 페이지로"
+          >
+            ← 본사
+          </a>
+        </div>
         <h1 className="mt-4 text-2xl font-extrabold text-[var(--ink)]">
           학기 리셋
         </h1>

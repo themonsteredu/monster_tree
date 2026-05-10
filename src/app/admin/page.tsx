@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
+import { getMonsterSiteUrl } from "@/lib/monster-site";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "./auth";
 import { LoginForm } from "./LoginForm";
@@ -68,11 +69,22 @@ export default async function AdminPage({
   const studentMap = new Map<string, GardenStudent>();
   for (const s of (students ?? []) as GardenStudent[]) studentMap.set(s.id, s);
 
+  const monsterUrl = getMonsterSiteUrl();
+
   return (
     <main className="min-h-screen pb-32">
       <header className="sticky top-0 z-30 bg-cream/90 backdrop-blur border-b border-pot/10">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold">사과정원 관리</h1>
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <a
+              href={monsterUrl}
+              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card"
+              aria-label="monster-site 지점 관리자 페이지로"
+            >
+              ← 본사
+            </a>
+            <h1 className="text-xl font-bold truncate">사과정원 관리</h1>
+          </div>
           <nav className="flex gap-3 text-sm flex-wrap">
             <Link href="/admin/students" className="text-ink-soft hover:text-apple">
               학생 관리
@@ -84,7 +96,7 @@ export default async function AdminPage({
               학기 리셋
             </Link>
             <Link href="/" target="_blank" className="text-ink-soft hover:text-apple">
-              TV 화면 보기 ↗
+              TV 화면 ↗
             </Link>
           </nav>
         </div>
