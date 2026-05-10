@@ -172,3 +172,18 @@ body {
   100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
 }
 .ring-pulse { animation: ring-pulse 1100ms ease-out forwards; }
+
+/* ================================================================
+   접근성: 사용자가 OS 에서 "동작 줄이기" 를 켰으면 모든 애니메이션과
+   트랜지션을 거의 즉시로 단축. 시각 효과는 보존하되 움직임만 제거.
+================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
