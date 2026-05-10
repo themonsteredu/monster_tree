@@ -1,10 +1,10 @@
 // /admin/reports - 주간 / 월간 리포트
-// 이번 달 첫 날부터 지금까지의 logs / harvests 를 한 번에 가져와서
-// 클라이언트에서 주/월 탭으로 집계 전환.
+// 해당 지점 (BRANCH_ID env) 의 logs / harvests 만 대상.
 
 import Link from "next/link";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getMonsterSiteUrl } from "@/lib/monster-site";
+import { getBranchId } from "@/lib/branch";
 import type { GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
@@ -35,36 +35,64 @@ export default async function ReportsPage({
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
+  const branchId = getBranchId();
+  const monsterUrl = getMonsterSiteUrl();
+
+  if (!branchId) {
+    return (
+      <main className="p-6">
+        <div className="max-w-lg mx-auto bg-[#fef2f0] border-[2.5px] border-[var(--apple-deep)] rounded-2xl p-6">
+          <div className="text-3xl mb-2">⚠️</div>
+          <h1 className="text-lg font-extrabold text-[var(--apple-deep)] mb-2">
+            BRANCH_ID 환경변수가 설정되지 않았어요
+          </h1>
+          <p className="text-sm text-[var(--ink)]">
+            Vercel 프로젝트 설정에서 <code className="px-1.5 py-0.5 bg-white rounded">BRANCH_ID</code> 추가 필요.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const sb = createSupabaseServerAnonClient();
 
-  // 이번 달 첫 날 (KST 기준 근사 — server 타임존과 무관하게 local Date)
+  // 이번 달 첫 날
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
   const monthStartIso = monthStart.toISOString();
 
-  const [{ data: students }, { data: monthLogs }, { data: monthHarvests }] = await Promise.all([
-    sb
-      .from("garden_students")
-      .select("*")
-      .eq("is_active", true)
-      .order("class_name", { ascending: true, nullsFirst: false })
-      .order("name", { ascending: true }),
-    sb
-      .from("garden_point_logs")
-      .select("student_id, points, reason, logged_at")
-      .gte("logged_at", monthStartIso)
-      .order("logged_at", { ascending: false })
-      .limit(5000),
-    sb
-      .from("garden_harvests")
-      .select("student_id, apples_count, harvested_at")
-      .gte("harvested_at", monthStartIso)
-      .order("harvested_at", { ascending: false })
-      .limit(2000),
-  ]);
+  // 1단계: 지점 학생 먼저
+  const { data: students } = await sb
+    .from("garden_students")
+    .select("*")
+    .eq("branch_id", branchId)
+    .eq("is_active", true)
+    .order("class_name", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
 
-  const monsterUrl = getMonsterSiteUrl();
+  const branchStudentIds = ((students ?? []) as GardenStudent[]).map((s) => s.id);
+
+  // 2단계: 지점 학생의 logs / harvests
+  const [{ data: monthLogs }, { data: monthHarvests }] =
+    branchStudentIds.length > 0
+      ? await Promise.all([
+          sb
+            .from("garden_point_logs")
+            .select("student_id, points, reason, logged_at")
+            .in("student_id", branchStudentIds)
+            .gte("logged_at", monthStartIso)
+            .order("logged_at", { ascending: false })
+            .limit(5000),
+          sb
+            .from("garden_harvests")
+            .select("student_id, apples_count, harvested_at")
+            .in("student_id", branchStudentIds)
+            .gte("harvested_at", monthStartIso)
+            .order("harvested_at", { ascending: false })
+            .limit(2000),
+        ])
+      : [{ data: [] }, { data: [] }];
 
   return (
     <main className="min-h-screen pb-20">
