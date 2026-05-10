@@ -7,7 +7,7 @@
 // - 선택 모드 시 여러 학생 일괄 +pt 적립
 // - 점수 적립 시 카드 초록 플래시 + 포인트 카운트업
 // - 단계 상승 시 큰 모달 + 컨페티
-// - 하단 시트로 "오늘 입력 기록" 펼치기
+// - 하단 시트로 "오늘 입력 기록" + "대기 중" 펼치기 + 되돌리기/취소
 // - Realtime 으로 다른 화면에서 입력해도 즉시 갱신됨
 
 import confetti from "canvas-confetti";
@@ -17,7 +17,13 @@ import { AppleTree } from "@/components/AppleTree";
 import { calculateStage, getStageInfo, stageProgress } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
-import { addPointsAction, addPointsBulkAction, harvestStudentAction } from "./actions";
+import {
+  addPointsAction,
+  addPointsBulkAction,
+  cancelPendingAction,
+  harvestStudentAction,
+  undoLogAction,
+} from "./actions";
 
 const QUICK_BUTTONS = [1, 2, 3, 4, 5] as const;
 const LONG_PRESS_MS = 500;
@@ -25,9 +31,18 @@ const FLASH_MS = 600;
 
 type StudentMini = { name: string; class_name: string | null };
 
+type PendingPoint = {
+  id: string;
+  student_id: string;
+  points: number;
+  reason: string | null;
+  created_at: string;
+};
+
 type Props = {
   students: GardenStudent[];
   recentLogs: GardenPointLog[];
+  recentPending: PendingPoint[];
   studentMap: Record<string, StudentMini>;
   initialClass: string | null;
 };
@@ -43,11 +58,14 @@ type StageUp = {
 export function AdminClient({
   students: initialStudents,
   recentLogs: initialLogs,
+  recentPending: initialPending,
   studentMap,
   initialClass,
 }: Props) {
   const [students, setStudents] = useState(initialStudents);
   const [logs, setLogs] = useState(initialLogs);
+  const [pendingPoints, setPendingPoints] = useState<PendingPoint[]>(initialPending);
+  const [undoneIds, setUndoneIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState<string | null>(initialClass);
   const [search, setSearch] = useState("");
   const [reasonModal, setReasonModal] = useState<{
@@ -135,6 +153,27 @@ export function AdminClient({
           setLogs((p) => [payload.new as GardenPointLog, ...p].slice(0, 50));
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "garden_pending_points" },
+        (payload) => {
+          const p = payload.new as PendingPoint;
+          if (!p) return;
+          setPendingPoints((prev) => {
+            if (prev.some((x) => x.id === p.id)) return prev;
+            return [p, ...prev].slice(0, 200);
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "garden_pending_points" },
+        (payload) => {
+          const old = payload.old as { id?: string } | null;
+          if (!old?.id) return;
+          setPendingPoints((prev) => prev.filter((x) => x.id !== old.id));
+        },
+      )
       .subscribe();
     return () => {
       sb.removeChannel(ch);
@@ -198,6 +237,44 @@ export function AdminClient({
       showToast(`${res.count}명 ${delta > 0 ? "+" : ""}${delta}pt 적립`);
       setSelectedIds(new Set());
       setSelectMode(false);
+    });
+  };
+
+  const submitCancelPending = (pendingId: string) => {
+    triggerHaptic("warning");
+    // 낙관적: 즉시 로컬 제거 (Realtime DELETE 도 도착하면 멱등하게 처리됨)
+    setPendingPoints((prev) => prev.filter((p) => p.id !== pendingId));
+    startTransition(async () => {
+      const res = await cancelPendingAction({ pendingId });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast("취소되었어요");
+    });
+  };
+
+  const submitUndoLog = (logId: string) => {
+    if (undoneIds.has(logId)) return;
+    triggerHaptic("warning");
+    setUndoneIds((prev) => {
+      const next = new Set(prev);
+      next.add(logId);
+      return next;
+    });
+    startTransition(async () => {
+      const res = await undoLogAction({ logId });
+      if (!res.ok) {
+        // 실패 시 원복
+        setUndoneIds((prev) => {
+          const next = new Set(prev);
+          next.delete(logId);
+          return next;
+        });
+        showToast(res.message);
+        return;
+      }
+      showToast(`되돌리기 완료 (${res.revertedPoints > 0 ? "−" : "+"}${Math.abs(res.revertedPoints)}pt)`);
     });
   };
 
@@ -370,7 +447,12 @@ export function AdminClient({
           onClick={() => setSheetOpen(true)}
           className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm"
         >
-          오늘 입력 기록
+          오늘 기록 / 되돌리기
+          {pendingPoints.length > 0 && (
+            <span className="ml-1.5 inline-block min-w-[20px] px-1.5 py-0.5 rounded-full bg-[var(--accent-success)] text-white text-[11px] font-extrabold tabular-nums">
+              {pendingPoints.length}
+            </span>
+          )}
         </button>
       )}
 
@@ -415,11 +497,16 @@ export function AdminClient({
         />
       )}
 
-      {/* 오늘 입력 기록 시트 */}
+      {/* 오늘 기록 / 대기 중 시트 */}
       {sheetOpen && (
         <RecentLogsSheet
           logs={logs}
+          pendingPoints={pendingPoints}
+          undoneIds={undoneIds}
           studentMap={studentMap}
+          disabled={pending}
+          onCancelPending={submitCancelPending}
+          onUndoLog={submitUndoLog}
           onClose={() => setSheetOpen(false)}
         />
       )}
@@ -866,11 +953,21 @@ function ReasonModal({
 
 function RecentLogsSheet({
   logs,
+  pendingPoints,
+  undoneIds,
   studentMap,
+  disabled,
+  onCancelPending,
+  onUndoLog,
   onClose,
 }: {
   logs: GardenPointLog[];
+  pendingPoints: PendingPoint[];
+  undoneIds: Set<string>;
   studentMap: Record<string, StudentMini>;
+  disabled: boolean;
+  onCancelPending: (pendingId: string) => void;
+  onUndoLog: (logId: string) => void;
   onClose: () => void;
 }) {
   const today = useMemo(() => {
@@ -888,12 +985,12 @@ function RecentLogsSheet({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-white rounded-t-[24px] border-t-[2.5px] border-[var(--ink)] p-5 max-h-[70vh] overflow-y-auto"
+        className="w-full max-w-2xl bg-white rounded-t-[24px] border-t-[2.5px] border-[var(--ink)] p-5 max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-extrabold text-[var(--ink)]">
-            오늘 입력 기록 ({todayLogs.length})
+            오늘 기록 / 되돌리기
           </h2>
           <button
             onClick={onClose}
@@ -902,45 +999,133 @@ function RecentLogsSheet({
             닫기
           </button>
         </div>
-        {todayLogs.length === 0 && (
-          <p className="text-center text-[var(--ink-soft)] py-10">
-            아직 오늘 입력한 기록이 없어요.
-          </p>
-        )}
-        <ul className="divide-y divide-[var(--ink)]/10">
-          {todayLogs.map((l) => {
-            const m = studentMap[l.student_id];
-            const t = new Date(l.logged_at);
-            const hh = t.getHours().toString().padStart(2, "0");
-            const mm = t.getMinutes().toString().padStart(2, "0");
-            return (
-              <li key={l.id} className="py-2 flex items-center gap-3">
-                <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
-                  {hh}:{mm}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-extrabold truncate text-[var(--ink)]">
-                    {m?.name ?? "(삭제된 학생)"}
-                  </div>
-                  <div className="text-xs text-[var(--ink-soft)] truncate">
-                    {l.reason ?? "—"}
-                  </div>
-                </div>
-                <div
-                  className={[
-                    "font-extrabold tabular-nums",
-                    l.points >= 0
-                      ? "text-[var(--accent-success)]"
-                      : "text-[var(--apple-deep)]",
-                  ].join(" ")}
-                >
-                  {l.points > 0 ? "+" : ""}
-                  {l.points}pt
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+
+        {/* 대기 중 (아직 학생이 받기 안 누름) */}
+        <section className="mb-4">
+          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2">
+            <span>🎁 대기 중</span>
+            <span className="text-xs font-bold text-[var(--ink-soft)]">
+              ({pendingPoints.length}) — 학생이 아직 받기 안 누른 포인트
+            </span>
+          </div>
+          {pendingPoints.length === 0 ? (
+            <p className="text-center text-[var(--ink-soft)] py-4 text-sm">
+              대기 중인 포인트가 없어요.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--ink)]/10">
+              {pendingPoints.map((p) => {
+                const m = studentMap[p.student_id];
+                const t = new Date(p.created_at);
+                const hh = t.getHours().toString().padStart(2, "0");
+                const mm = t.getMinutes().toString().padStart(2, "0");
+                return (
+                  <li key={p.id} className="py-2 flex items-center gap-3">
+                    <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
+                      {hh}:{mm}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-extrabold truncate text-[var(--ink)]">
+                        {m?.name ?? "(삭제된 학생)"}
+                      </div>
+                      <div className="text-xs text-[var(--ink-soft)] truncate">
+                        {p.reason ?? "—"}
+                      </div>
+                    </div>
+                    <div
+                      className={[
+                        "font-extrabold tabular-nums",
+                        p.points >= 0
+                          ? "text-[var(--accent-success)]"
+                          : "text-[var(--apple-deep)]",
+                      ].join(" ")}
+                    >
+                      {p.points > 0 ? "+" : ""}
+                      {p.points}pt
+                    </div>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onCancelPending(p.id)}
+                      className="shrink-0 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold disabled:opacity-50"
+                    >
+                      취소
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* 오늘 적용된 로그 */}
+        <section>
+          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2">
+            <span>📋 오늘 적용됨</span>
+            <span className="text-xs font-bold text-[var(--ink-soft)]">
+              ({todayLogs.length})
+            </span>
+          </div>
+          {todayLogs.length === 0 ? (
+            <p className="text-center text-[var(--ink-soft)] py-4 text-sm">
+              아직 오늘 적용된 기록이 없어요.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--ink)]/10">
+              {todayLogs.map((l) => {
+                const m = studentMap[l.student_id];
+                const t = new Date(l.logged_at);
+                const hh = t.getHours().toString().padStart(2, "0");
+                const mm = t.getMinutes().toString().padStart(2, "0");
+                const isUndone = undoneIds.has(l.id);
+                const isCompensation = (l.reason ?? "").startsWith("되돌리기:");
+                return (
+                  <li key={l.id} className="py-2 flex items-center gap-3">
+                    <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
+                      {hh}:{mm}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-extrabold truncate text-[var(--ink)]">
+                        {m?.name ?? "(삭제된 학생)"}
+                      </div>
+                      <div className="text-xs text-[var(--ink-soft)] truncate">
+                        {l.reason ?? "—"}
+                      </div>
+                    </div>
+                    <div
+                      className={[
+                        "font-extrabold tabular-nums",
+                        l.points >= 0
+                          ? "text-[var(--accent-success)]"
+                          : "text-[var(--apple-deep)]",
+                      ].join(" ")}
+                    >
+                      {l.points > 0 ? "+" : ""}
+                      {l.points}pt
+                    </div>
+                    {/* 보상 로그 자체는 되돌리기 버튼 숨김 (무한 루프 방지) */}
+                    {!isCompensation && (
+                      <button
+                        type="button"
+                        disabled={disabled || isUndone}
+                        onClick={() => onUndoLog(l.id)}
+                        className={[
+                          "shrink-0 px-2.5 py-1.5 rounded-full text-xs font-extrabold border-[1.5px] border-[var(--ink)]",
+                          isUndone
+                            ? "bg-[var(--ink)]/10 text-[var(--ink-soft)]"
+                            : "bg-white text-[var(--ink)]",
+                          "disabled:opacity-50",
+                        ].join(" ")}
+                      >
+                        {isUndone ? "되돌림" : "되돌리기"}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );

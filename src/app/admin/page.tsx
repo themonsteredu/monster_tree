@@ -11,6 +11,14 @@ import { AdminClient } from "./AdminClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+export type AdminPendingPoint = {
+  id: string;
+  student_id: string;
+  points: number;
+  reason: string | null;
+  created_at: string;
+};
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -37,7 +45,7 @@ export default async function AdminPage({
   }
 
   const sb = createSupabaseServerAnonClient();
-  const [{ data: students }, { data: recentLogs }] = await Promise.all([
+  const [{ data: students }, { data: recentLogs }, { data: recentPending }] = await Promise.all([
     sb
       .from("garden_students")
       .select("*")
@@ -49,6 +57,11 @@ export default async function AdminPage({
       .select("*")
       .order("logged_at", { ascending: false })
       .limit(30),
+    sb
+      .from("garden_pending_points")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   // 학생 이름 매핑 (최근 기록 표시용)
@@ -74,6 +87,7 @@ export default async function AdminPage({
       <AdminClient
         students={(students ?? []) as GardenStudent[]}
         recentLogs={(recentLogs ?? []) as GardenPointLog[]}
+        recentPending={(recentPending ?? []) as AdminPendingPoint[]}
         studentMap={Object.fromEntries(
           Array.from(studentMap.entries()).map(([k, v]) => [k, { name: v.name, class_name: v.class_name }]),
         )}
