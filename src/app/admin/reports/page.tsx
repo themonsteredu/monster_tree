@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
+import { getMonsterSiteUrl } from "@/lib/monster-site";
 import type { GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
@@ -63,17 +64,28 @@ export default async function ReportsPage({
       .limit(2000),
   ]);
 
+  const monsterUrl = getMonsterSiteUrl();
+
   return (
     <main className="min-h-screen pb-20">
       <header className="sticky top-0 z-30 bg-[var(--bg-warm-start)]/90 backdrop-blur border-b border-[var(--ink)]/10">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-[var(--ink)]">리포트</h1>
-          <Link
-            href="/admin"
-            className="text-sm font-bold text-[var(--ink-soft)] underline"
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link
+              href="/admin"
+              className="text-sm font-bold text-[var(--ink-soft)] underline shrink-0"
+            >
+              ← 관리
+            </Link>
+            <h1 className="text-xl font-bold text-[var(--ink)] truncate">리포트</h1>
+          </div>
+          <a
+            href={monsterUrl}
+            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card"
+            aria-label="monster-site 지점 관리자 페이지로"
           >
-            ← 돌아가기
-          </Link>
+            ← 본사
+          </a>
         </div>
       </header>
 
