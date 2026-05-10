@@ -2,6 +2,8 @@
 
 // TV 화면 (1920×1080 풀스크린 가로 모드 가정)
 //
+// 모바일(<640px)에서 접속하면 깨진 레이아웃 대신 깔끔한 안내 + 링크 제공.
+//
 // Realtime (useTvRealtime 훅):
 // - garden_students: 학생 정보 갱신, 단계 상승 시 배너 + 컨페티
 // - garden_point_logs: +pt 강조 (3초)
@@ -17,6 +19,7 @@ import {
   pointsToNextStage,
   stageProgress,
 } from "@/lib/garden";
+import { getMonsterSiteUrl } from "@/lib/monster-site";
 import type { GardenStudent } from "@/lib/types";
 import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
@@ -78,7 +81,18 @@ export function TVScreen({
   const [flyingApples, setFlyingApples] = useState<FlyingApple[]>([]);
   const [now, setNow] = useState(0);
 
+  // 화면 분기:
+  //  - <640px: 모바일 가드 (TV 레이아웃 깨지므로 깔끔한 안내 화면)
+  //  - 640~1023px: compact (태블릿)
+  //  - 1024px+: 데스크탑 (정상 TV)
+  const isPhone = useMediaQuery("(max-width: 639px)");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  // SSR 시 useMediaQuery 는 false 를 반환 → 첫 페인트는 데스크탑 가정.
+  // 마운트 후 mounted 가 true 가 되면 매체 쿼리 결과를 신뢰.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const prevStageRef = useRef<Record<string, number>>({});
   const sortedRef = useRef<GardenStudent[]>(initialStudents);
@@ -210,6 +224,12 @@ export function TVScreen({
     setBanners((b) => b.filter((x) => x.expiresAt > now));
   }, [now]);
 
+  // 모바일에서는 TV 레이아웃 대신 깔끔한 가드 화면.
+  // mounted 전에는 SSR 결과 (false) 라 데스크탑 가정 — hydration mismatch 방지.
+  if (mounted && isPhone) {
+    return <MobileGuard />;
+  }
+
   const today = now === 0 ? "" : formatToday(new Date(now));
   const top = sorted[0];
   const spotlight = sorted[focusedIdx];
@@ -294,6 +314,46 @@ export function TVScreen({
       ))}
 
       <AdminLink />
+    </main>
+  );
+}
+
+/* ================================================================
+   모바일 가드 — 작은 화면(<640px)에서 TV 레이아웃 대신 깔끔한 안내
+================================================================ */
+
+function MobileGuard() {
+  const monsterUrl = getMonsterSiteUrl();
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+      <div className="text-6xl mb-4" aria-hidden>
+        📺
+      </div>
+      <h1 className="text-2xl font-extrabold text-[var(--ink)] text-center mb-2">
+        TV 화면입니다
+      </h1>
+      <p className="text-sm text-[var(--ink-soft)] text-center mb-8 leading-relaxed">
+        이 페이지는 학원 TV 모니터(가로 풀스크린)용으로
+        <br />
+        만들어졌어요. 모바일에서는 아래 페이지를 이용해주세요.
+      </p>
+      <div className="w-full max-w-xs space-y-3">
+        <Link
+          href="/admin"
+          className="block w-full text-center py-4 rounded-2xl bg-[var(--ink)] text-white font-extrabold border-[2.5px] border-[var(--ink)] shadow-card-pop"
+        >
+          🌳 원장 페이지로
+        </Link>
+        <a
+          href={monsterUrl}
+          className="block w-full text-center py-4 rounded-2xl bg-white text-[var(--ink)] font-extrabold border-[2.5px] border-[var(--ink)] shadow-card"
+        >
+          ← 본사로
+        </a>
+      </div>
+      <p className="text-xs text-[var(--ink-soft)] mt-8 text-center">
+        TV 화면은 가로 1024px 이상에서 정상 표시돼요.
+      </p>
     </main>
   );
 }
