@@ -73,9 +73,12 @@ export default async function AdminPage({
       <header className="sticky top-0 z-30 bg-cream/90 backdrop-blur border-b border-pot/10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold">사과정원 관리</h1>
-          <nav className="flex gap-3 text-sm">
+          <nav className="flex gap-3 text-sm flex-wrap">
             <Link href="/admin/students" className="text-ink-soft hover:text-apple">
               학생 관리
+            </Link>
+            <Link href="/admin/reports" className="text-ink-soft hover:text-apple">
+              리포트
             </Link>
             <Link href="/admin/reset" className="text-ink-soft hover:text-apple">
               학기 리셋
