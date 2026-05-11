@@ -3,20 +3,25 @@
 export type AvatarHumanBody = "boy" | "girl";
 export type AvatarKind = "human" | "animal" | "fantasy";
 
+export type AvatarAccessories = { glasses?: string; hat?: string };
+
 export type AvatarConfig =
   | {
       kind: "human";
       body: AvatarHumanBody;
       skin: string;
       hair: string;
-      face: string;
+      eyes: string;
+      mouth: string;
       top: string;
       bottom: string;
       shoes: string;
+      accessories?: AvatarAccessories;
     }
   | {
       kind: "animal" | "fantasy";
       variant: string;
+      accessories?: AvatarAccessories;
     };
 
 export const DEFAULT_AVATAR: AvatarConfig = {
@@ -24,7 +29,8 @@ export const DEFAULT_AVATAR: AvatarConfig = {
   body: "boy",
   skin: "light",
   hair: "short_brown",
-  face: "smile",
+  eyes: "dot",
+  mouth: "smile",
   top: "hoodie_white",
   bottom: "shorts_green",
   shoes: "sneakers_brown",

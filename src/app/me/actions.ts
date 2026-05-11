@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { AvatarConfig, BackgroundConfig } from "@/lib/types";
+import type { AvatarConfig, AvatarAccessories, BackgroundConfig } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -62,9 +62,19 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
   const a = raw as Record<string, unknown>;
   const kind = a.kind;
   const isShortStr = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 40;
+
+  let accessories: AvatarAccessories | undefined;
+  if (a.accessories && typeof a.accessories === "object") {
+    const ac = a.accessories as Record<string, unknown>;
+    const next: AvatarAccessories = {};
+    if (isShortStr(ac.glasses)) next.glasses = ac.glasses as string;
+    if (isShortStr(ac.hat)) next.hat = ac.hat as string;
+    if (Object.keys(next).length > 0) accessories = next;
+  }
+
   if (kind === "human") {
     if (a.body !== "boy" && a.body !== "girl") return null;
-    for (const k of ["skin", "hair", "face", "top", "bottom", "shoes"]) {
+    for (const k of ["skin", "hair", "eyes", "mouth", "top", "bottom", "shoes"]) {
       if (!isShortStr(a[k])) return null;
     }
     return {
@@ -72,15 +82,21 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
       body: a.body as "boy" | "girl",
       skin: a.skin as string,
       hair: a.hair as string,
-      face: a.face as string,
+      eyes: a.eyes as string,
+      mouth: a.mouth as string,
       top: a.top as string,
       bottom: a.bottom as string,
       shoes: a.shoes as string,
+      ...(accessories && { accessories }),
     };
   }
   if (kind === "animal" || kind === "fantasy") {
     if (!isShortStr(a.variant)) return null;
-    return { kind, variant: a.variant as string };
+    return {
+      kind,
+      variant: a.variant as string,
+      ...(accessories && { accessories }),
+    };
   }
   return null;
 }

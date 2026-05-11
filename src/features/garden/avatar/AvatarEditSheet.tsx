@@ -2,10 +2,11 @@
 
 // 학생 본인의 아바타를 편집하는 시트.
 // 카테고리 (사람/동물/판타지) 탭 + 각 카테고리에 맞는 옵션 선택.
+// 모든 kind 공통으로 안경/모자 액세서리 슬롯 노출.
 // 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
 
 import { useState, useTransition } from "react";
-import type { AvatarConfig } from "@/lib/types";
+import type { AvatarConfig, AvatarAccessories } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
 import { AvatarFigure, AVATAR_OPTIONS } from "./AvatarFigure";
 import { updateAvatarAction } from "@/app/me/actions";
@@ -20,7 +21,8 @@ type Props = {
 const HUMAN_PART_LABELS: Record<string, string> = {
   skin: "피부",
   hair: "머리",
-  face: "표정",
+  eyes: "눈",
+  mouth: "입",
   top: "상의",
   bottom: "하의",
   shoes: "신발",
@@ -38,11 +40,19 @@ const PART_VALUE_LABELS: Record<string, string> = {
   long_brown: "갈색 긴머리",
   long_black: "검정 긴머리",
   long_pink: "분홍 긴머리",
-  // 얼굴
-  smile: "웃음",
-  neutral: "평범",
-  surprised: "놀람",
+  // 눈
+  dot: "또렷한 눈",
   wink: "윙크",
+  round: "큰 눈",
+  sleepy: "졸린 눈",
+  star: "별눈",
+  sharp: "날카로운 눈",
+  // 입
+  smile: "웃음",
+  neutral: "다물기",
+  oh: "놀람",
+  smirk: "씨익",
+  tongue: "메롱",
   // 상의
   hoodie_white: "흰 후드",
   tshirt_blue: "파란 티",
@@ -67,6 +77,15 @@ const PART_VALUE_LABELS: Record<string, string> = {
   robot: "로봇",
   astronaut: "우주인",
   ghost: "유령",
+  // 액세서리
+  none: "없음",
+  square: "사각 뿔테",
+  sunglasses: "선글라스",
+  beanie_navy: "네이비 비니",
+  newsboy_brown: "뉴스보이 캡",
+  wizard_purple: "마법사 모자",
+  graduation_black: "학사모",
+  cap_red: "빨간 캡",
 };
 
 function labelOf(value: string): string {
@@ -82,15 +101,17 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
 
   const setKind = (kind: "human" | "animal" | "fantasy") => {
     setError(null);
+    // 액세서리는 kind 전환 시에도 유지
+    const keepAcc = draft.accessories;
     if (kind === "human") {
-      setDraft(DEFAULT_AVATAR);
+      setDraft({ ...DEFAULT_AVATAR, accessories: keepAcc });
       return;
     }
     if (kind === "animal") {
-      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0] });
+      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], accessories: keepAcc });
       return;
     }
-    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0] });
+    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], accessories: keepAcc });
   };
 
   const setHumanPart = (key: string, value: string) => {
@@ -107,6 +128,19 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
     if (draft.kind === "human") return;
     setDraft({ ...draft, variant });
   };
+
+  const setAccessory = (slot: "glasses" | "hat", value: string) => {
+    const nextAcc: AvatarAccessories = { ...(draft.accessories ?? {}) };
+    if (value === "none") {
+      delete nextAcc[slot];
+    } else {
+      nextAcc[slot] = value;
+    }
+    const hasAny = Object.keys(nextAcc).length > 0;
+    setDraft({ ...draft, accessories: hasAny ? nextAcc : undefined } as AvatarConfig);
+  };
+
+  const currentAcc = draft.accessories ?? {};
 
   const onSave = () => {
     setError(null);
@@ -223,9 +257,9 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                 </Chip>
               ))}
             </Slot>
-            {(["skin", "hair", "face", "top", "bottom", "shoes"] as const).map((key) => (
+            {(["skin", "hair", "eyes", "mouth", "top", "bottom", "shoes"] as const).map((key) => (
               <Slot key={key} title={HUMAN_PART_LABELS[key]}>
-                {(AVATAR_OPTIONS[key] as string[]).map((value) => (
+                {(AVATAR_OPTIONS[key] as readonly string[]).map((value) => (
                   <Chip
                     key={value}
                     active={draft[key] === value}
@@ -260,6 +294,32 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
             ))}
           </Slot>
         )}
+
+        {/* 액세서리 — 전 kind 공통 */}
+        <div style={{ borderTop: "1px dashed #d6c2a0", marginTop: 10, paddingTop: 10 }}>
+          <Slot title="안경">
+            {AVATAR_OPTIONS.glasses.map((v) => (
+              <Chip
+                key={v}
+                active={(currentAcc.glasses ?? "none") === v}
+                onClick={() => setAccessory("glasses", v)}
+              >
+                {labelOf(v)}
+              </Chip>
+            ))}
+          </Slot>
+          <Slot title="모자">
+            {AVATAR_OPTIONS.hat.map((v) => (
+              <Chip
+                key={v}
+                active={(currentAcc.hat ?? "none") === v}
+                onClick={() => setAccessory("hat", v)}
+              >
+                {labelOf(v)}
+              </Chip>
+            ))}
+          </Slot>
+        </div>
 
         {error && (
           <div
