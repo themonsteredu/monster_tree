@@ -10,6 +10,7 @@
 import { cookies } from "next/headers";
 
 const ADMIN_BRANCH_COOKIE = "garden_admin_branch";
+const ADMIN_BRANCH_NAME_COOKIE = "garden_admin_branch_name";
 
 /** TV 등 비-admin 화면 용 지점 ID. env 만 본다. */
 export function getBranchId(): string | null {
@@ -25,15 +26,31 @@ export function getAdminBranchId(): string | null {
   return v.trim();
 }
 
-export function setAdminBranchCookie(branchId: string) {
+/** Admin 쿠키에 저장된 지점 이름 (monster-site 에서 핸드오프). */
+export function getAdminBranchName(): string | null {
+  const v = cookies().get(ADMIN_BRANCH_NAME_COOKIE)?.value;
+  if (!v || !v.trim()) return null;
+  return v.trim();
+}
+
+export function setAdminBranchCookie(branchId: string, branchName?: string | null) {
   cookies().set(ADMIN_BRANCH_COOKIE, branchId, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30일
   });
+  if (branchName && branchName.trim()) {
+    cookies().set(ADMIN_BRANCH_NAME_COOKIE, branchName.trim(), {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
 }
 
 export function clearAdminBranchCookie() {
   cookies().delete(ADMIN_BRANCH_COOKIE);
+  cookies().delete(ADMIN_BRANCH_NAME_COOKIE);
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getMonsterSiteUrl } from "@/lib/monster-site";
-import { getAdminBranchId } from "@/lib/branch";
+import { getAdminBranchId, getAdminBranchName, setAdminBranchCookie } from "@/lib/branch";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "./auth";
 import { LoginForm } from "./LoginForm";
@@ -25,7 +25,7 @@ export type AdminPendingPoint = {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: { key?: string; class?: string };
+  searchParams: { key?: string; class?: string; branch?: string; name?: string };
 }) {
   const authed = isAdminAuthenticated(searchParams.key);
 
@@ -47,7 +47,15 @@ export default async function AdminPage({
     );
   }
 
+  // monster-site 의 "몬스터 트리" 버튼이 ?branch=br_xxx&name=계림점 으로 핸드오프하면
+  // 쿠키에 저장 후 clean URL 로 리다이렉트 — 새로고침 시 URL 재진입을 방지.
+  if (searchParams.branch && searchParams.branch.trim()) {
+    setAdminBranchCookie(searchParams.branch.trim(), searchParams.name?.trim() || null);
+    redirect("/admin");
+  }
+
   const branchId = getAdminBranchId();
+  const branchName = getAdminBranchName();
   const monsterUrl = getMonsterSiteUrl();
 
   if (!branchId) {
@@ -101,7 +109,12 @@ export default async function AdminPage({
             >
               ← 본사
             </a>
-            <h1 className="text-xl font-bold truncate">사과정원 관리</h1>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold truncate leading-tight">사과정원 관리</h1>
+              {branchName && (
+                <div className="text-xs text-ink-soft truncate">{branchName}</div>
+              )}
+            </div>
           </div>
           <nav className="flex gap-3 text-sm flex-wrap items-center">
             <Link href="/admin/students" className="text-ink-soft hover:text-apple">
@@ -113,13 +126,17 @@ export default async function AdminPage({
             <Link href="/admin/reset" className="text-ink-soft hover:text-apple">
               학기 리셋
             </Link>
-            <Link href="/" target="_blank" className="text-ink-soft hover:text-apple">
+            <Link
+              href={`/?branch=${encodeURIComponent(branchId!)}`}
+              target="_blank"
+              className="text-ink-soft hover:text-apple"
+            >
               TV 화면 ↗
             </Link>
             <Link
               href="/admin/select-branch"
               className="text-xs text-ink-soft hover:text-apple underline"
-              title={`지점: ${branchId}`}
+              title={`지점: ${branchName ?? branchId}`}
             >
               지점 변경
             </Link>
