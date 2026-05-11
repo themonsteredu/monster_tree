@@ -1,5 +1,8 @@
 // 로비 TV 화면 (가로 풀스크린, 1920x1080 가정)
-// 해당 지점 (BRANCH_ID env) 학생만 표시.
+// 지점 선택:
+//   1) ?branch=br_xxx URL 쿼리 (monster-site 핸드오프 — 우선)
+//   2) BRANCH_ID env (deployment 고정)
+// 둘 다 없으면 안내 배너.
 
 import { TVScreen } from "./TVScreen";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
@@ -9,7 +12,11 @@ import type { GardenStudent } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: { branch?: string };
+}) {
   let initialStudents: GardenStudent[] = [];
   let initialTodayHarvest = 0;
   let envMissing = false;
@@ -18,7 +25,8 @@ export default async function Page() {
     envMissing = true;
   }
 
-  const branchId = getBranchId();
+  const queryBranch = searchParams.branch?.trim();
+  const branchId = queryBranch && queryBranch.length > 0 ? queryBranch : getBranchId();
 
   if (envMissing) {
     return <EnvMissingNotice />;
@@ -92,15 +100,15 @@ function BranchMissingNotice() {
       <div className="max-w-xl rounded-3xl bg-[#fef2f0] border-[2.5px] border-[var(--apple-deep)] p-8 text-center">
         <div className="text-5xl mb-3">⚠️</div>
         <h1 className="text-xl font-extrabold text-[var(--apple-deep)] mb-2">
-          BRANCH_ID 환경변수가 설정되지 않았어요
+          어떤 지점 TV 인지 모르겠어요
         </h1>
         <p className="text-sm text-[var(--ink)] leading-relaxed">
-          Vercel 프로젝트 설정에서 <code className="px-1.5 py-0.5 bg-white rounded">BRANCH_ID</code> 추가 필요.
+          URL 에 <code className="px-1.5 py-0.5 bg-white rounded">?branch=br_xxx</code> 를 붙이거나,
+          <br />
+          Vercel 프로젝트 설정에서 <code className="px-1.5 py-0.5 bg-white rounded">BRANCH_ID</code> env 를 추가해주세요.
+          <br />
+          본사 (monster-site) "몬스터 트리" 버튼으로 진입하면 자동으로 채워집니다.
         </p>
-        <ul className="mt-3 text-xs text-[var(--ink-soft)] list-disc inline-block text-left">
-          <li>계림점: <code>monster_gyerim</code></li>
-          <li>봉선점: <code>monster_bong</code></li>
-        </ul>
       </div>
     </main>
   );
