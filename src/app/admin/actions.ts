@@ -10,7 +10,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { getBranchId } from "@/lib/branch";
+import { getAdminBranchId, clearAdminBranchCookie } from "@/lib/branch";
 import { isAdminAuthenticated, setAdminCookie, clearAdminCookie, isAdminKey } from "./auth";
 
 function ensureAuth() {
@@ -20,11 +20,11 @@ function ensureAuth() {
 }
 
 function ensureBranch(): { ok: true; branchId: string } | { ok: false; message: string } {
-  const branchId = getBranchId();
+  const branchId = getAdminBranchId();
   if (!branchId) {
     return {
       ok: false,
-      message: "BRANCH_ID 환경변수가 설정되지 않았어요. (Vercel 설정 필요)",
+      message: "지점이 선택되지 않았어요. /admin/select-branch 에서 지점을 골라주세요.",
     };
   }
   return { ok: true, branchId };
@@ -43,6 +43,7 @@ export async function loginAction(formData: FormData) {
 
 export async function logoutAction() {
   clearAdminCookie();
+  clearAdminBranchCookie();
 }
 
 /* ============== 포인트 적립 (단일 / 일괄) ============== */

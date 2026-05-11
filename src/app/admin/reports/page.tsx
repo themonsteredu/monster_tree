@@ -1,10 +1,11 @@
 // /admin/reports - 주간 / 월간 리포트
-// 해당 지점 (BRANCH_ID env) 의 logs / harvests 만 대상.
+// admin 쿠키에 저장된 지점의 logs / harvests 만 대상.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getMonsterSiteUrl } from "@/lib/monster-site";
-import { getBranchId } from "@/lib/branch";
+import { getAdminBranchId } from "@/lib/branch";
 import type { GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
@@ -35,23 +36,11 @@ export default async function ReportsPage({
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
-  const branchId = getBranchId();
+  const branchId = getAdminBranchId();
   const monsterUrl = getMonsterSiteUrl();
 
   if (!branchId) {
-    return (
-      <main className="p-6">
-        <div className="max-w-lg mx-auto bg-[#fef2f0] border-[2.5px] border-[var(--apple-deep)] rounded-2xl p-6">
-          <div className="text-3xl mb-2">⚠️</div>
-          <h1 className="text-lg font-extrabold text-[var(--apple-deep)] mb-2">
-            BRANCH_ID 환경변수가 설정되지 않았어요
-          </h1>
-          <p className="text-sm text-[var(--ink)]">
-            Vercel 프로젝트 설정에서 <code className="px-1.5 py-0.5 bg-white rounded">BRANCH_ID</code> 추가 필요.
-          </p>
-        </div>
-      </main>
-    );
+    redirect("/admin/select-branch");
   }
 
   const sb = createSupabaseServerAnonClient();

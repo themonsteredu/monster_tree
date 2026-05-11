@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { AvatarConfig } from "@/lib/types";
+import type { AvatarConfig, BackgroundConfig } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -111,4 +111,51 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
   revalidatePath("/");
   revalidatePath("/admin");
   return { ok: true as const, avatar };
+}
+
+function validateBackground(raw: unknown): BackgroundConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Record<string, unknown>;
+  const isShortStr = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 40;
+  if (b.kind === "solid") {
+    if (!isShortStr(b.color)) return null;
+    return { kind: "solid", color: b.color as string };
+  }
+  if (b.kind === "pattern") {
+    if (!isShortStr(b.pattern) || !isShortStr(b.color)) return null;
+    return { kind: "pattern", pattern: b.pattern as string, color: b.color as string };
+  }
+  if (b.kind === "scene") {
+    if (!isShortStr(b.scene)) return null;
+    return { kind: "scene", scene: b.scene as string };
+  }
+  return null;
+}
+
+export async function updateBackgroundAction(args: { background: unknown }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  const background = validateBackground(args.background);
+  if (!background) {
+    return { ok: false as const, message: "배경 데이터가 올바르지 않아요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_students")
+    .update({ background })
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId);
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const, background };
 }

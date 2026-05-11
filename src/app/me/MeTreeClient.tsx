@@ -8,7 +8,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
-import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/types";
+import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
+import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
+import {
+  DEFAULT_AVATAR,
+  DEFAULT_BACKGROUND,
+  type AvatarConfig,
+  type BackgroundConfig,
+} from "@/lib/types";
 import {
   STAGE_TABLE,
   calculateStage,
@@ -29,6 +36,7 @@ type Row = {
   apples_harvested: number | null;
   grade: string | null;
   avatar?: AvatarConfig | null;
+  background?: BackgroundConfig | null;
 };
 
 type PointLog = { id: string; points: number; reason: string | null; logged_at: string };
@@ -137,9 +145,11 @@ export function MeTreeClient({
   const [claimError, setClaimError] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
+  const [bgSheetOpen, setBgSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
+  const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
 
   useEffect(() => {
     setNow(new Date());
@@ -389,47 +399,76 @@ export function MeTreeClient({
 
             <div
               style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "flex-end",
-                gap: 8,
+                position: "relative",
+                borderRadius: 20,
+                overflow: "hidden",
                 margin: "8px 0 12px",
+                padding: "12px 8px",
               }}
             >
-              <div style={{ position: "relative", display: "inline-block" }}>
-                {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
-                <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
-                  <AppleTree
-                    stage={stage}
-                    size="xl"
-                    mood={treeMood}
-                    wilted={isNegative}
-                    growthBoost={progress}
-                  />
+              <BackgroundCanvas config={currentBackground} rounded={20} />
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "flex-end",
+                  gap: 8,
+                }}
+              >
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
+                  <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
+                    <AppleTree
+                      stage={stage}
+                      size="xl"
+                      mood={treeMood}
+                      wilted={isNegative}
+                      growthBoost={progress}
+                    />
+                  </div>
+                  {isPositive && <SprayWaterMe />}
+                  {isFresh && highlight && (
+                    <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
+                  )}
                 </div>
-                {isPositive && <SprayWaterMe />}
-                {isFresh && highlight && (
-                  <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
-                )}
-              </div>
-              <div style={{ paddingBottom: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <AvatarFigure config={currentAvatar} size={120} />
-                <button
-                  type="button"
-                  onClick={() => setAvatarSheetOpen(true)}
-                  style={{
-                    border: "1.5px solid #d6c2a0",
-                    background: "#fff",
-                    color: "#3d2818",
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  ✨ 꾸미기
-                </button>
+                <div style={{ paddingBottom: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <AvatarFigure config={currentAvatar} size={120} />
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => setAvatarSheetOpen(true)}
+                      style={{
+                        border: "1.5px solid #d6c2a0",
+                        background: "#fff",
+                        color: "#3d2818",
+                        padding: "5px 10px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✨ 아바타
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBgSheetOpen(true)}
+                      style={{
+                        border: "1.5px solid #d6c2a0",
+                        background: "#fff",
+                        color: "#3d2818",
+                        padding: "5px 10px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🎨 배경
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -592,6 +631,13 @@ export function MeTreeClient({
         initial={currentAvatar}
         onClose={() => setAvatarSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, avatar: next } : prev))}
+      />
+
+      <BackgroundEditSheet
+        open={bgSheetOpen}
+        initial={currentBackground}
+        onClose={() => setBgSheetOpen(false)}
+        onSaved={(next) => setRow((prev) => (prev ? { ...prev, background: next } : prev))}
       />
     </main>
   );

@@ -26,6 +26,8 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
 import { fireConfetti } from "@/features/garden/effects/confetti";
 import { useTvRealtime } from "@/features/garden/hooks/useTvRealtime";
+import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
+import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 
 // 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
 function useMediaQuery(query: string): boolean {
@@ -445,38 +447,44 @@ const Spotlight = forwardRef<
         )}
       </div>
 
-      <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={student.id}
-            initial={{ opacity: 0, scale: 0.85, y: 18 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: -10 }}
-            transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
-            className={["relative", isShaking ? "tree-shake" : ""].join(" ")}
-          >
-            <AppleTree
-              stage={stage}
-              size={compact ? "large" : "xl"}
-              mood={mood}
-              wilted={isNegative}
-              growthBoost={progress}
-            />
-            {isPositive && (
-              <>
-                <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
-                  +{highlight!.delta}pt ✨
-                </div>
-                <SprayWaterTv />
-              </>
-            )}
-            {isNegative && (
-              <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--apple-deep)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
-                {highlight!.delta}pt
+      <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3 relative">
+        <div className="relative w-full h-full rounded-3xl overflow-hidden flex items-center justify-center">
+          <BackgroundCanvas config={student.background ?? null} rounded={24} />
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={student.id}
+              initial={{ opacity: 0, scale: 0.85, y: 18 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: -10 }}
+              transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
+              className={["relative flex items-end justify-center gap-3", isShaking ? "tree-shake" : ""].join(" ")}
+            >
+              <AppleTree
+                stage={stage}
+                size={compact ? "large" : "xl"}
+                mood={mood}
+                wilted={isNegative}
+                growthBoost={progress}
+              />
+              <div className="pb-3 shrink-0" aria-hidden>
+                <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} />
               </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+              {isPositive && (
+                <>
+                  <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
+                    +{highlight!.delta}pt ✨
+                  </div>
+                  <SprayWaterTv />
+                </>
+              )}
+              {isNegative && (
+                <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--apple-deep)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
+                  {highlight!.delta}pt
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">

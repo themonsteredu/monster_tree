@@ -30,6 +30,18 @@ export const DEFAULT_AVATAR: AvatarConfig = {
   shoes: "sneakers_brown",
 };
 
+// 학생 개인 페이지 + TV 스포트라이트 의 배경 꾸미기.
+// solid: 단색  /  pattern: 무늬 (color 위에 패턴 오버레이)  /  scene: 풍경 프리셋
+export type BackgroundConfig =
+  | { kind: "solid"; color: string }
+  | { kind: "pattern"; pattern: string; color: string }
+  | { kind: "scene"; scene: string };
+
+export const DEFAULT_BACKGROUND: BackgroundConfig = {
+  kind: "solid",
+  color: "cream",
+};
+
 export type GardenStudent = {
   id: string;
   name: string;
@@ -41,6 +53,7 @@ export type GardenStudent = {
   is_active: boolean;
   created_at: string;
   avatar?: AvatarConfig | null;
+  background?: BackgroundConfig | null;
 };
 
 export type GardenPointLog = {
