@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import type { AvatarConfig } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -53,4 +54,61 @@ export async function claimPointAction(args: { pendingId: string }) {
     newTotal: result.new_total ?? 0,
     newStage: result.new_stage ?? 1,
   };
+}
+
+// 아바타 config 의 형태/문자열 길이만 점검. 알 수 없는 키 값은 클라이언트에서 fallback 으로 처리.
+function validateAvatar(raw: unknown): AvatarConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  const kind = a.kind;
+  const isShortStr = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 40;
+  if (kind === "human") {
+    if (a.body !== "boy" && a.body !== "girl") return null;
+    for (const k of ["skin", "hair", "face", "top", "bottom", "shoes"]) {
+      if (!isShortStr(a[k])) return null;
+    }
+    return {
+      kind: "human",
+      body: a.body as "boy" | "girl",
+      skin: a.skin as string,
+      hair: a.hair as string,
+      face: a.face as string,
+      top: a.top as string,
+      bottom: a.bottom as string,
+      shoes: a.shoes as string,
+    };
+  }
+  if (kind === "animal" || kind === "fantasy") {
+    if (!isShortStr(a.variant)) return null;
+    return { kind, variant: a.variant as string };
+  }
+  return null;
+}
+
+export async function updateAvatarAction(args: { avatar: unknown }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  const avatar = validateAvatar(args.avatar);
+  if (!avatar) {
+    return { ok: false as const, message: "아바타 데이터가 올바르지 않아요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_students")
+    .update({ avatar })
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId);
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const, avatar };
 }

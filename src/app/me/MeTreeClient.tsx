@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
-import type { AvatarConfig } from "@/lib/types";
+import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
+import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/types";
 import {
   STAGE_TABLE,
   calculateStage,
@@ -135,7 +136,10 @@ export function MeTreeClient({
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
+  const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
+
+  const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
 
   useEffect(() => {
     setNow(new Date());
@@ -408,8 +412,24 @@ export function MeTreeClient({
                   <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                 )}
               </div>
-              <div style={{ paddingBottom: 4 }}>
-                <AvatarFigure config={row?.avatar ?? null} size={120} />
+              <div style={{ paddingBottom: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <AvatarFigure config={currentAvatar} size={120} />
+                <button
+                  type="button"
+                  onClick={() => setAvatarSheetOpen(true)}
+                  style={{
+                    border: "1.5px solid #d6c2a0",
+                    background: "#fff",
+                    color: "#3d2818",
+                    padding: "5px 10px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✨ 꾸미기
+                </button>
               </div>
             </div>
 
@@ -566,6 +586,13 @@ export function MeTreeClient({
           onClose={() => setHarvestBanner(null)}
         />
       )}
+
+      <AvatarEditSheet
+        open={avatarSheetOpen}
+        initial={currentAvatar}
+        onClose={() => setAvatarSheetOpen(false)}
+        onSaved={(next) => setRow((prev) => (prev ? { ...prev, avatar: next } : prev))}
+      />
     </main>
   );
 }
