@@ -6,6 +6,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
+import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
+import type { AvatarConfig } from "@/lib/types";
 import {
   STAGE_TABLE,
   calculateStage,
@@ -25,6 +27,7 @@ type Row = {
   current_stage: number | null;
   apples_harvested: number | null;
   grade: string | null;
+  avatar?: AvatarConfig | null;
 };
 
 type PointLog = { id: string; points: number; reason: string | null; logged_at: string };
@@ -380,7 +383,15 @@ export function MeTreeClient({
               )}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", margin: "8px 0 12px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-end",
+                gap: 8,
+                margin: "8px 0 12px",
+              }}
+            >
               <div style={{ position: "relative", display: "inline-block" }}>
                 {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
                 <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
@@ -396,6 +407,9 @@ export function MeTreeClient({
                 {isFresh && highlight && (
                   <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                 )}
+              </div>
+              <div style={{ paddingBottom: 4 }}>
+                <AvatarFigure config={row?.avatar ?? null} size={120} />
               </div>
             </div>
 
