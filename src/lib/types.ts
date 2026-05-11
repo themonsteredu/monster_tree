@@ -4,6 +4,7 @@ export type GardenStudent = {
   id: string;
   name: string;
   class_name: string | null;
+  branch_id: string | null;
   total_points: number;
   current_stage: number; // 1~8
   apples_harvested: number;
