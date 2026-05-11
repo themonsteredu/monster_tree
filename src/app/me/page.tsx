@@ -25,7 +25,7 @@ export default async function MyTreePage() {
   const sb = createSupabaseServerAnonClient();
   const { data: row } = await sb
     .from('garden_students')
-    .select('id, total_points, current_stage, apples_harvested, grade')
+    .select('id, total_points, current_stage, apples_harvested, grade, avatar')
     .eq('branch_id', payload!.branchId)
     .eq('external_student_id', payload!.studentLocalId)
     .maybeSingle();
