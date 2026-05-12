@@ -342,11 +342,15 @@ export async function uploadGalleryItemAction(formData: FormData) {
   if (file.size > 2_097_152) {
     return { ok: false as const, message: "이미지가 너무 커요 (2MB 이하)." };
   }
-  const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+  // JPG 는 투명도를 지원하지 않아 정원 배경 위에서 회색·흰색 사각형으로 보이므로 차단.
+  const allowedTypes = ["image/png", "image/webp"];
   if (!allowedTypes.includes(file.type)) {
-    return { ok: false as const, message: "PNG/JPG/WebP 만 업로드할 수 있어요." };
+    return {
+      ok: false as const,
+      message: "투명 배경 PNG 또는 WebP 만 업로드할 수 있어요. (JPG 는 투명도 미지원)",
+    };
   }
-  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const ext = file.type === "image/png" ? "png" : "webp";
   const id = crypto.randomUUID();
   const path = `gallery/${category}/${id}.${ext}`;
 
