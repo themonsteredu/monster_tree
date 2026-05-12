@@ -853,11 +853,8 @@ export function AvatarFigure({
         style={{
           width: size,
           height: (size * 170) / 120,
-          objectFit: "cover",
-          objectPosition: "center top",
-          borderRadius: 12,
-          border: "2px solid #2a1a14",
-          background: "#fff",
+          objectFit: "contain",
+          objectPosition: "center bottom",
           display: "block",
         }}
       />

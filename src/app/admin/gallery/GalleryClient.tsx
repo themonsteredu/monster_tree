@@ -145,7 +145,7 @@ function CategorySection({
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/webp"
           onChange={onFile}
           style={{ display: "none" }}
         />
