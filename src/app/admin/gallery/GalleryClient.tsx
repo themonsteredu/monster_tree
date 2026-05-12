@@ -136,6 +136,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   const [items, setItems] = useState<AvatarGalleryItem[]>(initialItems);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
 
   const byCategory = (cat: AvatarGalleryCategory) => items.filter((i) => i.category === cat);
 
@@ -200,39 +201,68 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     });
   };
 
-  // 기존 항목의 baked-in 배경을 청소해서 동일 카테고리에 새 항목으로 올린 뒤 기존 항목 삭제.
+  // 한 항목의 baked-in 배경/여백을 재처리해 새 PNG 로 갈아끼운다. (upload + delete 기존)
+  // 성공시 null, 실패시 메시지.
+  const recleanOne = async (it: AvatarGalleryItem): Promise<string | null> => {
+    try {
+      const res = await fetch(it.image_url, { cache: "no-store" });
+      if (!res.ok) return `이미지 fetch 실패 (${res.status})`;
+      const blob = await res.blob();
+      const file = new File([blob], "reclean.png", { type: blob.type || "image/png" });
+      const processed = await stripBackgroundToPng(file);
+      if (processed.size > 2_097_152) return "처리된 이미지가 2MB 를 초과해요.";
+      const fd = new FormData();
+      fd.append("file", processed);
+      fd.append("category", it.category);
+      if (it.label) fd.append("label", it.label);
+      const up = await uploadGalleryItemAction(fd);
+      if (!up.ok) return up.message;
+      const del = await deleteGalleryItemAction({ id: it.id });
+      if (!del.ok) return `새 항목 업로드는 됐지만 기존 삭제 실패: ${del.message}`;
+      return null;
+    } catch (e) {
+      return `재처리 실패: ${(e as Error).message}`;
+    }
+  };
+
   const handleReclean = async (it: AvatarGalleryItem) => {
     if (!confirm("이 이미지의 배경을 다시 정리할까요? 새 항목으로 올라가고 원본은 삭제돼요.")) return;
     setError(null);
     startTransition(async () => {
-      try {
-        const res = await fetch(it.image_url, { cache: "no-store" });
-        if (!res.ok) throw new Error(`이미지 fetch 실패 (${res.status})`);
-        const blob = await res.blob();
-        const file = new File([blob], "reclean.png", { type: blob.type || "image/png" });
-        const processed = await stripBackgroundToPng(file);
-        if (processed.size > 2_097_152) {
-          setError("처리된 이미지가 2MB 를 초과해요.");
-          return;
-        }
-        const fd = new FormData();
-        fd.append("file", processed);
-        fd.append("category", it.category);
-        if (it.label) fd.append("label", it.label);
-        const up = await uploadGalleryItemAction(fd);
-        if (!up.ok) {
-          setError(up.message);
-          return;
-        }
-        const del = await deleteGalleryItemAction({ id: it.id });
-        if (!del.ok) {
-          setError(`새 항목 업로드는 됐지만 기존 삭제 실패: ${del.message}`);
-          return;
-        }
-        await refreshFromServer();
-      } catch (e) {
-        setError(`재처리 실패: ${(e as Error).message}`);
+      const msg = await recleanOne(it);
+      if (msg) {
+        setError(msg);
+        return;
       }
+      await refreshFromServer();
+    });
+  };
+
+  // 전체 항목을 순차 재크롭. 자동 크롭 도입 이전에 올린 이미지들의 투명 여백을 제거해
+  // 슬롯 박스 안 비율을 통일하기 위함. 진행률을 표시하고, 일부 실패해도 나머지는 계속.
+  const handleRecleanAll = async () => {
+    const targets = items.slice();
+    if (targets.length === 0) return;
+    if (!confirm(`전체 ${targets.length}개 항목을 다시 크롭할까요? 시간이 좀 걸려요.`)) return;
+    setError(null);
+    setBulkProgress({ done: 0, total: targets.length, failed: 0 });
+    startTransition(async () => {
+      let failed = 0;
+      const failures: string[] = [];
+      for (let i = 0; i < targets.length; i++) {
+        const it = targets[i];
+        const msg = await recleanOne(it);
+        if (msg) {
+          failed++;
+          failures.push(`${it.category}/${it.label ?? it.id.slice(0, 6)}: ${msg}`);
+        }
+        setBulkProgress({ done: i + 1, total: targets.length, failed });
+      }
+      if (failures.length > 0) {
+        setError(`일괄 재크롭 ${failures.length}/${targets.length} 실패 — ${failures.slice(0, 3).join(" / ")}${failures.length > 3 ? " …" : ""}`);
+      }
+      setBulkProgress(null);
+      await refreshFromServer();
     });
   };
 
@@ -247,6 +277,22 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
         학생들이 아바타 꾸미기에서 카테고리마다 1개씩 골라 합성한 아바타를 사용합니다. 같은 비율의
         정사각형 PNG (투명 배경) 가 가장 잘 어울려요.
       </p>
+      <div className="bg-cream/60 border-[1.5px] border-pot/30 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-ink-soft flex-1 min-w-[180px]">
+          자동 크롭 도입 이전에 올린 이미지는 PNG 투명 여백이 남아 슬롯 비율이 어긋날 수 있어요.
+          한 번에 모든 항목을 다시 크롭할 수 있습니다.
+        </div>
+        <button
+          type="button"
+          onClick={handleRecleanAll}
+          disabled={pending || items.length === 0}
+          className="px-3 py-2 rounded bg-pot text-white font-extrabold text-sm disabled:opacity-50 whitespace-nowrap"
+        >
+          {bulkProgress
+            ? `🧹 ${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
+            : `🧹 전체 항목 다시 크롭 (${items.length})`}
+        </button>
+      </div>
       {CATEGORIES.map((c) => (
         <CategorySection
           key={c.key}
