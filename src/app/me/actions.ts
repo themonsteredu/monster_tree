@@ -74,9 +74,11 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
 
   if (kind === "human") {
     if (a.body !== "boy" && a.body !== "girl") return null;
-    for (const k of ["skin", "hair", "eyes", "mouth", "top", "bottom", "shoes"]) {
+    for (const k of ["skin", "hair", "eyes", "mouth"]) {
       if (!isShortStr(a[k])) return null;
     }
+    // costume 은 신규 필드. 없으면 레거시 top/bottom/shoes 가 있던 행으로 보고 기본 코스튐 적용.
+    const costume = isShortStr(a.costume) ? (a.costume as string) : "casual_olive";
     return {
       kind: "human",
       body: a.body as "boy" | "girl",
@@ -84,17 +86,17 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
       hair: a.hair as string,
       eyes: a.eyes as string,
       mouth: a.mouth as string,
-      top: a.top as string,
-      bottom: a.bottom as string,
-      shoes: a.shoes as string,
+      costume,
       ...(accessories && { accessories }),
     };
   }
   if (kind === "animal" || kind === "fantasy") {
     if (!isShortStr(a.variant)) return null;
+    const costume = isShortStr(a.costume) ? (a.costume as string) : undefined;
     return {
       kind,
       variant: a.variant as string,
+      ...(costume ? { costume } : {}),
       ...(accessories && { accessories }),
     };
   }

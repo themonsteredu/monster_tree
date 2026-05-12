@@ -8,7 +8,7 @@
 import { useRef, useState, useTransition } from "react";
 import type { AvatarConfig, AvatarAccessories } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
-import { AvatarFigure, AVATAR_OPTIONS } from "./AvatarFigure";
+import { AvatarFigure, AVATAR_OPTIONS, COSTUME_SWATCH } from "./AvatarFigure";
 import { updateAvatarAction, uploadAvatarImageAction } from "@/app/me/actions";
 
 type Props = {
@@ -23,9 +23,7 @@ const HUMAN_PART_LABELS: Record<string, string> = {
   hair: "머리",
   eyes: "눈",
   mouth: "입",
-  top: "상의",
-  bottom: "하의",
-  shoes: "신발",
+  costume: "코스튁",
 };
 
 const PART_VALUE_LABELS: Record<string, string> = {
@@ -41,7 +39,8 @@ const PART_VALUE_LABELS: Record<string, string> = {
   long_black: "검정 긴머리",
   long_pink: "분홍 긴머리",
   // 눈
-  dot: "또렷한 눈",
+  happy: "기본 눈",
+  dot: "점 눈",
   wink: "윙크",
   round: "큰 눈",
   sleepy: "졸린 눈",
@@ -53,26 +52,22 @@ const PART_VALUE_LABELS: Record<string, string> = {
   oh: "놀람",
   smirk: "씨익",
   tongue: "메롱",
-  // 상의
-  hoodie_white: "흰 후드",
-  tshirt_blue: "파란 티",
-  tshirt_red: "빨간 티",
+  // 코스튐 세트
+  casual_olive: "올리브 후드",
+  casual_blue: "캐주얼 블루",
+  uniform_school: "교복",
   dress_pink: "분홍 원피스",
-  jacket_yellow: "노랑 자켓",
-  // 하의
-  shorts_green: "초록 반바지",
-  pants_blue: "청바지",
-  skirt_pink: "분홍 치마",
-  pants_black: "검정 바지",
-  // 신발
-  sneakers_brown: "갈색 운동화",
-  sneakers_white: "흰 운동화",
-  sneakers_red: "빨간 운동화",
+  sports_red: "빨강 운동복",
+  winter_brown: "겨울 코트",
+  hoodie_yellow: "노랑 후드",
   // 동물
   cat: "고양이",
   dog: "강아지",
   rabbit: "토끼",
   bear: "곰",
+  pig: "돼지",
+  fox: "여우",
+  panda: "판다",
   // 판타지
   robot: "로봇",
   astronaut: "우주인",
@@ -90,14 +85,10 @@ const PART_VALUE_LABELS: Record<string, string> = {
 
 // 색 스와치 — 칩에 작은 점 표시. 없는 값은 swatch 미표시.
 const SWATCH: Record<string, string> = {
-  light: "#f0c896", tan: "#c89870", dark: "#7a4a30",
-  short_brown: "#5a3820", short_black: "#1a1010", short_blonde: "#d4a040",
-  long_brown: "#684028", long_black: "#100808", long_pink: "#d088a0",
-  hoodie_white: "#e8e0d0", tshirt_blue: "#4878a8", tshirt_red: "#b04038",
-  dress_pink: "#d088a0", jacket_yellow: "#e8b840",
-  shorts_green: "#608048", pants_blue: "#2c4868",
-  skirt_pink: "#d088a0", pants_black: "#201810",
-  sneakers_brown: "#4a2c18", sneakers_white: "#e8e0d0", sneakers_red: "#a83828",
+  light: "#f4c69a", tan: "#c89870", dark: "#7a4a30",
+  short_brown: "#553420", short_black: "#1a1010", short_blonde: "#d4a040",
+  long_brown: "#553420", long_black: "#0e0606", long_pink: "#d088a0",
+  ...COSTUME_SWATCH,
 };
 
 function labelOf(value: string): string {
@@ -133,10 +124,10 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
       return;
     }
     if (kind === "animal") {
-      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], ...accField });
+      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], costume: "none", ...accField });
       return;
     }
-    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], ...accField });
+    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], costume: "none", ...accField });
   };
 
   const onPickFile = () => fileInputRef.current?.click();
@@ -181,6 +172,14 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
   const setVariant = (variant: string) => {
     if (draft.kind !== "animal" && draft.kind !== "fantasy") return;
     setDraft({ ...draft, variant });
+  };
+
+  const setCostume = (costume: string) => {
+    if (draft.kind === "human") {
+      setDraft({ ...draft, costume });
+    } else if (draft.kind === "animal" || draft.kind === "fantasy") {
+      setDraft({ ...draft, costume });
+    }
   };
 
   const setAccessory = (slot: "glasses" | "hat", value: string) => {
@@ -367,7 +366,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                 </Chip>
               ))}
             </Slot>
-            {(["skin", "hair", "eyes", "mouth", "top", "bottom", "shoes"] as const).map((key) => (
+            {(["skin", "hair", "eyes", "mouth"] as const).map((key) => (
               <Slot key={key} title={HUMAN_PART_LABELS[key]}>
                 {(AVATAR_OPTIONS[key] as readonly string[]).map((value) => (
                   <Chip
@@ -381,29 +380,69 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                 ))}
               </Slot>
             ))}
+            <Slot title="코스튐 (의상 세트)">
+              {AVATAR_OPTIONS.costume.map((value) => (
+                <Chip
+                  key={value}
+                  active={draft.costume === value}
+                  onClick={() => setCostume(value)}
+                  swatch={SWATCH[value]}
+                >
+                  {value === "none" ? "맨몸" : labelOf(value)}
+                </Chip>
+              ))}
+            </Slot>
           </>
         )}
 
-        {/* 동물 — variant 그리드 */}
+        {/* 동물 — variant + 코스튐 */}
         {!imageTab && draft.kind === "animal" && (
-          <Slot title="동물">
-            {AVATAR_OPTIONS.animal.map((v) => (
-              <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
-                {labelOf(v)}
-              </Chip>
-            ))}
-          </Slot>
+          <>
+            <Slot title="동물">
+              {AVATAR_OPTIONS.animal.map((v) => (
+                <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
+                  {labelOf(v)}
+                </Chip>
+              ))}
+            </Slot>
+            <Slot title="코스튐 (의상 세트)">
+              {AVATAR_OPTIONS.costume.map((value) => (
+                <Chip
+                  key={value}
+                  active={(draft.costume ?? "none") === value}
+                  onClick={() => setCostume(value)}
+                  swatch={SWATCH[value]}
+                >
+                  {value === "none" ? "맨몸" : labelOf(value)}
+                </Chip>
+              ))}
+            </Slot>
+          </>
         )}
 
-        {/* 판타지 — variant 그리드 */}
+        {/* 판타지 — variant + 코스튐 */}
         {!imageTab && draft.kind === "fantasy" && (
-          <Slot title="판타지">
-            {AVATAR_OPTIONS.fantasy.map((v) => (
-              <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
-                {labelOf(v)}
-              </Chip>
-            ))}
-          </Slot>
+          <>
+            <Slot title="판타지">
+              {AVATAR_OPTIONS.fantasy.map((v) => (
+                <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
+                  {labelOf(v)}
+                </Chip>
+              ))}
+            </Slot>
+            <Slot title="코스튐 (의상 세트)">
+              {AVATAR_OPTIONS.costume.map((value) => (
+                <Chip
+                  key={value}
+                  active={(draft.costume ?? "none") === value}
+                  onClick={() => setCostume(value)}
+                  swatch={SWATCH[value]}
+                >
+                  {value === "none" ? "기본" : labelOf(value)}
+                </Chip>
+              ))}
+            </Slot>
+          </>
         )}
 
         {/* 액세서리 — 사진 탭에서는 미적용 (이미지 위 오버레이 안 함) */}
