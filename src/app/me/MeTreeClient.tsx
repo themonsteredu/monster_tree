@@ -435,8 +435,8 @@ export function MeTreeClient({
                 <div
                   style={{
                     position: "absolute",
-                    right: 8,
-                    bottom: 4,
+                    right: 12,
+                    bottom: 0,
                     pointerEvents: "none",
                   }}
                 >
