@@ -5,7 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getMonsterSiteUrl } from "@/lib/monster-site";
-import { getAdminBranchId, getAdminBranchName, setAdminBranchCookie } from "@/lib/branch";
+import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "./auth";
 import { LoginForm } from "./LoginForm";
@@ -48,10 +48,11 @@ export default async function AdminPage({
   }
 
   // monster-site 의 "몬스터 트리" 버튼이 ?branch=br_xxx&name=계림점 으로 핸드오프하면
-  // 쿠키에 저장 후 clean URL 로 리다이렉트 — 새로고침 시 URL 재진입을 방지.
+  // 쿠키 셋팅을 Route Handler 에 위임 — Server Component 에서는 cookies().set() 금지.
   if (searchParams.branch && searchParams.branch.trim()) {
-    setAdminBranchCookie(searchParams.branch.trim(), searchParams.name?.trim() || null);
-    redirect("/admin");
+    const qs = new URLSearchParams({ branch: searchParams.branch.trim() });
+    if (searchParams.name?.trim()) qs.set("name", searchParams.name.trim());
+    redirect(`/admin/handoff?${qs.toString()}`);
   }
 
   const branchId = getAdminBranchId();
