@@ -862,15 +862,15 @@ export function AvatarFigure({
   }
 
   // 갤러리 합성 아바타 — 6 슬롯을 슬롯별 박스에 contain 으로 겹쳐 표시.
-  // 베이스 캐릭터의 부위 비율 (대략):
-  //  머리 0-32% / 목·어깨 32-40% / 몸통 40-60% / 허리 60-72% / 다리 72-92% / 발 92-100%
-  // 슬롯 박스는 사람 부위 위치에서 비율로 환산:
-  //  - base    : top 0%  h 100% (전신)
-  //  - outfit  : top 33% h 28%  (목 아래~허리 — 상의가 얼굴을 덮지 않도록)
-  //  - bottom  : top 58% h 32%  (허리~발목 — 하의)
-  //  - shoes   : top 88% h 12%  (발 — 신발)
-  //  - hat     : top 0%  h 30%  (머리 위~정수리)
-  //  - accessory: top 14% h 22% (눈/안경/소품)
+  // 베이스 캐릭터 이미지는 1:1 정도여서 120×170 캔버스 안에서 약 y=14%~88% 만 차지
+  // (위·아래 letterbox). 슬롯도 그 범위 안에서 부위 비율로 배치한다:
+  //   머리 14-34% / 목·어깨 34-40% / 몸통 40-58% / 허리 58-68% / 다리 68-83% / 발 83-88%
+  //  - base    : top 0%  h 100% (캔버스 전체)
+  //  - hat     : top 10% h 22%  (정수리)
+  //  - accessory: top 22% h 12% (눈/안경)
+  //  - outfit  : top 36% h 22%  (목 아래~허리 — hood 가 얼굴을 덮지 않도록 시작점을 낮춤)
+  //  - bottom  : top 56% h 27%  (허리~발목)
+  //  - shoes   : top 80% h 8%   (발 — 캐릭터 발 위치에 정확히 정렬)
   // 레이어 순서(z): base → bottom → outfit → shoes → accessory → hat
   // 업로드 시 콘텐츠 바운딩박스로 크롭되므로 PNG 의 인트린식 크기 = 콘텐츠 크기 → 슬롯 박스 안에서
   // 자연스럽게 비율이 잡힌다. 모든 슬롯이 비어있으면 placeholder.
@@ -879,11 +879,11 @@ export function AvatarFigure({
     type Frame = { top: string; height: string };
     const SLOT_FRAMES: Record<string, Frame> = {
       base:      { top: "0%",  height: "100%" },
-      outfit:    { top: "33%", height: "28%" },
-      bottom:    { top: "58%", height: "32%" },
-      shoes:     { top: "88%", height: "12%" },
-      hat:       { top: "0%",  height: "30%" },
-      accessory: { top: "14%", height: "22%" },
+      outfit:    { top: "36%", height: "22%" },
+      bottom:    { top: "56%", height: "27%" },
+      shoes:     { top: "80%", height: "8%" },
+      hat:       { top: "10%", height: "22%" },
+      accessory: { top: "22%", height: "12%" },
     };
     const layers: Array<{ key: keyof typeof SLOT_FRAMES; url?: string; z: number }> = [
       { key: "base", url: cfg.base, z: 1 },
