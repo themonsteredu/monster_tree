@@ -125,7 +125,9 @@ function canvasToPngFile(canvas: HTMLCanvasElement, originalName: string): Promi
 
 const CATEGORIES: Array<{ key: AvatarGalleryCategory; label: string; hint: string }> = [
   { key: "base", label: "베이스 (캐릭터)", hint: "전신 캐릭터 이미지. 학생이 가장 먼저 고르는 레이어." },
-  { key: "outfit", label: "의상", hint: "후드/티/원피스 등. 투명 PNG 권장 (베이스 위에 겹침)." },
+  { key: "outfit", label: "상의", hint: "후드/티/재킷 등 상체 의상. 투명 PNG 권장." },
+  { key: "bottom", label: "하의", hint: "바지/치마/반바지 등 하체 의상. 투명 PNG 권장." },
+  { key: "shoes", label: "신발", hint: "운동화/구두 등. 투명 PNG 권장." },
   { key: "hat", label: "모자", hint: "모자/헤어 액세서리. 투명 PNG 권장." },
   { key: "accessory", label: "액세서리", hint: "안경/뱃지/소품. 투명 PNG 권장." },
 ];

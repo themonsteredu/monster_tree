@@ -34,11 +34,19 @@ export type AvatarConfig =
       kind: "gallery";
       base?: string;
       outfit?: string;
+      bottom?: string;
+      shoes?: string;
       hat?: string;
       accessory?: string;
     };
 
-export type AvatarGalleryCategory = "base" | "outfit" | "hat" | "accessory";
+export type AvatarGalleryCategory =
+  | "base"
+  | "outfit"
+  | "bottom"
+  | "shoes"
+  | "hat"
+  | "accessory";
 
 export type AvatarGalleryItem = {
   id: string;
