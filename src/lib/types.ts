@@ -36,6 +36,8 @@ export type AvatarConfig =
       outfit?: string;
       bottom?: string;
       shoes?: string;
+      hair?: string;
+      face?: string;
       hat?: string;
       accessory?: string;
     };
@@ -45,6 +47,8 @@ export type AvatarGalleryCategory =
   | "outfit"
   | "bottom"
   | "shoes"
+  | "hair"
+  | "face"
   | "hat"
   | "accessory";
 

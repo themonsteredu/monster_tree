@@ -128,6 +128,8 @@ const CATEGORIES: Array<{ key: AvatarGalleryCategory; label: string; hint: strin
   { key: "outfit", label: "상의", hint: "후드/티/재킷 등 상체 의상. 투명 PNG 권장." },
   { key: "bottom", label: "하의", hint: "바지/치마/반바지 등 하체 의상. 투명 PNG 권장." },
   { key: "shoes", label: "신발", hint: "운동화/구두 등. 투명 PNG 권장." },
+  { key: "hair", label: "헤어", hint: "머리/앞머리. 베이스 머리 위에 덮어쓰며 모자 아래에 표시." },
+  { key: "face", label: "얼굴표정", hint: "눈코입 표정. 베이스 얼굴 위에 덮어씀." },
   { key: "hat", label: "모자", hint: "모자/헤어 액세서리. 투명 PNG 권장." },
   { key: "accessory", label: "액세서리", hint: "안경/뱃지/소품. 투명 PNG 권장." },
 ];
