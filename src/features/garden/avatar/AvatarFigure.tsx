@@ -116,13 +116,13 @@ function BboxLayer({
     );
   }
   // SVG viewBox=bbox, preserveAspectRatio=meet → bbox 가 슬롯 프레임에 contain.
-  // <image> 는 자기 자연 크기로 그려지지만 viewBox 가 bbox 영역만 비추므로
-  // padding(투명 가장자리)은 슬롯 밖으로 나가 보이지 않는다.
+  // overflow:hidden 으로 viewBox 밖(=PNG padding 영역)이 슬롯 프레임 밖으로
+  // 새어 나가 다른 부위를 침범하는 것을 막는다.
   return (
     <svg
       viewBox={`${bbox.x} ${bbox.y} ${bbox.w} ${bbox.h}`}
       preserveAspectRatio="xMidYMid meet"
-      style={{ ...commonStyle, overflow: "visible" }}
+      style={{ ...commonStyle, overflow: "hidden" }}
     >
       <image href={url} x={0} y={0} width={bbox.imgW} height={bbox.imgH} />
     </svg>
