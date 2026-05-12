@@ -18,5 +18,6 @@ export function GET(request: NextRequest) {
     setAdminBranchCookie(branch, name);
   }
 
-  return NextResponse.redirect(new URL("/admin", request.url));
+  // basePath ('/tree') 가 설정되어 있어도 NextResponse.redirect 는 자동 prepend 안 함 → 명시.
+  return NextResponse.redirect(new URL("/tree/admin", request.url));
 }
