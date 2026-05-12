@@ -3,8 +3,131 @@
 // 얼굴은 큰 픽셀 단위(4px 격자)로 또렷한 캐릭터성을 만든다.
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
+import { useEffect, useState } from "react";
 import type { AvatarConfig } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
+
+// ============================================================
+// Bbox detection — 갤러리 PNG 가 자체 padding 을 갖는 경우(auto-crop 도입 전
+// 업로드 항목 등) 콘텐츠의 실제 alpha bbox 를 구해 그 영역만 슬롯 박스에
+// contain 시키도록 함. 슬롯 프레임은 그대로 두고 이미지가 자기 자리를
+// 정확히 채우게 한다.
+// ============================================================
+type Bbox = { x: number; y: number; w: number; h: number; imgW: number; imgH: number };
+const BBOX_CACHE = new Map<string, Bbox>();
+
+function useImageBbox(url: string | undefined): Bbox | null {
+  const [bbox, setBbox] = useState<Bbox | null>(() =>
+    url ? BBOX_CACHE.get(url) ?? null : null,
+  );
+  useEffect(() => {
+    if (!url) {
+      setBbox(null);
+      return;
+    }
+    const cached = BBOX_CACHE.get(url);
+    if (cached) {
+      setBbox(cached);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        if (w === 0 || h === 0) return;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (data[(y * w + x) * 4 + 3] >= 16) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX < 0) return;
+        const b: Bbox = {
+          x: minX,
+          y: minY,
+          w: maxX - minX + 1,
+          h: maxY - minY + 1,
+          imgW: w,
+          imgH: h,
+        };
+        BBOX_CACHE.set(url, b);
+        if (!cancelled) setBbox(b);
+      } catch {
+        // CORS 또는 ImageData 접근 실패 — fallback (object-fit:contain) 그대로 사용
+      }
+    };
+    img.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  return bbox;
+}
+
+// 슬롯 프레임 안에서 PNG 의 실제 alpha bbox 만 contain 되도록 그리는 레이어.
+// bbox 가 아직 측정되지 않은 동안은 일반 <img object-fit:contain> 로 fallback.
+function BboxLayer({
+  url,
+  top,
+  height,
+  zIndex,
+}: {
+  url: string;
+  top: string;
+  height: string;
+  zIndex: number;
+}) {
+  const bbox = useImageBbox(url);
+  const commonStyle: React.CSSProperties = {
+    position: "absolute",
+    left: 0,
+    width: "100%",
+    top,
+    height,
+    zIndex,
+    pointerEvents: "none",
+  };
+  if (!bbox) {
+    return (
+      <img
+        src={url}
+        alt=""
+        style={{
+          ...commonStyle,
+          objectFit: "contain",
+          objectPosition: "center",
+        }}
+      />
+    );
+  }
+  // SVG viewBox=bbox, preserveAspectRatio=meet → bbox 가 슬롯 프레임에 contain.
+  // <image> 는 자기 자연 크기로 그려지지만 viewBox 가 bbox 영역만 비추므로
+  // padding(투명 가장자리)은 슬롯 밖으로 나가 보이지 않는다.
+  return (
+    <svg
+      viewBox={`${bbox.x} ${bbox.y} ${bbox.w} ${bbox.h}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ ...commonStyle, overflow: "visible" }}
+    >
+      <image href={url} x={0} y={0} width={bbox.imgW} height={bbox.imgH} />
+    </svg>
+  );
+}
 
 // ============================================================
 // Palette type — 모든 부위가 4단계 음영을 가짐 (light=하이라이트, base=정면, shade=측면, dark=그림자/외곽선)
@@ -908,7 +1031,6 @@ export function AvatarFigure({
           width: size,
           height: h,
           display: "block",
-          // base 의 transform:scale 이 캔버스 밖으로 넘치면 잘라낸다.
           overflow: "hidden",
         }}
       >
@@ -916,29 +1038,13 @@ export function AvatarFigure({
           layers.map((l) => {
             if (!l.url) return null;
             const frame = SLOT_FRAMES[l.key];
-            const isBase = l.key === "base";
             return (
-              <img
+              <BboxLayer
                 key={l.key}
-                src={l.url}
-                alt=""
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  width: "100%",
-                  top: frame.top,
-                  height: frame.height,
-                  objectFit: "contain",
-                  objectPosition: "center",
-                  // base PNG 가 자기 1:1 프레임 안에서 ~76% 만 차지(상·하 padding)
-                  // 하는 경우가 많아 캔버스에 contain 만 하면 작아 보임. base 만
-                  // 1.35x 확대해 캔버스를 꽉 채운다. 슬롯 박스는 캔버스 % 기준이라
-                  // 확대된 베이스의 부위 위치와 자연스럽게 정렬됨.
-                  transform: isBase ? "scale(1.35)" : undefined,
-                  transformOrigin: "center center",
-                  zIndex: l.z,
-                  pointerEvents: "none",
-                }}
+                url={l.url}
+                top={frame.top}
+                height={frame.height}
+                zIndex={l.z}
               />
             );
           })
