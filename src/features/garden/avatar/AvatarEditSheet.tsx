@@ -5,11 +5,11 @@
 // 모든 kind 공통으로 안경/모자 액세서리 슬롯 노출.
 // 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { AvatarConfig, AvatarAccessories } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
 import { AvatarFigure, AVATAR_OPTIONS } from "./AvatarFigure";
-import { updateAvatarAction } from "@/app/me/actions";
+import { updateAvatarAction, uploadAvatarImageAction } from "@/app/me/actions";
 
 type Props = {
   open: boolean;
@@ -108,22 +108,64 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
   const [draft, setDraft] = useState<AvatarConfig>(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [imageTab, setImageTab] = useState<boolean>(initial.kind === "image");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
 
-  const setKind = (kind: "human" | "animal" | "fantasy") => {
+  const setKind = (kind: "human" | "animal" | "fantasy" | "image") => {
     setError(null);
-    // 액세서리는 kind 전환 시에도 유지
-    const keepAcc = draft.accessories;
+    if (kind === "image") {
+      // 이미지 탭으로 전환만 — 업로드 전에는 draft 변경 안 함 (기존 SVG 유지)
+      if (draft.kind !== "image") {
+        // draft 는 그대로 두고 탭만 image 로. 시각적 활성화를 위해 별도 ui state 필요해서
+        // 여기서는 draft 를 image 로 바꾸지 않고, isImageTab 으로 추적.
+      }
+      setImageTab(true);
+      return;
+    }
+    setImageTab(false);
+    // 액세서리는 kind 전환 시에도 유지 (image → 아닐 때만)
+    const keepAcc = draft.kind !== "image" ? draft.accessories : undefined;
+    const accField = keepAcc ? { accessories: keepAcc } : {};
     if (kind === "human") {
-      setDraft({ ...DEFAULT_AVATAR, accessories: keepAcc });
+      setDraft({ ...DEFAULT_AVATAR, ...accField });
       return;
     }
     if (kind === "animal") {
-      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], accessories: keepAcc });
+      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], ...accField });
       return;
     }
-    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], accessories: keepAcc });
+    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], ...accField });
+  };
+
+  const onPickFile = () => fileInputRef.current?.click();
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    if (file.size > 1_048_576) {
+      setError("이미지가 너무 커요 (1MB 이하).");
+      return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("PNG/JPG/WebP 만 업로드할 수 있어요.");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    startTransition(async () => {
+      const result = await uploadAvatarImageAction(fd);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setDraft(result.avatar);
+      onSaved(result.avatar);
+      onClose();
+    });
   };
 
   const setHumanPart = (key: string, value: string) => {
@@ -137,11 +179,12 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
   };
 
   const setVariant = (variant: string) => {
-    if (draft.kind === "human") return;
+    if (draft.kind !== "animal" && draft.kind !== "fantasy") return;
     setDraft({ ...draft, variant });
   };
 
   const setAccessory = (slot: "glasses" | "hat", value: string) => {
+    if (draft.kind === "image") return;
     const nextAcc: AvatarAccessories = { ...(draft.accessories ?? {}) };
     if (value === "none") {
       delete nextAcc[slot];
@@ -149,10 +192,10 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
       nextAcc[slot] = value;
     }
     const hasAny = Object.keys(nextAcc).length > 0;
-    setDraft({ ...draft, accessories: hasAny ? nextAcc : undefined } as AvatarConfig);
+    setDraft({ ...draft, accessories: hasAny ? nextAcc : undefined });
   };
 
-  const currentAcc = draft.accessories ?? {};
+  const currentAcc: AvatarAccessories = draft.kind === "image" ? {} : draft.accessories ?? {};
 
   const onSave = () => {
     setError(null);
@@ -237,9 +280,9 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
 
         {/* 카테고리 탭 */}
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          {(["human", "animal", "fantasy"] as const).map((k) => {
-            const active = draft.kind === k;
-            const label = k === "human" ? "사람" : k === "animal" ? "동물" : "판타지";
+          {(["human", "animal", "fantasy", "image"] as const).map((k) => {
+            const active = k === "image" ? imageTab : !imageTab && draft.kind === k;
+            const label = k === "human" ? "사람" : k === "animal" ? "동물" : k === "fantasy" ? "판타지" : "사진";
             return (
               <button
                 key={k}
@@ -263,8 +306,59 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
           })}
         </div>
 
+        {/* 사진 — 파일 업로드 */}
+        {imageTab && (
+          <div style={{ marginBottom: 12 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={onFileChange}
+              style={{ display: "none" }}
+            />
+            <div
+              style={{
+                padding: 16,
+                background: "#fff5e6",
+                border: "1.5px dashed #f0c050",
+                borderRadius: 12,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 13, color: "#3d2818", fontWeight: 700, marginBottom: 8 }}>
+                내 사진 업로드
+              </div>
+              <div style={{ fontSize: 12, color: "#9a8b6c", marginBottom: 12 }}>
+                PNG / JPG / WebP · 최대 1MB · 정사각 비율 권장
+              </div>
+              <button
+                type="button"
+                onClick={onPickFile}
+                disabled={pending}
+                style={{
+                  padding: "10px 20px",
+                  border: "none",
+                  background: pending ? "#d6c2a0" : "#F26522",
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontWeight: 800,
+                  cursor: pending ? "default" : "pointer",
+                  fontSize: 14,
+                }}
+              >
+                {pending ? "업로드 중..." : "📷 사진 선택"}
+              </button>
+              {draft.kind === "image" && (
+                <div style={{ fontSize: 11, color: "#5a8a3a", marginTop: 8 }}>
+                  ✓ 현재 사진이 적용된 상태예요. 새로 선택하면 교체됩니다.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 사람 — body + part 슬롯 */}
-        {draft.kind === "human" && (
+        {!imageTab && draft.kind === "human" && (
           <>
             <Slot title="성별">
               {(["boy", "girl"] as const).map((b) => (
@@ -291,7 +385,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
         )}
 
         {/* 동물 — variant 그리드 */}
-        {draft.kind === "animal" && (
+        {!imageTab && draft.kind === "animal" && (
           <Slot title="동물">
             {AVATAR_OPTIONS.animal.map((v) => (
               <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
@@ -302,7 +396,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
         )}
 
         {/* 판타지 — variant 그리드 */}
-        {draft.kind === "fantasy" && (
+        {!imageTab && draft.kind === "fantasy" && (
           <Slot title="판타지">
             {AVATAR_OPTIONS.fantasy.map((v) => (
               <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
@@ -312,55 +406,57 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
           </Slot>
         )}
 
-        {/* 액세서리 — 전 kind 공통 */}
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            background: "#fff5e6",
-            borderRadius: 12,
-            border: "1.5px solid #f0c050",
-          }}
-        >
+        {/* 액세서리 — 사진 탭에서는 미적용 (이미지 위 오버레이 안 함) */}
+        {!imageTab && draft.kind !== "image" && (
           <div
             style={{
-              fontSize: 13,
-              color: "#3d2818",
-              fontWeight: 800,
-              marginBottom: 10,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
+              marginTop: 14,
+              padding: 12,
+              background: "#fff5e6",
+              borderRadius: 12,
+              border: "1.5px solid #f0c050",
             }}
           >
-            <span>✨ 꾸미기</span>
-            <span style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 500 }}>
-              사람·동물·판타지 공통
-            </span>
+            <div
+              style={{
+                fontSize: 13,
+                color: "#3d2818",
+                fontWeight: 800,
+                marginBottom: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>✨ 꾸미기</span>
+              <span style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 500 }}>
+                사람·동물·판타지 공통
+              </span>
+            </div>
+            <Slot title="안경">
+              {AVATAR_OPTIONS.glasses.map((v) => (
+                <Chip
+                  key={v}
+                  active={(currentAcc.glasses ?? "none") === v}
+                  onClick={() => setAccessory("glasses", v)}
+                >
+                  {labelOf(v)}
+                </Chip>
+              ))}
+            </Slot>
+            <Slot title="모자">
+              {AVATAR_OPTIONS.hat.map((v) => (
+                <Chip
+                  key={v}
+                  active={(currentAcc.hat ?? "none") === v}
+                  onClick={() => setAccessory("hat", v)}
+                >
+                  {labelOf(v)}
+                </Chip>
+              ))}
+            </Slot>
           </div>
-          <Slot title="안경">
-            {AVATAR_OPTIONS.glasses.map((v) => (
-              <Chip
-                key={v}
-                active={(currentAcc.glasses ?? "none") === v}
-                onClick={() => setAccessory("glasses", v)}
-              >
-                {labelOf(v)}
-              </Chip>
-            ))}
-          </Slot>
-          <Slot title="모자">
-            {AVATAR_OPTIONS.hat.map((v) => (
-              <Chip
-                key={v}
-                active={(currentAcc.hat ?? "none") === v}
-                onClick={() => setAccessory("hat", v)}
-              >
-                {labelOf(v)}
-              </Chip>
-            ))}
-          </Slot>
-        </div>
+        )}
 
         {error && (
           <div
@@ -393,26 +489,28 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
               cursor: pending ? "default" : "pointer",
             }}
           >
-            취소
+            {imageTab ? "닫기" : "취소"}
           </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={pending}
-            style={{
-              flex: 2,
-              padding: "12px 0",
-              border: "none",
-              background: pending ? "#d6c2a0" : "#F26522",
-              color: "#fff",
-              borderRadius: 10,
-              fontWeight: 800,
-              cursor: pending ? "default" : "pointer",
-              fontSize: 15,
-            }}
-          >
-            {pending ? "저장 중..." : "저장"}
-          </button>
+          {!imageTab && (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={pending}
+              style={{
+                flex: 2,
+                padding: "12px 0",
+                border: "none",
+                background: pending ? "#d6c2a0" : "#F26522",
+                color: "#fff",
+                borderRadius: 10,
+                fontWeight: 800,
+                cursor: pending ? "default" : "pointer",
+                fontSize: 15,
+              }}
+            >
+              {pending ? "저장 중..." : "저장"}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -629,6 +629,30 @@ export function AvatarFigure({
 }) {
   const cfg: AvatarConfig = config ?? DEFAULT_AVATAR;
 
+  // 사진 업로드 아바타 — img 로 직접 렌더 (정사각, 둥근 모서리, 외곽선 픽셀톤 유지)
+  if (cfg.kind === "image") {
+    return (
+      <img
+        src={cfg.url}
+        alt=""
+        width={size}
+        height={(size * 160) / 120}
+        className={className}
+        style={{
+          width: size,
+          height: (size * 160) / 120,
+          objectFit: "cover",
+          objectPosition: "center top",
+          borderRadius: 12,
+          border: "2px solid #2a1a14",
+          background: "#fff",
+          imageRendering: "auto",
+          display: "block",
+        }}
+      />
+    );
+  }
+
   let inner: JSX.Element;
   let anchorKey: string;
   if (cfg.kind === "human") {

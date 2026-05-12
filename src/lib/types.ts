@@ -22,6 +22,10 @@ export type AvatarConfig =
       kind: "animal" | "fantasy";
       variant: string;
       accessories?: AvatarAccessories;
+    }
+  | {
+      kind: "image";
+      url: string;
     };
 
 export const DEFAULT_AVATAR: AvatarConfig = {

@@ -98,6 +98,13 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
       ...(accessories && { accessories }),
     };
   }
+  if (kind === "image") {
+    // url 은 우리 Supabase Storage 의 public URL 만 허용 (도메인 화이트리스트).
+    if (typeof a.url !== "string" || a.url.length === 0 || a.url.length > 500) return null;
+    const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    if (!allowed || !a.url.startsWith(allowed)) return null;
+    return { kind: "image", url: a.url };
+  }
   return null;
 }
 
@@ -121,6 +128,64 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
     .eq("external_student_id", payload.studentLocalId);
   if (error) {
     return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const, avatar };
+}
+
+// 학생 본인 사진을 avatars 버킷에 업로드 후 avatar = { kind: "image", url } 로 저장.
+// 학생당 1장(덮어쓰기). 1MB 제한, png/jpg/webp 만 허용.
+export async function uploadAvatarImageAction(formData: FormData) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { ok: false as const, message: "파일이 없어요." };
+  }
+  if (file.size > 1_048_576) {
+    return { ok: false as const, message: "이미지가 너무 커요 (1MB 이하)." };
+  }
+  const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+  if (!allowedTypes.includes(file.type)) {
+    return { ok: false as const, message: "PNG/JPG/WebP 만 업로드할 수 있어요." };
+  }
+
+  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const path = `${payload.branchId}/${payload.studentLocalId}.${ext}`;
+
+  const sb = createSupabaseServiceClient();
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // 같은 학생이 다른 확장자로 업로드한 적 있으면 잔존 파일 정리 (조용히 실패 무시)
+  const otherExts = ["png", "jpg", "webp"].filter((e) => e !== ext);
+  await sb.storage.from("avatars").remove(otherExts.map((e) => `${payload.branchId}/${payload.studentLocalId}.${e}`));
+
+  const { error: uploadErr } = await sb.storage
+    .from("avatars")
+    .upload(path, buffer, { contentType: file.type, upsert: true, cacheControl: "3600" });
+  if (uploadErr) {
+    return { ok: false as const, message: `업로드 실패: ${uploadErr.message}` };
+  }
+
+  const { data: pub } = sb.storage.from("avatars").getPublicUrl(path);
+  // 캐시 무효화를 위해 timestamp 쿼리 추가
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+
+  const avatar: AvatarConfig = { kind: "image", url };
+  const { error: dbErr } = await sb
+    .from("garden_students")
+    .update({ avatar })
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId);
+  if (dbErr) {
+    return { ok: false as const, message: `저장 실패: ${dbErr.message}` };
   }
 
   revalidatePath("/me");
