@@ -2,6 +2,8 @@
 
 // 아바타 갤러리 관리 UI.
 // 카테고리별 섹션: 업로드 버튼 + 라벨 input + 그리드(썸네일 + 토글 + 삭제).
+// 업로드 시 클라이언트에서 자동 배경 제거 — 가장자리 픽셀에서 1~2 개 우세 색을 찾아
+// (체크무늬 baked-in 케이스 포함) 일치 픽셀을 투명 처리한 PNG 로 변환한 뒤 전송.
 
 import { useRef, useState, useTransition } from "react";
 import type { AvatarGalleryCategory, AvatarGalleryItem } from "@/lib/types";
@@ -10,6 +12,83 @@ import {
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
 } from "../actions";
+
+// 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
+// 본문 전체에서 tolerance 안에 들어오는 픽셀을 알파 0 으로 만든다.
+// (편집기에서 체크무늬 transparency 배경이 픽셀로 baked-in 된 경우를 자동 정리)
+async function stripBackgroundToPng(file: File): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const w = bitmap.width;
+  const h = bitmap.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  // 가장자리 5px 깊이의 픽셀을 24 단위로 양자화해 빈도 집계.
+  const border = 5;
+  const quant = (v: number) => Math.round(v / 24) * 24;
+  const counts = new Map<string, { c: number; r: number; g: number; b: number }>();
+  let borderPx = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x >= border && x < w - border && y >= border && y < h - border) continue;
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 8) continue; // 이미 투명한 픽셀은 무시
+      const r = quant(data[i]);
+      const g = quant(data[i + 1]);
+      const b = quant(data[i + 2]);
+      const key = `${r}_${g}_${b}`;
+      const prev = counts.get(key);
+      if (prev) prev.c++;
+      else counts.set(key, { c: 1, r, g, b });
+      borderPx++;
+    }
+  }
+  if (borderPx === 0) return await canvasToPngFile(canvas, file.name);
+
+  const sorted = [...counts.values()].sort((a, b) => b.c - a.c);
+  // top1 단일색이 ≥60% 이면 단색 배경, top2 합이 ≥50% 면 체크무늬 패턴으로 간주.
+  const top: Array<{ r: number; g: number; b: number }> = [];
+  const top1Pct = sorted[0].c / borderPx;
+  const top2Pct = sorted.length > 1 ? (sorted[0].c + sorted[1].c) / borderPx : 0;
+  if (top1Pct >= 0.6) {
+    top.push(sorted[0]);
+  } else if (top2Pct >= 0.5) {
+    top.push(sorted[0], sorted[1]);
+  } else {
+    // 가장자리가 다채롭다면 배경 추정 실패 — 그대로 PNG 만 보장
+    return await canvasToPngFile(canvas, file.name);
+  }
+
+  const tol = 28;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    for (const k of top) {
+      if (Math.abs(r - k.r) <= tol && Math.abs(g - k.g) <= tol && Math.abs(b - k.b) <= tol) {
+        data[i + 3] = 0;
+        break;
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return await canvasToPngFile(canvas, file.name);
+}
+
+function canvasToPngFile(canvas: HTMLCanvasElement, originalName: string): Promise<File> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return reject(new Error("canvas toBlob failed"));
+      const base = originalName.replace(/\.[^.]+$/, "");
+      resolve(new File([blob], `${base}.png`, { type: "image/png" }));
+    }, "image/png");
+  });
+}
 
 const CATEGORIES: Array<{ key: AvatarGalleryCategory; label: string; hint: string }> = [
   { key: "base", label: "베이스 (캐릭터)", hint: "전신 캐릭터 이미지. 학생이 가장 먼저 고르는 레이어." },
@@ -32,15 +111,26 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
 
   const handleUpload = (cat: AvatarGalleryCategory, file: File, label: string) => {
     setError(null);
-    if (file.size > 2_097_152) {
-      setError("이미지가 너무 커요 (2MB 이하).");
+    if (file.size > 4_194_304) {
+      setError("이미지가 너무 커요 (4MB 이하 원본만 처리해요).");
       return;
     }
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("category", cat);
-    if (label) fd.append("label", label);
     startTransition(async () => {
+      let processed: File;
+      try {
+        processed = await stripBackgroundToPng(file);
+      } catch (e) {
+        setError(`이미지 처리 실패: ${(e as Error).message}`);
+        return;
+      }
+      if (processed.size > 2_097_152) {
+        setError("처리된 이미지가 2MB 를 초과해요. 더 작은 해상도로 다시 시도해주세요.");
+        return;
+      }
+      const fd = new FormData();
+      fd.append("file", processed);
+      fd.append("category", cat);
+      if (label) fd.append("label", label);
       const r = await uploadGalleryItemAction(fd);
       if (!r.ok) {
         setError(r.message);
@@ -75,6 +165,42 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     });
   };
 
+  // 기존 항목의 baked-in 배경을 청소해서 동일 카테고리에 새 항목으로 올린 뒤 기존 항목 삭제.
+  const handleReclean = async (it: AvatarGalleryItem) => {
+    if (!confirm("이 이미지의 배경을 다시 정리할까요? 새 항목으로 올라가고 원본은 삭제돼요.")) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(it.image_url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`이미지 fetch 실패 (${res.status})`);
+        const blob = await res.blob();
+        const file = new File([blob], "reclean.png", { type: blob.type || "image/png" });
+        const processed = await stripBackgroundToPng(file);
+        if (processed.size > 2_097_152) {
+          setError("처리된 이미지가 2MB 를 초과해요.");
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", processed);
+        fd.append("category", it.category);
+        if (it.label) fd.append("label", it.label);
+        const up = await uploadGalleryItemAction(fd);
+        if (!up.ok) {
+          setError(up.message);
+          return;
+        }
+        const del = await deleteGalleryItemAction({ id: it.id });
+        if (!del.ok) {
+          setError(`새 항목 업로드는 됐지만 기존 삭제 실패: ${del.message}`);
+          return;
+        }
+        await refreshFromServer();
+      } catch (e) {
+        setError(`재처리 실패: ${(e as Error).message}`);
+      }
+    });
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-4 space-y-6">
       {error && (
@@ -97,6 +223,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           onUpload={handleUpload}
           onToggle={handleToggle}
           onDelete={handleDelete}
+          onReclean={handleReclean}
         />
       ))}
     </div>
@@ -104,7 +231,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
 }
 
 function CategorySection({
-  category, label, hint, items, pending, onUpload, onToggle, onDelete,
+  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean,
 }: {
   category: AvatarGalleryCategory;
   label: string;
@@ -114,6 +241,7 @@ function CategorySection({
   onUpload: (cat: AvatarGalleryCategory, file: File, label: string) => void;
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
+  onReclean: (it: AvatarGalleryItem) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -183,6 +311,15 @@ function CategorySection({
                 {it.label ?? "(라벨 없음)"}
               </div>
               <div className="flex border-t border-pot/20">
+                <button
+                  type="button"
+                  onClick={() => onReclean(it)}
+                  disabled={pending}
+                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  title="가장자리 색을 다시 분석해 baked-in 배경을 투명 처리"
+                >
+                  🧹 배경
+                </button>
                 <button
                   type="button"
                   onClick={() => onToggle(it.id, !it.active)}
