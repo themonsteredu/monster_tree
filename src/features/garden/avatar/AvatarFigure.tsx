@@ -908,12 +908,15 @@ export function AvatarFigure({
           width: size,
           height: h,
           display: "block",
+          // base 의 transform:scale 이 캔버스 밖으로 넘치면 잘라낸다.
+          overflow: "hidden",
         }}
       >
         {hasAny ? (
           layers.map((l) => {
             if (!l.url) return null;
             const frame = SLOT_FRAMES[l.key];
+            const isBase = l.key === "base";
             return (
               <img
                 key={l.key}
@@ -925,10 +928,14 @@ export function AvatarFigure({
                   width: "100%",
                   top: frame.top,
                   height: frame.height,
-                  // 모두 contain — 캔버스 1:1 이라 base 도 잘림없이 꽉 차고
-                  // 슬롯 이미지들도 비율 유지하며 자연스럽게 들어감.
                   objectFit: "contain",
                   objectPosition: "center",
+                  // base PNG 가 자기 1:1 프레임 안에서 ~76% 만 차지(상·하 padding)
+                  // 하는 경우가 많아 캔버스에 contain 만 하면 작아 보임. base 만
+                  // 1.35x 확대해 캔버스를 꽉 채운다. 슬롯 박스는 캔버스 % 기준이라
+                  // 확대된 베이스의 부위 위치와 자연스럽게 정렬됨.
+                  transform: isBase ? "scale(1.35)" : undefined,
+                  transformOrigin: "center center",
                   zIndex: l.z,
                   pointerEvents: "none",
                 }}
