@@ -317,3 +317,132 @@ export async function resetSemesterAction(args: { confirmText: string }) {
     pendingDeleted: result.pending_deleted,
   };
 }
+
+/* ============== 아바타 갤러리 관리 (관리자 업로드) ============== */
+
+const GALLERY_CATEGORIES = ["base", "outfit", "hat", "accessory"] as const;
+type GalleryCategory = (typeof GALLERY_CATEGORIES)[number];
+
+function isGalleryCategory(v: unknown): v is GalleryCategory {
+  return typeof v === "string" && (GALLERY_CATEGORIES as readonly string[]).includes(v);
+}
+
+// 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
+export async function uploadGalleryItemAction(formData: FormData) {
+  ensureAuth();
+  const file = formData.get("file");
+  const category = formData.get("category");
+  const label = formData.get("label");
+  if (!(file instanceof File)) {
+    return { ok: false as const, message: "파일이 없어요." };
+  }
+  if (!isGalleryCategory(category)) {
+    return { ok: false as const, message: "잘못된 카테고리." };
+  }
+  if (file.size > 2_097_152) {
+    return { ok: false as const, message: "이미지가 너무 커요 (2MB 이하)." };
+  }
+  const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+  if (!allowedTypes.includes(file.type)) {
+    return { ok: false as const, message: "PNG/JPG/WebP 만 업로드할 수 있어요." };
+  }
+  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const id = crypto.randomUUID();
+  const path = `gallery/${category}/${id}.${ext}`;
+
+  const sb = createSupabaseServiceClient();
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const { error: uploadErr } = await sb.storage
+    .from("avatars")
+    .upload(path, buffer, { contentType: file.type, upsert: false, cacheControl: "31536000" });
+  if (uploadErr) {
+    return { ok: false as const, message: `업로드 실패: ${uploadErr.message}` };
+  }
+  const { data: pub } = sb.storage.from("avatars").getPublicUrl(path);
+  const url = pub.publicUrl;
+
+  const { data: maxRow } = await sb
+    .from("garden_avatar_gallery")
+    .select("sort_order")
+    .eq("category", category)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sort_order = (maxRow?.sort_order ?? 0) + 1;
+
+  const { error: dbErr } = await sb.from("garden_avatar_gallery").insert({
+    category,
+    label: typeof label === "string" && label.length > 0 ? label.slice(0, 60) : null,
+    image_url: url,
+    sort_order,
+    active: true,
+  });
+  if (dbErr) {
+    await sb.storage.from("avatars").remove([path]);
+    return { ok: false as const, message: `DB 저장 실패: ${dbErr.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  return { ok: true as const };
+}
+
+// 관리자: 활성/비활성 토글.
+export async function setGalleryItemActiveAction(args: { id: string; active: boolean }) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_avatar_gallery")
+    .update({ active: args.active })
+    .eq("id", args.id);
+  if (error) {
+    return { ok: false as const, message: `변경 실패: ${error.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  return { ok: true as const };
+}
+
+// 관리자: 갤러리 항목 삭제. Storage 파일도 함께 제거.
+export async function deleteGalleryItemAction(args: { id: string }) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { data: row, error: selErr } = await sb
+    .from("garden_avatar_gallery")
+    .select("image_url")
+    .eq("id", args.id)
+    .maybeSingle();
+  if (selErr || !row) {
+    return { ok: false as const, message: "항목을 찾지 못했어요." };
+  }
+  const marker = "/storage/v1/object/public/avatars/";
+  const idx = row.image_url.indexOf(marker);
+  if (idx >= 0) {
+    const path = row.image_url.substring(idx + marker.length).split("?")[0];
+    await sb.storage.from("avatars").remove([path]);
+  }
+  const { error: delErr } = await sb.from("garden_avatar_gallery").delete().eq("id", args.id);
+  if (delErr) {
+    return { ok: false as const, message: `삭제 실패: ${delErr.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  return { ok: true as const };
+}
+
+// 관리자: 전체 목록 (활성/비활성 모두) 조회.
+export async function listAllGalleryItemsAction() {
+  ensureAuth();
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("garden_avatar_gallery")
+    .select("id, category, label, image_url, sort_order, active, created_at")
+    .order("category", { ascending: true })
+    .order("sort_order", { ascending: true });
+  if (error) {
+    return { ok: false as const, message: `조회 실패: ${error.message}` };
+  }
+  return { ok: true as const, items: data ?? [] };
+}

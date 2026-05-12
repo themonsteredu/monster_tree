@@ -27,7 +27,28 @@ export type AvatarConfig =
   | {
       kind: "image";
       url: string;
+    }
+  | {
+      // 관리자가 카테고리별로 업로드한 갤러리에서 학생이 1개씩 골라 합성하는 아바타.
+      // 각 슬롯은 garden_avatar_gallery.image_url 값. 없으면 해당 레이어 미표시.
+      kind: "gallery";
+      base?: string;
+      outfit?: string;
+      hat?: string;
+      accessory?: string;
     };
+
+export type AvatarGalleryCategory = "base" | "outfit" | "hat" | "accessory";
+
+export type AvatarGalleryItem = {
+  id: string;
+  category: AvatarGalleryCategory;
+  label: string | null;
+  image_url: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+};
 
 export const DEFAULT_AVATAR: AvatarConfig = {
   kind: "human",
