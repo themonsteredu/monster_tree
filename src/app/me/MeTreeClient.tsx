@@ -440,7 +440,7 @@ export function MeTreeClient({
                     pointerEvents: "none",
                   }}
                 >
-                  <AvatarFigure config={currentAvatar} size={96} />
+                  <AvatarFigure config={currentAvatar} size={160} />
                 </div>
               </div>
             </div>
