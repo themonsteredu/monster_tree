@@ -882,10 +882,6 @@ export function AvatarFigure({
           position: "relative",
           width: size,
           height: h,
-          borderRadius: 12,
-          border: "2px solid #2a1a14",
-          background: "#fffaf2",
-          overflow: "hidden",
           display: "block",
         }}
       >
