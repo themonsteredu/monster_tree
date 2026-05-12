@@ -413,7 +413,7 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
-                  gap: 8,
+                  minHeight: 200,
                 }}
               >
                 <div style={{ position: "relative", display: "inline-block" }}>
@@ -432,44 +432,59 @@ export function MeTreeClient({
                     <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                   )}
                 </div>
-                <div style={{ paddingBottom: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <AvatarFigure config={currentAvatar} size={120} />
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button
-                      type="button"
-                      onClick={() => setAvatarSheetOpen(true)}
-                      style={{
-                        border: "1.5px solid #d6c2a0",
-                        background: "#fff",
-                        color: "#3d2818",
-                        padding: "5px 10px",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ✨ 아바타
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBgSheetOpen(true)}
-                      style={{
-                        border: "1.5px solid #d6c2a0",
-                        background: "#fff",
-                        color: "#3d2818",
-                        padding: "5px 10px",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      🎨 배경
-                    </button>
-                  </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    bottom: 4,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <AvatarFigure config={currentAvatar} size={96} />
                 </div>
               </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 8,
+                marginBottom: 14,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setAvatarSheetOpen(true)}
+                style={{
+                  border: "1.5px solid #d6c2a0",
+                  background: "#fff",
+                  color: "#3d2818",
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                ✨ 아바타 꾸미기
+              </button>
+              <button
+                type="button"
+                onClick={() => setBgSheetOpen(true)}
+                style={{
+                  border: "1.5px solid #d6c2a0",
+                  background: "#fff",
+                  color: "#3d2818",
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                🎨 배경 바꾸기
+              </button>
             </div>
 
             {pending.length > 0 && (
