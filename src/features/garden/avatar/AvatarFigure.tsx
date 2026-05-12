@@ -861,29 +861,30 @@ export function AvatarFigure({
     );
   }
 
-  // 갤러리 합성 아바타 — 6 슬롯을 슬롯별 박스에 contain 으로 겹쳐 표시.
-  // 베이스 캐릭터 이미지는 1:1 정도여서 120×170 캔버스 안에서 약 y=14%~88% 만 차지
-  // (위·아래 letterbox). 슬롯도 그 범위 안에서 부위 비율로 배치한다:
-  //   머리 14-34% / 목·어깨 34-40% / 몸통 40-58% / 허리 58-68% / 다리 68-83% / 발 83-88%
-  //  - base    : top 0%  h 100% (캔버스 전체)
-  //  - hat     : top 10% h 22%  (정수리)
-  //  - accessory: top 22% h 12% (눈/안경)
-  //  - outfit  : top 36% h 22%  (목 아래~허리 — hood 가 얼굴을 덮지 않도록 시작점을 낮춤)
-  //  - bottom  : top 56% h 27%  (허리~발목)
-  //  - shoes   : top 80% h 8%   (발 — 캐릭터 발 위치에 정확히 정렬)
+  // 갤러리 합성 아바타 — 6 슬롯을 슬롯별 박스에 겹쳐 표시.
+  // 베이스 PNG 는 1:1 ~ 1.2:1 가로형이라 120×170 portrait 캔버스에 contain 하면
+  // 위·아래 letterbox 가 크게 생겨 아바타가 작아 보임. base 만 object-fit:cover 로
+  // 캔버스를 꽉 채우고 (좌·우 빈 여백은 잘림 — 캐릭터는 중앙 정렬이라 시각적 손실 없음),
+  // 나머지 슬롯은 contain 으로 비율 유지. SLOT_FRAMES 는 캐릭터가 캔버스 0-100% 를
+  // 채운다는 전제로 부위 비율 배치:
+  //   머리 0-30% / 몸통 32-58% / 다리 58-90% / 발 90-100%
+  //  - base    : top 0%  h 100% (전체 — cover)
+  //  - hat     : top 0%  h 28%  (머리 위~정수리)
+  //  - accessory: top 12% h 18% (눈/안경)
+  //  - outfit  : top 32% h 26%  (목 아래~허리)
+  //  - bottom  : top 58% h 32%  (허리~발목)
+  //  - shoes   : top 90% h 10%  (발)
   // 레이어 순서(z): base → bottom → outfit → shoes → accessory → hat
-  // 업로드 시 콘텐츠 바운딩박스로 크롭되므로 PNG 의 인트린식 크기 = 콘텐츠 크기 → 슬롯 박스 안에서
-  // 자연스럽게 비율이 잡힌다. 모든 슬롯이 비어있으면 placeholder.
   if (cfg.kind === "gallery") {
     const h = (size * 170) / 120;
     type Frame = { top: string; height: string };
     const SLOT_FRAMES: Record<string, Frame> = {
       base:      { top: "0%",  height: "100%" },
-      outfit:    { top: "36%", height: "22%" },
-      bottom:    { top: "56%", height: "27%" },
-      shoes:     { top: "80%", height: "8%" },
-      hat:       { top: "10%", height: "22%" },
-      accessory: { top: "22%", height: "12%" },
+      outfit:    { top: "32%", height: "26%" },
+      bottom:    { top: "58%", height: "32%" },
+      shoes:     { top: "90%", height: "10%" },
+      hat:       { top: "0%",  height: "28%" },
+      accessory: { top: "12%", height: "18%" },
     };
     const layers: Array<{ key: keyof typeof SLOT_FRAMES; url?: string; z: number }> = [
       { key: "base", url: cfg.base, z: 1 },
@@ -908,6 +909,7 @@ export function AvatarFigure({
           layers.map((l) => {
             if (!l.url) return null;
             const frame = SLOT_FRAMES[l.key];
+            const isBase = l.key === "base";
             return (
               <img
                 key={l.key}
@@ -919,7 +921,9 @@ export function AvatarFigure({
                   width: "100%",
                   top: frame.top,
                   height: frame.height,
-                  objectFit: "contain",
+                  // base 만 cover — 가로형 PNG 의 좌·우 여백을 잘라 캔버스를 꽉 채움.
+                  // 나머지 슬롯은 contain — hat / 후드 / 신발 등은 비율 유지.
+                  objectFit: isBase ? "cover" : "contain",
                   objectPosition: "center",
                   zIndex: l.z,
                   pointerEvents: "none",
