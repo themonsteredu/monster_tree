@@ -3,20 +3,30 @@
 export type AvatarHumanBody = "boy" | "girl";
 export type AvatarKind = "human" | "animal" | "fantasy";
 
+export type AvatarAccessories = { glasses?: string; hat?: string };
+
 export type AvatarConfig =
   | {
       kind: "human";
       body: AvatarHumanBody;
       skin: string;
       hair: string;
-      face: string;
-      top: string;
-      bottom: string;
-      shoes: string;
+      eyes: string;
+      mouth: string;
+      // costume = 상의+하의+신발 세트. "none" 이면 맨몸(피부만).
+      costume: string;
+      accessories?: AvatarAccessories;
     }
   | {
       kind: "animal" | "fantasy";
       variant: string;
+      // 동물/판타지도 의상 입을 수 있음.
+      costume?: string;
+      accessories?: AvatarAccessories;
+    }
+  | {
+      kind: "image";
+      url: string;
     };
 
 export const DEFAULT_AVATAR: AvatarConfig = {
@@ -24,10 +34,9 @@ export const DEFAULT_AVATAR: AvatarConfig = {
   body: "boy",
   skin: "light",
   hair: "short_brown",
-  face: "smile",
-  top: "hoodie_white",
-  bottom: "shorts_green",
-  shoes: "sneakers_brown",
+  eyes: "happy",
+  mouth: "smile",
+  costume: "casual_olive",
 };
 
 // 학생 개인 페이지 + TV 스포트라이트 의 배경 꾸미기.
