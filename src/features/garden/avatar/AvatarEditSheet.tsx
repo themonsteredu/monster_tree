@@ -1,24 +1,17 @@
 "use client";
 
 // 학생 본인의 아바타를 편집하는 시트.
-// 카테고리 (사람/동물/판타지) 탭 + 각 카테고리에 맞는 옵션 선택.
-// 모든 kind 공통으로 안경/모자 액세서리 슬롯 노출.
+// 관리자 갤러리(base/outfit/hat/accessory)에서 슬롯마다 1개씩 골라 합성한다.
 // 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type {
   AvatarConfig,
-  AvatarAccessories,
   AvatarGalleryCategory,
   AvatarGalleryItem,
 } from "@/lib/types";
-import { DEFAULT_AVATAR } from "@/lib/types";
-import { AvatarFigure, AVATAR_OPTIONS, COSTUME_SWATCH } from "./AvatarFigure";
-import {
-  updateAvatarAction,
-  uploadAvatarImageAction,
-  listGalleryItemsAction,
-} from "@/app/me/actions";
+import { AvatarFigure } from "./AvatarFigure";
+import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
 
 const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
   base: "베이스",
@@ -34,91 +27,23 @@ type Props = {
   onSaved: (next: AvatarConfig) => void;
 };
 
-const HUMAN_PART_LABELS: Record<string, string> = {
-  skin: "피부",
-  hair: "머리",
-  eyes: "눈",
-  mouth: "입",
-  costume: "코스튁",
-};
-
-const PART_VALUE_LABELS: Record<string, string> = {
-  // 피부
-  light: "밝은",
-  tan: "보통",
-  dark: "진한",
-  // 머리
-  short_brown: "갈색 단발",
-  short_black: "검정 단발",
-  short_blonde: "금색 단발",
-  long_brown: "갈색 긴머리",
-  long_black: "검정 긴머리",
-  long_pink: "분홍 긴머리",
-  // 눈
-  happy: "기본 눈",
-  dot: "점 눈",
-  wink: "윙크",
-  round: "큰 눈",
-  sleepy: "졸린 눈",
-  star: "별눈",
-  sharp: "날카로운 눈",
-  // 입
-  smile: "웃음",
-  neutral: "다물기",
-  oh: "놀람",
-  smirk: "씨익",
-  tongue: "메롱",
-  // 코스튐 세트
-  casual_olive: "올리브 후드",
-  casual_blue: "캐주얼 블루",
-  uniform_school: "교복",
-  dress_pink: "분홍 원피스",
-  sports_red: "빨강 운동복",
-  winter_brown: "겨울 코트",
-  hoodie_yellow: "노랑 후드",
-  // 동물
-  cat: "고양이",
-  dog: "강아지",
-  rabbit: "토끼",
-  bear: "곰",
-  pig: "돼지",
-  fox: "여우",
-  panda: "판다",
-  // 판타지
-  robot: "로봇",
-  astronaut: "우주인",
-  ghost: "유령",
-  // 액세서리
-  none: "없음",
-  square: "사각 뿔테",
-  sunglasses: "선글라스",
-  beanie_navy: "네이비 비니",
-  newsboy_brown: "뉴스보이 캡",
-  wizard_purple: "마법사 모자",
-  graduation_black: "학사모",
-  cap_red: "빨간 캡",
-};
-
-// 색 스와치 — 칩에 작은 점 표시. 없는 값은 swatch 미표시.
-const SWATCH: Record<string, string> = {
-  light: "#f4c69a", tan: "#c89870", dark: "#7a4a30",
-  short_brown: "#553420", short_black: "#1a1010", short_blonde: "#d4a040",
-  long_brown: "#553420", long_black: "#0e0606", long_pink: "#d088a0",
-  ...COSTUME_SWATCH,
-};
-
-function labelOf(value: string): string {
-  return PART_VALUE_LABELS[value] ?? value;
+function toGalleryDraft(cfg: AvatarConfig): AvatarConfig {
+  if (cfg.kind === "gallery") return cfg;
+  return { kind: "gallery" };
 }
 
 export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
-  const [draft, setDraft] = useState<AvatarConfig>(initial);
+  const [draft, setDraft] = useState<AvatarConfig>(() => toGalleryDraft(initial));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [imageTab, setImageTab] = useState<boolean>(initial.kind === "image");
   const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
   const [galleryLoaded, setGalleryLoaded] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft(toGalleryDraft(initial));
+    setError(null);
+  }, [open, initial]);
 
   useEffect(() => {
     if (!open || galleryLoaded) return;
@@ -135,87 +60,6 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
 
   if (!open) return null;
 
-  const setKind = (kind: "human" | "animal" | "fantasy" | "image" | "gallery") => {
-    setError(null);
-    if (kind === "image") {
-      setImageTab(true);
-      return;
-    }
-    setImageTab(false);
-    if (kind === "gallery") {
-      // 갤러리 탭으로 전환 — 빈 합성으로 시작 (학생이 선택해야 함)
-      if (draft.kind !== "gallery") {
-        setDraft({ kind: "gallery" });
-      }
-      return;
-    }
-    // 액세서리는 kind 전환 시에도 유지 (image/gallery → 아닐 때만)
-    const keepAcc =
-      draft.kind !== "image" && draft.kind !== "gallery" ? draft.accessories : undefined;
-    const accField = keepAcc ? { accessories: keepAcc } : {};
-    if (kind === "human") {
-      setDraft({ ...DEFAULT_AVATAR, ...accField });
-      return;
-    }
-    if (kind === "animal") {
-      setDraft({ kind: "animal", variant: AVATAR_OPTIONS.animal[0], costume: "none", ...accField });
-      return;
-    }
-    setDraft({ kind: "fantasy", variant: AVATAR_OPTIONS.fantasy[0], costume: "none", ...accField });
-  };
-
-  const onPickFile = () => fileInputRef.current?.click();
-
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setError(null);
-    if (file.size > 1_048_576) {
-      setError("이미지가 너무 커요 (1MB 이하).");
-      return;
-    }
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setError("PNG/JPG/WebP 만 업로드할 수 있어요.");
-      return;
-    }
-    const fd = new FormData();
-    fd.append("file", file);
-    startTransition(async () => {
-      const result = await uploadAvatarImageAction(fd);
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-      setDraft(result.avatar);
-      onSaved(result.avatar);
-      onClose();
-    });
-  };
-
-  const setHumanPart = (key: string, value: string) => {
-    if (draft.kind !== "human") return;
-    setDraft({ ...draft, [key]: value } as AvatarConfig);
-  };
-
-  const setBody = (body: "boy" | "girl") => {
-    if (draft.kind !== "human") return;
-    setDraft({ ...draft, body });
-  };
-
-  const setVariant = (variant: string) => {
-    if (draft.kind !== "animal" && draft.kind !== "fantasy") return;
-    setDraft({ ...draft, variant });
-  };
-
-  const setCostume = (costume: string) => {
-    if (draft.kind === "human") {
-      setDraft({ ...draft, costume });
-    } else if (draft.kind === "animal" || draft.kind === "fantasy") {
-      setDraft({ ...draft, costume });
-    }
-  };
-
   const setGallerySlot = (slot: AvatarGalleryCategory, url: string | undefined) => {
     if (draft.kind !== "gallery") {
       setDraft({ kind: "gallery", [slot]: url });
@@ -225,21 +69,6 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
     if (!url) delete (next as Record<string, unknown>)[slot];
     setDraft(next);
   };
-
-  const setAccessory = (slot: "glasses" | "hat", value: string) => {
-    if (draft.kind === "image" || draft.kind === "gallery") return;
-    const nextAcc: AvatarAccessories = { ...(draft.accessories ?? {}) };
-    if (value === "none") {
-      delete nextAcc[slot];
-    } else {
-      nextAcc[slot] = value;
-    }
-    const hasAny = Object.keys(nextAcc).length > 0;
-    setDraft({ ...draft, accessories: hasAny ? nextAcc : undefined });
-  };
-
-  const currentAcc: AvatarAccessories =
-    draft.kind === "image" || draft.kind === "gallery" ? {} : draft.accessories ?? {};
 
   const onSave = () => {
     setError(null);
@@ -322,58 +151,13 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
           <AvatarFigure config={draft} size={180} />
         </div>
 
-        {/* 카테고리 탭 */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-          {(["gallery", "human", "animal", "fantasy", "image"] as const).map((k) => {
-            const active =
-              k === "image"
-                ? imageTab
-                : k === "gallery"
-                ? !imageTab && draft.kind === "gallery"
-                : !imageTab && draft.kind === k;
-            const label =
-              k === "human"
-                ? "사람"
-                : k === "animal"
-                ? "동물"
-                : k === "fantasy"
-                ? "판타지"
-                : k === "gallery"
-                ? "갤러리"
-                : "사진";
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKind(k)}
-                style={{
-                  flex: 1,
-                  padding: "10px 0",
-                  border: "1.5px solid #d6c2a0",
-                  background: active ? "#3d2818" : "#fff",
-                  color: active ? "#fff8e8" : "#3d2818",
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 사진 — 파일 업로드 */}
-        {imageTab && (
-          <div style={{ marginBottom: 12 }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={onFileChange}
-              style={{ display: "none" }}
-            />
+        {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
+        <div style={{ marginBottom: 12 }}>
+          {!galleryLoaded ? (
+            <div style={{ padding: 16, textAlign: "center", color: "#9a8b6c", fontSize: 13 }}>
+              갤러리를 불러오는 중...
+            </div>
+          ) : galleryItems.length === 0 ? (
             <div
               style={{
                 padding: 16,
@@ -381,291 +165,100 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                 border: "1.5px dashed #f0c050",
                 borderRadius: 12,
                 textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 13, color: "#3d2818", fontWeight: 700, marginBottom: 8 }}>
-                내 사진 업로드
-              </div>
-              <div style={{ fontSize: 12, color: "#9a8b6c", marginBottom: 12 }}>
-                PNG / JPG / WebP · 최대 1MB · 정사각 비율 권장
-              </div>
-              <button
-                type="button"
-                onClick={onPickFile}
-                disabled={pending}
-                style={{
-                  padding: "10px 20px",
-                  border: "none",
-                  background: pending ? "#d6c2a0" : "#F26522",
-                  color: "#fff",
-                  borderRadius: 10,
-                  fontWeight: 800,
-                  cursor: pending ? "default" : "pointer",
-                  fontSize: 14,
-                }}
-              >
-                {pending ? "업로드 중..." : "📷 사진 선택"}
-              </button>
-              {draft.kind === "image" && (
-                <div style={{ fontSize: 11, color: "#5a8a3a", marginTop: 8 }}>
-                  ✓ 현재 사진이 적용된 상태예요. 새로 선택하면 교체됩니다.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
-        {!imageTab && draft.kind === "gallery" && (
-          <div style={{ marginBottom: 12 }}>
-            {!galleryLoaded ? (
-              <div style={{ padding: 16, textAlign: "center", color: "#9a8b6c", fontSize: 13 }}>
-                갤러리를 불러오는 중...
-              </div>
-            ) : galleryItems.length === 0 ? (
-              <div
-                style={{
-                  padding: 16,
-                  background: "#fff5e6",
-                  border: "1.5px dashed #f0c050",
-                  borderRadius: 12,
-                  textAlign: "center",
-                  fontSize: 13,
-                  color: "#3d2818",
-                }}
-              >
-                선생님이 아직 갤러리에 이미지를 올리지 않았어요.
-              </div>
-            ) : (
-              (["base", "outfit", "hat", "accessory"] as const).map((cat) => {
-                const inCat = galleryItems.filter((it) => it.category === cat);
-                const selected =
-                  draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;
-                return (
-                  <div key={cat} style={{ marginBottom: 14 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#9a8b6c",
-                        marginBottom: 6,
-                        fontWeight: 700,
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span>{GALLERY_CAT_LABELS[cat]}</span>
-                      <span>{inCat.length}개</span>
-                    </div>
-                    {inCat.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "#9a8b6c", padding: 8 }}>
-                        이 카테고리에 항목 없음
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fill, minmax(70px, 1fr))",
-                          gap: 6,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setGallerySlot(cat, undefined)}
-                          style={{
-                            aspectRatio: "1",
-                            border: !selected ? "2px solid #F26522" : "1.5px solid #d6c2a0",
-                            background: "#fff5d6",
-                            color: "#3d2818",
-                            borderRadius: 8,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          선택 안함
-                        </button>
-                        {inCat.map((it) => {
-                          const isActive = selected === it.image_url;
-                          return (
-                            <button
-                              key={it.id}
-                              type="button"
-                              onClick={() => setGallerySlot(cat, it.image_url)}
-                              style={{
-                                aspectRatio: "1",
-                                border: isActive ? "2px solid #F26522" : "1.5px solid #d6c2a0",
-                                background: "#fff",
-                                borderRadius: 8,
-                                padding: 2,
-                                cursor: "pointer",
-                                overflow: "hidden",
-                                position: "relative",
-                              }}
-                              title={it.label ?? ""}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={it.image_url}
-                                alt={it.label ?? ""}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "contain",
-                                  display: "block",
-                                }}
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* 사람 — body + part 슬롯 */}
-        {!imageTab && draft.kind === "human" && (
-          <>
-            <Slot title="성별">
-              {(["boy", "girl"] as const).map((b) => (
-                <Chip key={b} active={draft.body === b} onClick={() => setBody(b)}>
-                  {b === "boy" ? "남자" : "여자"}
-                </Chip>
-              ))}
-            </Slot>
-            {(["skin", "hair", "eyes", "mouth"] as const).map((key) => (
-              <Slot key={key} title={HUMAN_PART_LABELS[key]}>
-                {(AVATAR_OPTIONS[key] as readonly string[]).map((value) => (
-                  <Chip
-                    key={value}
-                    active={draft[key] === value}
-                    onClick={() => setHumanPart(key, value)}
-                    swatch={SWATCH[value]}
-                  >
-                    {labelOf(value)}
-                  </Chip>
-                ))}
-              </Slot>
-            ))}
-            <Slot title="코스튐 (의상 세트)">
-              {AVATAR_OPTIONS.costume.map((value) => (
-                <Chip
-                  key={value}
-                  active={draft.costume === value}
-                  onClick={() => setCostume(value)}
-                  swatch={SWATCH[value]}
-                >
-                  {value === "none" ? "맨몸" : labelOf(value)}
-                </Chip>
-              ))}
-            </Slot>
-          </>
-        )}
-
-        {/* 동물 — variant + 코스튐 */}
-        {!imageTab && draft.kind === "animal" && (
-          <>
-            <Slot title="동물">
-              {AVATAR_OPTIONS.animal.map((v) => (
-                <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
-                  {labelOf(v)}
-                </Chip>
-              ))}
-            </Slot>
-            <Slot title="코스튐 (의상 세트)">
-              {AVATAR_OPTIONS.costume.map((value) => (
-                <Chip
-                  key={value}
-                  active={(draft.costume ?? "none") === value}
-                  onClick={() => setCostume(value)}
-                  swatch={SWATCH[value]}
-                >
-                  {value === "none" ? "맨몸" : labelOf(value)}
-                </Chip>
-              ))}
-            </Slot>
-          </>
-        )}
-
-        {/* 판타지 — variant + 코스튐 */}
-        {!imageTab && draft.kind === "fantasy" && (
-          <>
-            <Slot title="판타지">
-              {AVATAR_OPTIONS.fantasy.map((v) => (
-                <Chip key={v} active={draft.variant === v} onClick={() => setVariant(v)}>
-                  {labelOf(v)}
-                </Chip>
-              ))}
-            </Slot>
-            <Slot title="코스튐 (의상 세트)">
-              {AVATAR_OPTIONS.costume.map((value) => (
-                <Chip
-                  key={value}
-                  active={(draft.costume ?? "none") === value}
-                  onClick={() => setCostume(value)}
-                  swatch={SWATCH[value]}
-                >
-                  {value === "none" ? "기본" : labelOf(value)}
-                </Chip>
-              ))}
-            </Slot>
-          </>
-        )}
-
-        {/* 액세서리 — 사진 탭에서는 미적용 (이미지 위 오버레이 안 함) */}
-        {!imageTab && draft.kind !== "image" && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 12,
-              background: "#fff5e6",
-              borderRadius: 12,
-              border: "1.5px solid #f0c050",
-            }}
-          >
-            <div
-              style={{
                 fontSize: 13,
                 color: "#3d2818",
-                fontWeight: 800,
-                marginBottom: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
               }}
             >
-              <span>✨ 꾸미기</span>
-              <span style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 500 }}>
-                사람·동물·판타지 공통
-              </span>
+              선생님이 아직 갤러리에 이미지를 올리지 않았어요.
             </div>
-            <Slot title="안경">
-              {AVATAR_OPTIONS.glasses.map((v) => (
-                <Chip
-                  key={v}
-                  active={(currentAcc.glasses ?? "none") === v}
-                  onClick={() => setAccessory("glasses", v)}
-                >
-                  {labelOf(v)}
-                </Chip>
-              ))}
-            </Slot>
-            <Slot title="모자">
-              {AVATAR_OPTIONS.hat.map((v) => (
-                <Chip
-                  key={v}
-                  active={(currentAcc.hat ?? "none") === v}
-                  onClick={() => setAccessory("hat", v)}
-                >
-                  {labelOf(v)}
-                </Chip>
-              ))}
-            </Slot>
-          </div>
-        )}
+          ) : (
+            (["base", "outfit", "hat", "accessory"] as const).map((cat) => {
+              const inCat = galleryItems.filter((it) => it.category === cat);
+              const selected =
+                draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;
+              return (
+                <div key={cat} style={{ marginBottom: 14 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#9a8b6c",
+                      marginBottom: 6,
+                      fontWeight: 700,
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>{GALLERY_CAT_LABELS[cat]}</span>
+                    <span>{inCat.length}개</span>
+                  </div>
+                  {inCat.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#9a8b6c", padding: 8 }}>
+                      이 카테고리에 항목 없음
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(70px, 1fr))",
+                        gap: 6,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setGallerySlot(cat, undefined)}
+                        style={{
+                          aspectRatio: "1",
+                          border: !selected ? "2px solid #F26522" : "1.5px solid #d6c2a0",
+                          background: "#fff5d6",
+                          color: "#3d2818",
+                          borderRadius: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        선택 안함
+                      </button>
+                      {inCat.map((it) => {
+                        const isActive = selected === it.image_url;
+                        return (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => setGallerySlot(cat, it.image_url)}
+                            style={{
+                              aspectRatio: "1",
+                              border: isActive ? "2px solid #F26522" : "1.5px solid #d6c2a0",
+                              background: "#fff",
+                              borderRadius: 8,
+                              padding: 2,
+                              cursor: "pointer",
+                              overflow: "hidden",
+                              position: "relative",
+                            }}
+                            title={it.label ?? ""}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={it.image_url}
+                              alt={it.label ?? ""}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                                display: "block",
+                              }}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
 
         {error && (
           <div
@@ -698,86 +291,28 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
               cursor: pending ? "default" : "pointer",
             }}
           >
-            {imageTab ? "닫기" : "취소"}
+            취소
           </button>
-          {!imageTab && (
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={pending}
-              style={{
-                flex: 2,
-                padding: "12px 0",
-                border: "none",
-                background: pending ? "#d6c2a0" : "#F26522",
-                color: "#fff",
-                borderRadius: 10,
-                fontWeight: 800,
-                cursor: pending ? "default" : "pointer",
-                fontSize: 15,
-              }}
-            >
-              {pending ? "저장 중..." : "저장"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={pending}
+            style={{
+              flex: 2,
+              padding: "12px 0",
+              border: "none",
+              background: pending ? "#d6c2a0" : "#F26522",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: pending ? "default" : "pointer",
+              fontSize: 15,
+            }}
+          >
+            {pending ? "저장 중..." : "저장"}
+          </button>
         </div>
       </div>
     </div>
-  );
-}
-
-function Slot({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: "#9a8b6c", marginBottom: 6, fontWeight: 700 }}>{title}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>
-    </div>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-  swatch,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  swatch?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 12px",
-        border: active ? "1.5px solid #F26522" : "1.5px solid #d6c2a0",
-        background: active ? "#fff5d6" : "#fff",
-        color: "#3d2818",
-        borderRadius: 999,
-        fontSize: 13,
-        fontWeight: active ? 700 : 500,
-        cursor: "pointer",
-      }}
-    >
-      {swatch && (
-        <span
-          aria-hidden
-          style={{
-            display: "inline-block",
-            width: 12,
-            height: 12,
-            borderRadius: 999,
-            background: swatch,
-            border: "1px solid #2a1a14",
-          }}
-        />
-      )}
-      {children}
-    </button>
   );
 }
