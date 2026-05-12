@@ -88,6 +88,18 @@ const PART_VALUE_LABELS: Record<string, string> = {
   cap_red: "빨간 캡",
 };
 
+// 색 스와치 — 칩에 작은 점 표시. 없는 값은 swatch 미표시.
+const SWATCH: Record<string, string> = {
+  light: "#f0c896", tan: "#c89870", dark: "#7a4a30",
+  short_brown: "#5a3820", short_black: "#1a1010", short_blonde: "#d4a040",
+  long_brown: "#684028", long_black: "#100808", long_pink: "#d088a0",
+  hoodie_white: "#e8e0d0", tshirt_blue: "#4878a8", tshirt_red: "#b04038",
+  dress_pink: "#d088a0", jacket_yellow: "#e8b840",
+  shorts_green: "#608048", pants_blue: "#2c4868",
+  skirt_pink: "#d088a0", pants_black: "#201810",
+  sneakers_brown: "#4a2c18", sneakers_white: "#e8e0d0", sneakers_red: "#a83828",
+};
+
 function labelOf(value: string): string {
   return PART_VALUE_LABELS[value] ?? value;
 }
@@ -204,19 +216,23 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
           </button>
         </div>
 
-        {/* 미리보기 */}
+        {/* 미리보기 (스크롤해도 따라옴) */}
         <div
           style={{
+            position: "sticky",
+            top: 0,
             display: "flex",
             justifyContent: "center",
-            background: "#fff5d6",
+            background: "linear-gradient(180deg, #fff5d6 0%, #ffe9b0 100%)",
             borderRadius: 14,
-            padding: "12px 0 4px",
+            padding: "16px 0 10px",
             marginBottom: 14,
             border: "1.5px solid #f0c050",
+            boxShadow: "0 2px 6px rgba(61,40,24,0.08)",
+            zIndex: 1,
           }}
         >
-          <AvatarFigure config={draft} size={140} />
+          <AvatarFigure config={draft} size={180} />
         </div>
 
         {/* 카테고리 탭 */}
@@ -264,6 +280,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                     key={value}
                     active={draft[key] === value}
                     onClick={() => setHumanPart(key, value)}
+                    swatch={SWATCH[value]}
                   >
                     {labelOf(value)}
                   </Chip>
@@ -296,7 +313,31 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
         )}
 
         {/* 액세서리 — 전 kind 공통 */}
-        <div style={{ borderTop: "1px dashed #d6c2a0", marginTop: 10, paddingTop: 10 }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            background: "#fff5e6",
+            borderRadius: 12,
+            border: "1.5px solid #f0c050",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              color: "#3d2818",
+              fontWeight: 800,
+              marginBottom: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>✨ 꾸미기</span>
+            <span style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 500 }}>
+              사람·동물·판타지 공통
+            </span>
+          </div>
           <Slot title="안경">
             {AVATAR_OPTIONS.glasses.map((v) => (
               <Chip
@@ -391,16 +432,21 @@ function Chip({
   active,
   onClick,
   children,
+  swatch,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  swatch?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
         padding: "6px 12px",
         border: active ? "1.5px solid #F26522" : "1.5px solid #d6c2a0",
         background: active ? "#fff5d6" : "#fff",
@@ -411,6 +457,19 @@ function Chip({
         cursor: "pointer",
       }}
     >
+      {swatch && (
+        <span
+          aria-hidden
+          style={{
+            display: "inline-block",
+            width: 12,
+            height: 12,
+            borderRadius: 999,
+            background: swatch,
+            border: "1px solid #2a1a14",
+          }}
+        />
+      )}
       {children}
     </button>
   );
