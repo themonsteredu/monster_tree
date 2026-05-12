@@ -8,26 +8,26 @@ import type { AvatarConfig } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
 
 // ============================================================
-// Bbox detection — 갤러리 PNG 가 자체 padding 을 갖는 경우(auto-crop 도입 전
-// 업로드 항목 등) 콘텐츠의 실제 alpha bbox 를 구해 그 영역만 슬롯 박스에
-// contain 시키도록 함. 슬롯 프레임은 그대로 두고 이미지가 자기 자리를
-// 정확히 채우게 한다.
+// 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
+// 그 영역만 잘라낸 data URL 로 교체. padding 이 사라진 이미지가 슬롯 박스에
+// object-fit:contain 으로 들어가면 자기 자리에 꽉 차게 그려진다. 자동 크롭된
+// 이미지(이미 tight)는 원본 URL 그대로 사용해 추가 처리 없음.
+// CORS 실패 시 원본 URL fallback — broken image 아이콘 노출 방지.
 // ============================================================
-type Bbox = { x: number; y: number; w: number; h: number; imgW: number; imgH: number };
-const BBOX_CACHE = new Map<string, Bbox>();
+const CROP_URL_CACHE = new Map<string, string>();
 
-function useImageBbox(url: string | undefined): Bbox | null {
-  const [bbox, setBbox] = useState<Bbox | null>(() =>
-    url ? BBOX_CACHE.get(url) ?? null : null,
+function useFittedUrl(url: string | undefined): string | undefined {
+  const [fitted, setFitted] = useState<string | undefined>(() =>
+    url ? CROP_URL_CACHE.get(url) ?? url : undefined,
   );
   useEffect(() => {
     if (!url) {
-      setBbox(null);
+      setFitted(undefined);
       return;
     }
-    const cached = BBOX_CACHE.get(url);
+    const cached = CROP_URL_CACHE.get(url);
     if (cached) {
-      setBbox(cached);
+      setFitted(cached);
       return;
     }
     let cancelled = false;
@@ -38,10 +38,10 @@ function useImageBbox(url: string | undefined): Bbox | null {
         const w = img.naturalWidth;
         const h = img.naturalHeight;
         if (w === 0 || h === 0) return;
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
+        const c1 = document.createElement("canvas");
+        c1.width = w;
+        c1.height = h;
+        const ctx = c1.getContext("2d");
         if (!ctx) return;
         ctx.drawImage(img, 0, 0);
         const data = ctx.getImageData(0, 0, w, h).data;
@@ -57,31 +57,44 @@ function useImageBbox(url: string | undefined): Bbox | null {
           }
         }
         if (maxX < 0) return;
-        const b: Bbox = {
-          x: minX,
-          y: minY,
-          w: maxX - minX + 1,
-          h: maxY - minY + 1,
-          imgW: w,
-          imgH: h,
-        };
-        BBOX_CACHE.set(url, b);
-        if (!cancelled) setBbox(b);
+        const cw = maxX - minX + 1;
+        const ch = maxY - minY + 1;
+        // 이미 tight 한 이미지면 원본 그대로 사용
+        if (cw === w && ch === h) {
+          CROP_URL_CACHE.set(url, url);
+          if (!cancelled) setFitted(url);
+          return;
+        }
+        const c2 = document.createElement("canvas");
+        c2.width = cw;
+        c2.height = ch;
+        const ctx2 = c2.getContext("2d");
+        if (!ctx2) return;
+        ctx2.drawImage(img, minX, minY, cw, ch, 0, 0, cw, ch);
+        const dataUrl = c2.toDataURL("image/png");
+        CROP_URL_CACHE.set(url, dataUrl);
+        if (!cancelled) setFitted(dataUrl);
       } catch {
-        // CORS 또는 ImageData 접근 실패 — fallback (object-fit:contain) 그대로 사용
+        // CORS / 알 수 없는 에러 → 원본 URL 그대로
+        CROP_URL_CACHE.set(url, url);
+        if (!cancelled) setFitted(url);
       }
+    };
+    img.onerror = () => {
+      // 이미지 자체가 안 로드 되면 원본 URL 로 폴백 (broken icon 회피)
+      CROP_URL_CACHE.set(url, url);
+      if (!cancelled) setFitted(url);
     };
     img.src = url;
     return () => {
       cancelled = true;
     };
   }, [url]);
-  return bbox;
+  return fitted;
 }
 
-// 슬롯 프레임 안에서 PNG 의 실제 alpha bbox 만 contain 되도록 그리는 레이어.
-// bbox 가 아직 측정되지 않은 동안은 일반 <img object-fit:contain> 로 fallback.
-function BboxLayer({
+// 슬롯 프레임 안에서 auto-fit 된 이미지를 그리는 레이어 — 일반 <img object-fit:contain>.
+function FittedLayer({
   url,
   top,
   height,
@@ -92,40 +105,23 @@ function BboxLayer({
   height: string;
   zIndex: number;
 }) {
-  const bbox = useImageBbox(url);
-  const commonStyle: React.CSSProperties = {
-    position: "absolute",
-    left: 0,
-    width: "100%",
-    top,
-    height,
-    zIndex,
-    pointerEvents: "none",
-  };
-  if (!bbox) {
-    return (
-      <img
-        src={url}
-        alt=""
-        style={{
-          ...commonStyle,
-          objectFit: "contain",
-          objectPosition: "center",
-        }}
-      />
-    );
-  }
-  // SVG viewBox=bbox, preserveAspectRatio=meet → bbox 가 슬롯 프레임에 contain.
-  // overflow:hidden 으로 viewBox 밖(=PNG padding 영역)이 슬롯 프레임 밖으로
-  // 새어 나가 다른 부위를 침범하는 것을 막는다.
+  const finalUrl = useFittedUrl(url);
   return (
-    <svg
-      viewBox={`${bbox.x} ${bbox.y} ${bbox.w} ${bbox.h}`}
-      preserveAspectRatio="xMidYMid meet"
-      style={{ ...commonStyle, overflow: "hidden" }}
-    >
-      <image href={url} x={0} y={0} width={bbox.imgW} height={bbox.imgH} />
-    </svg>
+    <img
+      src={finalUrl ?? url}
+      alt=""
+      style={{
+        position: "absolute",
+        left: 0,
+        width: "100%",
+        top,
+        height,
+        objectFit: "contain",
+        objectPosition: "center",
+        zIndex,
+        pointerEvents: "none",
+      }}
+    />
   );
 }
 
@@ -1039,7 +1035,7 @@ export function AvatarFigure({
             if (!l.url) return null;
             const frame = SLOT_FRAMES[l.key];
             return (
-              <BboxLayer
+              <FittedLayer
                 key={l.key}
                 url={l.url}
                 top={frame.top}
