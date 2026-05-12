@@ -861,7 +861,7 @@ export function AvatarFigure({
     );
   }
 
-  // 갤러리 합성 아바타 — 6 슬롯을 슬롯별 박스에 겹쳐 표시.
+  // 갤러리 합성 아바타 — 8 슬롯을 슬롯별 박스에 겹쳐 표시.
   // 베이스 PNG 는 1:1 ~ 1.2:1 가로형이라 120×170 portrait 캔버스에 contain 하면
   // 위·아래 letterbox 가 크게 생겨 아바타가 작아 보임. base 만 object-fit:cover 로
   // 캔버스를 꽉 채우고 (좌·우 빈 여백은 잘림 — 캐릭터는 중앙 정렬이라 시각적 손실 없음),
@@ -869,12 +869,14 @@ export function AvatarFigure({
   // 채운다는 전제로 부위 비율 배치:
   //   머리 0-30% / 몸통 32-58% / 다리 58-90% / 발 90-100%
   //  - base    : top 0%  h 100% (전체 — cover)
+  //  - hair    : top 0%  h 30%  (머리·앞머리 — 베이스 머리 위 덮음)
+  //  - face    : top 14% h 18%  (눈코입 영역)
   //  - hat     : top 0%  h 28%  (머리 위~정수리)
-  //  - accessory: top 12% h 18% (눈/안경)
+  //  - accessory: top 12% h 18% (안경/소품)
   //  - outfit  : top 32% h 26%  (목 아래~허리)
   //  - bottom  : top 58% h 32%  (허리~발목)
   //  - shoes   : top 90% h 10%  (발)
-  // 레이어 순서(z): base → bottom → outfit → shoes → accessory → hat
+  // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
   if (cfg.kind === "gallery") {
     const h = (size * 170) / 120;
     type Frame = { top: string; height: string };
@@ -883,6 +885,8 @@ export function AvatarFigure({
       outfit:    { top: "32%", height: "26%" },
       bottom:    { top: "58%", height: "32%" },
       shoes:     { top: "90%", height: "10%" },
+      hair:      { top: "0%",  height: "30%" },
+      face:      { top: "14%", height: "18%" },
       hat:       { top: "0%",  height: "28%" },
       accessory: { top: "12%", height: "18%" },
     };
@@ -891,8 +895,10 @@ export function AvatarFigure({
       { key: "bottom", url: cfg.bottom, z: 2 },
       { key: "outfit", url: cfg.outfit, z: 3 },
       { key: "shoes", url: cfg.shoes, z: 4 },
-      { key: "accessory", url: cfg.accessory, z: 5 },
-      { key: "hat", url: cfg.hat, z: 6 },
+      { key: "hair", url: cfg.hair, z: 5 },
+      { key: "face", url: cfg.face, z: 6 },
+      { key: "accessory", url: cfg.accessory, z: 7 },
+      { key: "hat", url: cfg.hat, z: 8 },
     ];
     const hasAny = layers.some((l) => l.url);
     return (

@@ -18,12 +18,16 @@ const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
   outfit: "상의",
   bottom: "하의",
   shoes: "신발",
+  hair: "헤어",
+  face: "얼굴표정",
   hat: "모자",
   accessory: "액세서리",
 };
 
 const GALLERY_CAT_ORDER: AvatarGalleryCategory[] = [
   "base",
+  "hair",
+  "face",
   "outfit",
   "bottom",
   "shoes",
