@@ -864,6 +864,69 @@ export function AvatarFigure({
     );
   }
 
+  // 갤러리 합성 아바타 — base/outfit/hat/accessory 4장을 같은 사이즈로 겹쳐 표시.
+  // 모든 슬롯이 비어있으면 placeholder.
+  if (cfg.kind === "gallery") {
+    const h = (size * 170) / 120;
+    const layers: Array<{ key: string; url?: string; z: number }> = [
+      { key: "base", url: cfg.base, z: 1 },
+      { key: "outfit", url: cfg.outfit, z: 2 },
+      { key: "hat", url: cfg.hat, z: 3 },
+      { key: "accessory", url: cfg.accessory, z: 4 },
+    ];
+    const hasAny = layers.some((l) => l.url);
+    return (
+      <div
+        className={className}
+        style={{
+          position: "relative",
+          width: size,
+          height: h,
+          borderRadius: 12,
+          border: "2px solid #2a1a14",
+          background: "#fffaf2",
+          overflow: "hidden",
+          display: "block",
+        }}
+      >
+        {hasAny ? (
+          layers.map((l) =>
+            l.url ? (
+              <img
+                key={l.key}
+                src={l.url}
+                alt=""
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  zIndex: l.z,
+                  pointerEvents: "none",
+                }}
+              />
+            ) : null,
+          )
+        ) : (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#9a8b6c",
+              fontSize: 12,
+            }}
+          >
+            아이템을 골라주세요
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const skinPal = (cfg.kind === "human" ? SKIN[cfg.skin] : undefined) ?? SKIN.light;
   const hairPal = (cfg.kind === "human" ? HAIR[cfg.hair] : undefined) ?? HAIR.short_brown;
   const eyes = cfg.kind === "human" ? cfg.eyes : "happy";

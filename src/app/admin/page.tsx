@@ -123,6 +123,9 @@ export default async function AdminPage({
             <Link href="/admin/reports" className="text-ink-soft hover:text-apple">
               리포트
             </Link>
+            <Link href="/admin/gallery" className="text-ink-soft hover:text-apple">
+              아바타 갤러리
+            </Link>
             <Link href="/admin/reset" className="text-ink-soft hover:text-apple">
               학기 리셋
             </Link>

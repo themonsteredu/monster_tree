@@ -107,7 +107,45 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
     if (!allowed || !a.url.startsWith(allowed)) return null;
     return { kind: "image", url: a.url };
   }
+  if (kind === "gallery") {
+    // 각 슬롯이 비어있거나 우리 Supabase URL 인지만 점검.
+    const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    const slot = (v: unknown): string | undefined => {
+      if (typeof v !== "string" || v.length === 0) return undefined;
+      if (v.length > 500) return undefined;
+      if (!allowed || !v.startsWith(allowed)) return undefined;
+      return v;
+    };
+    const base = slot(a.base);
+    const outfit = slot(a.outfit);
+    const hat = slot(a.hat);
+    const accessory = slot(a.accessory);
+    // 최소 1개 슬롯은 있어야 함
+    if (!base && !outfit && !hat && !accessory) return null;
+    return {
+      kind: "gallery",
+      ...(base && { base }),
+      ...(outfit && { outfit }),
+      ...(hat && { hat }),
+      ...(accessory && { accessory }),
+    };
+  }
   return null;
+}
+
+// 갤러리 조회 — 학생/관리자 양쪽이 사용. active=true 만 sort_order 순으로.
+export async function listGalleryItemsAction() {
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("garden_avatar_gallery")
+    .select("id, category, label, image_url, sort_order, active, created_at")
+    .eq("active", true)
+    .order("category", { ascending: true })
+    .order("sort_order", { ascending: true });
+  if (error) {
+    return { ok: false as const, message: `갤러리 조회 실패: ${error.message}` };
+  }
+  return { ok: true as const, items: data ?? [] };
 }
 
 export async function updateAvatarAction(args: { avatar: unknown }) {

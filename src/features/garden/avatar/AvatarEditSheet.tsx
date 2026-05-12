@@ -5,11 +5,27 @@
 // 모든 kind 공통으로 안경/모자 액세서리 슬롯 노출.
 // 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
 
-import { useRef, useState, useTransition } from "react";
-import type { AvatarConfig, AvatarAccessories } from "@/lib/types";
+import { useEffect, useRef, useState, useTransition } from "react";
+import type {
+  AvatarConfig,
+  AvatarAccessories,
+  AvatarGalleryCategory,
+  AvatarGalleryItem,
+} from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
 import { AvatarFigure, AVATAR_OPTIONS, COSTUME_SWATCH } from "./AvatarFigure";
-import { updateAvatarAction, uploadAvatarImageAction } from "@/app/me/actions";
+import {
+  updateAvatarAction,
+  uploadAvatarImageAction,
+  listGalleryItemsAction,
+} from "@/app/me/actions";
+
+const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
+  base: "베이스",
+  outfit: "의상",
+  hat: "모자",
+  accessory: "액세서리",
+};
 
 type Props = {
   open: boolean;
@@ -100,24 +116,42 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [imageTab, setImageTab] = useState<boolean>(initial.kind === "image");
+  const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
+  const [galleryLoaded, setGalleryLoaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open || galleryLoaded) return;
+    let cancelled = false;
+    listGalleryItemsAction().then((r) => {
+      if (cancelled) return;
+      if (r.ok) setGalleryItems(r.items as AvatarGalleryItem[]);
+      setGalleryLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, galleryLoaded]);
 
   if (!open) return null;
 
-  const setKind = (kind: "human" | "animal" | "fantasy" | "image") => {
+  const setKind = (kind: "human" | "animal" | "fantasy" | "image" | "gallery") => {
     setError(null);
     if (kind === "image") {
-      // 이미지 탭으로 전환만 — 업로드 전에는 draft 변경 안 함 (기존 SVG 유지)
-      if (draft.kind !== "image") {
-        // draft 는 그대로 두고 탭만 image 로. 시각적 활성화를 위해 별도 ui state 필요해서
-        // 여기서는 draft 를 image 로 바꾸지 않고, isImageTab 으로 추적.
-      }
       setImageTab(true);
       return;
     }
     setImageTab(false);
-    // 액세서리는 kind 전환 시에도 유지 (image → 아닐 때만)
-    const keepAcc = draft.kind !== "image" ? draft.accessories : undefined;
+    if (kind === "gallery") {
+      // 갤러리 탭으로 전환 — 빈 합성으로 시작 (학생이 선택해야 함)
+      if (draft.kind !== "gallery") {
+        setDraft({ kind: "gallery" });
+      }
+      return;
+    }
+    // 액세서리는 kind 전환 시에도 유지 (image/gallery → 아닐 때만)
+    const keepAcc =
+      draft.kind !== "image" && draft.kind !== "gallery" ? draft.accessories : undefined;
     const accField = keepAcc ? { accessories: keepAcc } : {};
     if (kind === "human") {
       setDraft({ ...DEFAULT_AVATAR, ...accField });
@@ -182,8 +216,18 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
     }
   };
 
+  const setGallerySlot = (slot: AvatarGalleryCategory, url: string | undefined) => {
+    if (draft.kind !== "gallery") {
+      setDraft({ kind: "gallery", [slot]: url });
+      return;
+    }
+    const next = { ...draft, [slot]: url };
+    if (!url) delete (next as Record<string, unknown>)[slot];
+    setDraft(next);
+  };
+
   const setAccessory = (slot: "glasses" | "hat", value: string) => {
-    if (draft.kind === "image") return;
+    if (draft.kind === "image" || draft.kind === "gallery") return;
     const nextAcc: AvatarAccessories = { ...(draft.accessories ?? {}) };
     if (value === "none") {
       delete nextAcc[slot];
@@ -194,7 +238,8 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
     setDraft({ ...draft, accessories: hasAny ? nextAcc : undefined });
   };
 
-  const currentAcc: AvatarAccessories = draft.kind === "image" ? {} : draft.accessories ?? {};
+  const currentAcc: AvatarAccessories =
+    draft.kind === "image" || draft.kind === "gallery" ? {} : draft.accessories ?? {};
 
   const onSave = () => {
     setError(null);
@@ -278,10 +323,24 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
         </div>
 
         {/* 카테고리 탭 */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          {(["human", "animal", "fantasy", "image"] as const).map((k) => {
-            const active = k === "image" ? imageTab : !imageTab && draft.kind === k;
-            const label = k === "human" ? "사람" : k === "animal" ? "동물" : k === "fantasy" ? "판타지" : "사진";
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+          {(["gallery", "human", "animal", "fantasy", "image"] as const).map((k) => {
+            const active =
+              k === "image"
+                ? imageTab
+                : k === "gallery"
+                ? !imageTab && draft.kind === "gallery"
+                : !imageTab && draft.kind === k;
+            const label =
+              k === "human"
+                ? "사람"
+                : k === "animal"
+                ? "동물"
+                : k === "fantasy"
+                ? "판타지"
+                : k === "gallery"
+                ? "갤러리"
+                : "사진";
             return (
               <button
                 key={k}
@@ -353,6 +412,117 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
+        {!imageTab && draft.kind === "gallery" && (
+          <div style={{ marginBottom: 12 }}>
+            {!galleryLoaded ? (
+              <div style={{ padding: 16, textAlign: "center", color: "#9a8b6c", fontSize: 13 }}>
+                갤러리를 불러오는 중...
+              </div>
+            ) : galleryItems.length === 0 ? (
+              <div
+                style={{
+                  padding: 16,
+                  background: "#fff5e6",
+                  border: "1.5px dashed #f0c050",
+                  borderRadius: 12,
+                  textAlign: "center",
+                  fontSize: 13,
+                  color: "#3d2818",
+                }}
+              >
+                선생님이 아직 갤러리에 이미지를 올리지 않았어요.
+              </div>
+            ) : (
+              (["base", "outfit", "hat", "accessory"] as const).map((cat) => {
+                const inCat = galleryItems.filter((it) => it.category === cat);
+                const selected =
+                  draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;
+                return (
+                  <div key={cat} style={{ marginBottom: 14 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#9a8b6c",
+                        marginBottom: 6,
+                        fontWeight: 700,
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span>{GALLERY_CAT_LABELS[cat]}</span>
+                      <span>{inCat.length}개</span>
+                    </div>
+                    {inCat.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#9a8b6c", padding: 8 }}>
+                        이 카테고리에 항목 없음
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(70px, 1fr))",
+                          gap: 6,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setGallerySlot(cat, undefined)}
+                          style={{
+                            aspectRatio: "1",
+                            border: !selected ? "2px solid #F26522" : "1.5px solid #d6c2a0",
+                            background: "#fff5d6",
+                            color: "#3d2818",
+                            borderRadius: 8,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          선택 안함
+                        </button>
+                        {inCat.map((it) => {
+                          const isActive = selected === it.image_url;
+                          return (
+                            <button
+                              key={it.id}
+                              type="button"
+                              onClick={() => setGallerySlot(cat, it.image_url)}
+                              style={{
+                                aspectRatio: "1",
+                                border: isActive ? "2px solid #F26522" : "1.5px solid #d6c2a0",
+                                background: "#fff",
+                                borderRadius: 8,
+                                padding: 2,
+                                cursor: "pointer",
+                                overflow: "hidden",
+                                position: "relative",
+                              }}
+                              title={it.label ?? ""}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={it.image_url}
+                                alt={it.label ?? ""}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                  display: "block",
+                                }}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
