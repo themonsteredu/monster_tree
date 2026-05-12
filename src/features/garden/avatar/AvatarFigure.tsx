@@ -9,23 +9,25 @@ import { DEFAULT_AVATAR } from "@/lib/types";
 
 // ============================================================
 // 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
-// 그 영역만 잘라낸 data URL 로 교체. padding 이 사라진 이미지가 슬롯 박스에
-// object-fit:contain 으로 들어가면 자기 자리에 꽉 차게 그려진다. 자동 크롭된
-// 이미지(이미 tight)는 원본 URL 그대로 사용해 추가 처리 없음.
+// 그 영역만 잘라낸 data URL + bbox 비율(h/w) 을 반환.
+// 잘라낸 이미지가 슬롯 박스에 object-fit:contain 으로 들어가면 슬롯에 꽉 차게
+// 그려진다. base 의 bbox 비율은 inner 박스(실제 캐릭터 영역) 크기 계산에 사용 —
+// 다른 슬롯들이 base 의 몸 위치에 정확히 정렬되도록.
 // CORS 실패 시 원본 URL fallback — broken image 아이콘 노출 방지.
 // ============================================================
-const CROP_URL_CACHE = new Map<string, string>();
+type FittedImage = { url: string; ratio: number }; // ratio = bboxHeight / bboxWidth
+const CROP_CACHE = new Map<string, FittedImage>();
 
-function useFittedUrl(url: string | undefined): string | undefined {
-  const [fitted, setFitted] = useState<string | undefined>(() =>
-    url ? CROP_URL_CACHE.get(url) ?? url : undefined,
+function useFittedImage(url: string | undefined): FittedImage | undefined {
+  const [fitted, setFitted] = useState<FittedImage | undefined>(() =>
+    url ? CROP_CACHE.get(url) : undefined,
   );
   useEffect(() => {
     if (!url) {
       setFitted(undefined);
       return;
     }
-    const cached = CROP_URL_CACHE.get(url);
+    const cached = CROP_CACHE.get(url);
     if (cached) {
       setFitted(cached);
       return;
@@ -59,10 +61,12 @@ function useFittedUrl(url: string | undefined): string | undefined {
         if (maxX < 0) return;
         const cw = maxX - minX + 1;
         const ch = maxY - minY + 1;
-        // 이미 tight 한 이미지면 원본 그대로 사용
+        const ratio = ch / cw;
+        // 이미 tight 한 이미지면 원본 그대로 사용 (data URL 변환 비용 회피)
         if (cw === w && ch === h) {
-          CROP_URL_CACHE.set(url, url);
-          if (!cancelled) setFitted(url);
+          const result = { url, ratio };
+          CROP_CACHE.set(url, result);
+          if (!cancelled) setFitted(result);
           return;
         }
         const c2 = document.createElement("canvas");
@@ -72,18 +76,23 @@ function useFittedUrl(url: string | undefined): string | undefined {
         if (!ctx2) return;
         ctx2.drawImage(img, minX, minY, cw, ch, 0, 0, cw, ch);
         const dataUrl = c2.toDataURL("image/png");
-        CROP_URL_CACHE.set(url, dataUrl);
-        if (!cancelled) setFitted(dataUrl);
+        const result = { url: dataUrl, ratio };
+        CROP_CACHE.set(url, result);
+        if (!cancelled) setFitted(result);
       } catch {
-        // CORS / 알 수 없는 에러 → 원본 URL 그대로
-        CROP_URL_CACHE.set(url, url);
-        if (!cancelled) setFitted(url);
+        // CORS / 알 수 없는 에러 → 원본 URL + naturalWidth/Height 기반 비율
+        const fallback = {
+          url,
+          ratio: img.naturalWidth > 0 ? img.naturalHeight / img.naturalWidth : 1.4,
+        };
+        CROP_CACHE.set(url, fallback);
+        if (!cancelled) setFitted(fallback);
       }
     };
     img.onerror = () => {
-      // 이미지 자체가 안 로드 되면 원본 URL 로 폴백 (broken icon 회피)
-      CROP_URL_CACHE.set(url, url);
-      if (!cancelled) setFitted(url);
+      const fallback = { url, ratio: 1.4 };
+      CROP_CACHE.set(url, fallback);
+      if (!cancelled) setFitted(fallback);
     };
     img.src = url;
     return () => {
@@ -105,10 +114,10 @@ function FittedLayer({
   height: string;
   zIndex: number;
 }) {
-  const finalUrl = useFittedUrl(url);
+  const fitted = useFittedImage(url);
   return (
     <img
-      src={finalUrl ?? url}
+      src={fitted?.url ?? url}
       alt=""
       style={{
         position: "absolute",
@@ -947,6 +956,121 @@ function Hat({ variant }: { variant: string }) {
 }
 
 // ============================================================
+// 갤러리 합성 아바타 — 8 슬롯을 base 캐릭터 위에 겹쳐 표시.
+//
+// 핵심: base PNG 의 실제 bbox 비율(h/w) 을 측정해서 그 비율의 inner 박스를
+// 만들고, 모든 슬롯을 inner 박스의 자식으로 배치한다. 그러면 어떤 base 이미지가
+// 올라와도 모자/안경/상의/하의/신발이 항상 몸의 같은 위치(머리/가슴/다리/발) 에
+// 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
+// 좌우/상하로 어긋났음.
+//
+// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 %:
+//   base    : top  0%   h 100% (전체)
+//   hair    : top -2%   h 24%  (윗머리)
+//   hat     : top -8%   h 28%  (머리 위 — 정수리 위로 살짝 솟음)
+//   face    : top 10%   h 16%  (눈코입)
+//   accessory: top 10%  h 16%  (안경)
+//   outfit  : top 26%   h 30%  (목 아래 ~ 허리)
+//   bottom  : top 52%   h 32%  (허리 ~ 발목)
+//   shoes   : top 82%   h 18%  (발)
+// 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
+// ============================================================
+type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
+const GALLERY_SLOT_FRAMES: Record<GallerySlot, { top: string; height: string }> = {
+  base:      { top: "0%",   height: "100%" },
+  hair:      { top: "-2%",  height: "24%" },
+  hat:       { top: "-8%",  height: "28%" },
+  face:      { top: "10%",  height: "16%" },
+  accessory: { top: "10%",  height: "16%" },
+  outfit:    { top: "26%",  height: "30%" },
+  bottom:    { top: "52%",  height: "32%" },
+  shoes:     { top: "82%",  height: "18%" },
+};
+
+function GalleryAvatar({
+  cfg,
+  size,
+  className,
+}: {
+  cfg: Extract<AvatarConfig, { kind: "gallery" }>;
+  size: number;
+  className?: string;
+}) {
+  // base 가 있으면 그 bbox 비율을 그대로 사용 — 없으면 portrait 기본값 1.4.
+  // inner 박스는 외곽 size×size 안에 들어가는 최대 크기로 계산.
+  const baseFitted = useFittedImage(cfg.base);
+  const ratio = baseFitted?.ratio ?? 1.4; // height / width
+  const innerHeight = ratio >= 1 ? size : size * ratio;
+  const innerWidth = ratio >= 1 ? size / ratio : size;
+
+  const layers: Array<{ key: GallerySlot; url?: string; z: number }> = [
+    { key: "base", url: cfg.base, z: 1 },
+    { key: "bottom", url: cfg.bottom, z: 2 },
+    { key: "outfit", url: cfg.outfit, z: 3 },
+    { key: "shoes", url: cfg.shoes, z: 4 },
+    { key: "hair", url: cfg.hair, z: 5 },
+    { key: "face", url: cfg.face, z: 6 },
+    { key: "accessory", url: cfg.accessory, z: 7 },
+    { key: "hat", url: cfg.hat, z: 8 },
+  ];
+  const hasAny = layers.some((l) => l.url);
+
+  return (
+    <div
+      className={className}
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        display: "block",
+        overflow: "hidden",
+      }}
+    >
+      {hasAny ? (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: innerWidth,
+            height: innerHeight,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          {layers.map((l) => {
+            if (!l.url) return null;
+            const frame = GALLERY_SLOT_FRAMES[l.key];
+            return (
+              <FittedLayer
+                key={l.key}
+                url={l.url}
+                top={frame.top}
+                height={frame.height}
+                zIndex={l.z}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#9a8b6c",
+            fontSize: 12,
+          }}
+        >
+          아이템을 골라주세요
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // 최상위 렌더 컴포넌트
 // ============================================================
 export function AvatarFigure({
@@ -980,87 +1104,8 @@ export function AvatarFigure({
     );
   }
 
-  // 갤러리 합성 아바타 — 8 슬롯을 슬롯별 박스에 겹쳐 표시.
-  // 캔버스는 정사각형 1:1 — 베이스 PNG 가 대략 1:1 ~ 1:1.2 비율이라
-  // portrait(120:170) 캔버스에서는 위·아래 letterbox 가 크게 생겼음. 1:1 로
-  // 맞추면 base contain 만으로 거의 꽉 차고, 슬롯별 박스도 정사각형이 되어
-  // 신발/하의 같은 가로형 이미지가 합리적인 크기로 들어감.
-  //   머리 0-30% / 몸통 30-58% / 다리 58-85% / 발 80-100% (1:1 캔버스 기준)
-  //  - base    : top 0%  h 100% (전체 — contain)
-  //  - hair    : top 0%  h 30%  (머리·앞머리 — 베이스 머리 위 덮음)
-  //  - face    : top 14% h 18%  (눈코입 영역)
-  //  - hat     : top 0%  h 26%  (머리 위~정수리)
-  //  - accessory: top 14% h 18% (안경/소품)
-  //  - outfit  : top 30% h 28%  (목 아래~허리)
-  //  - bottom  : top 56% h 28%  (허리~발목)
-  //  - shoes   : top 80% h 20%  (발 — 박스 충분히 두껍게)
-  // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
   if (cfg.kind === "gallery") {
-    const h = size;
-    type Frame = { top: string; height: string };
-    const SLOT_FRAMES: Record<string, Frame> = {
-      base:      { top: "0%",  height: "100%" },
-      outfit:    { top: "30%", height: "28%" },
-      bottom:    { top: "56%", height: "28%" },
-      shoes:     { top: "80%", height: "20%" },
-      hair:      { top: "0%",  height: "30%" },
-      face:      { top: "14%", height: "18%" },
-      hat:       { top: "0%",  height: "26%" },
-      accessory: { top: "14%", height: "18%" },
-    };
-    const layers: Array<{ key: keyof typeof SLOT_FRAMES; url?: string; z: number }> = [
-      { key: "base", url: cfg.base, z: 1 },
-      { key: "bottom", url: cfg.bottom, z: 2 },
-      { key: "outfit", url: cfg.outfit, z: 3 },
-      { key: "shoes", url: cfg.shoes, z: 4 },
-      { key: "hair", url: cfg.hair, z: 5 },
-      { key: "face", url: cfg.face, z: 6 },
-      { key: "accessory", url: cfg.accessory, z: 7 },
-      { key: "hat", url: cfg.hat, z: 8 },
-    ];
-    const hasAny = layers.some((l) => l.url);
-    return (
-      <div
-        className={className}
-        style={{
-          position: "relative",
-          width: size,
-          height: h,
-          display: "block",
-          overflow: "hidden",
-        }}
-      >
-        {hasAny ? (
-          layers.map((l) => {
-            if (!l.url) return null;
-            const frame = SLOT_FRAMES[l.key];
-            return (
-              <FittedLayer
-                key={l.key}
-                url={l.url}
-                top={frame.top}
-                height={frame.height}
-                zIndex={l.z}
-              />
-            );
-          })
-        ) : (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#9a8b6c",
-              fontSize: 12,
-            }}
-          >
-            아이템을 골라주세요
-          </div>
-        )}
-      </div>
-    );
+    return <GalleryAvatar cfg={cfg} size={size} className={className} />;
   }
 
   const skinPal = (cfg.kind === "human" ? SKIN[cfg.skin] : undefined) ?? SKIN.light;
