@@ -15,10 +15,21 @@ import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
 
 const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
   base: "베이스",
-  outfit: "의상",
+  outfit: "상의",
+  bottom: "하의",
+  shoes: "신발",
   hat: "모자",
   accessory: "액세서리",
 };
+
+const GALLERY_CAT_ORDER: AvatarGalleryCategory[] = [
+  "base",
+  "outfit",
+  "bottom",
+  "shoes",
+  "hat",
+  "accessory",
+];
 
 type Props = {
   open: boolean;
@@ -172,7 +183,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
               선생님이 아직 갤러리에 이미지를 올리지 않았어요.
             </div>
           ) : (
-            (["base", "outfit", "hat", "accessory"] as const).map((cat) => {
+            GALLERY_CAT_ORDER.map((cat) => {
               const inCat = galleryItems.filter((it) => it.category === cat);
               const selected =
                 draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;

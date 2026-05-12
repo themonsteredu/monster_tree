@@ -118,14 +118,18 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
     };
     const base = slot(a.base);
     const outfit = slot(a.outfit);
+    const bottom = slot(a.bottom);
+    const shoes = slot(a.shoes);
     const hat = slot(a.hat);
     const accessory = slot(a.accessory);
     // 최소 1개 슬롯은 있어야 함
-    if (!base && !outfit && !hat && !accessory) return null;
+    if (!base && !outfit && !bottom && !shoes && !hat && !accessory) return null;
     return {
       kind: "gallery",
       ...(base && { base }),
       ...(outfit && { outfit }),
+      ...(bottom && { bottom }),
+      ...(shoes && { shoes }),
       ...(hat && { hat }),
       ...(accessory && { accessory }),
     };
