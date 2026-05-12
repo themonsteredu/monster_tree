@@ -16,6 +16,7 @@ import {
 // 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
 // 본문 전체에서 tolerance 안에 들어오는 픽셀을 알파 0 으로 만든다.
 // (편집기에서 체크무늬 transparency 배경이 픽셀로 baked-in 된 경우를 자동 정리)
+// 마지막으로 투명 가장자리를 잘라내(crop) 인트린식 크기 = 콘텐츠 크기로 맞춰 슬롯 간 비율 정렬을 돕는다.
 async function stripBackgroundToPng(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const w = bitmap.width;
@@ -49,35 +50,67 @@ async function stripBackgroundToPng(file: File): Promise<File> {
       borderPx++;
     }
   }
-  if (borderPx === 0) return await canvasToPngFile(canvas, file.name);
 
-  const sorted = [...counts.values()].sort((a, b) => b.c - a.c);
-  // top1 단일색이 ≥60% 이면 단색 배경, top2 합이 ≥50% 면 체크무늬 패턴으로 간주.
-  const top: Array<{ r: number; g: number; b: number }> = [];
-  const top1Pct = sorted[0].c / borderPx;
-  const top2Pct = sorted.length > 1 ? (sorted[0].c + sorted[1].c) / borderPx : 0;
-  if (top1Pct >= 0.6) {
-    top.push(sorted[0]);
-  } else if (top2Pct >= 0.5) {
-    top.push(sorted[0], sorted[1]);
-  } else {
-    // 가장자리가 다채롭다면 배경 추정 실패 — 그대로 PNG 만 보장
-    return await canvasToPngFile(canvas, file.name);
+  if (borderPx > 0) {
+    const sorted = [...counts.values()].sort((a, b) => b.c - a.c);
+    const top: Array<{ r: number; g: number; b: number }> = [];
+    const top1Pct = sorted[0].c / borderPx;
+    const top2Pct = sorted.length > 1 ? (sorted[0].c + sorted[1].c) / borderPx : 0;
+    if (top1Pct >= 0.6) {
+      top.push(sorted[0]);
+    } else if (top2Pct >= 0.5) {
+      top.push(sorted[0], sorted[1]);
+    }
+    if (top.length > 0) {
+      const tol = 28;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 0) continue;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        for (const k of top) {
+          if (Math.abs(r - k.r) <= tol && Math.abs(g - k.g) <= tol && Math.abs(b - k.b) <= tol) {
+            data[i + 3] = 0;
+            break;
+          }
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
   }
 
-  const tol = 28;
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue;
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-    for (const k of top) {
-      if (Math.abs(r - k.r) <= tol && Math.abs(g - k.g) <= tol && Math.abs(b - k.b) <= tol) {
-        data[i + 3] = 0;
-        break;
+  // 투명 가장자리 자르기 — alpha >= 16 픽셀의 바운딩 박스를 찾아 그 영역만 남긴다.
+  return await cropTransparentToPng(canvas, file.name);
+}
+
+// 캔버스에서 알파 >= 16 인 픽셀의 바운딩 박스를 찾아 그 부분만 잘라 PNG File 로 반환.
+// 콘텐츠 없으면 원본 캔버스 그대로.
+async function cropTransparentToPng(canvas: HTMLCanvasElement, originalName: string): Promise<File> {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return await canvasToPngFile(canvas, originalName);
+  const w = canvas.width;
+  const h = canvas.height;
+  const { data } = ctx.getImageData(0, 0, w, h);
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] >= 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
   }
-  ctx.putImageData(imgData, 0, 0);
-  return await canvasToPngFile(canvas, file.name);
+  if (maxX < 0) return await canvasToPngFile(canvas, originalName);
+  const cw = maxX - minX + 1;
+  const ch = maxY - minY + 1;
+  if (cw === w && ch === h) return await canvasToPngFile(canvas, originalName);
+  const out = document.createElement("canvas");
+  out.width = cw;
+  out.height = ch;
+  const octx = out.getContext("2d");
+  if (!octx) return await canvasToPngFile(canvas, originalName);
+  octx.drawImage(canvas, minX, minY, cw, ch, 0, 0, cw, ch);
+  return await canvasToPngFile(out, originalName);
 }
 
 function canvasToPngFile(canvas: HTMLCanvasElement, originalName: string): Promise<File> {

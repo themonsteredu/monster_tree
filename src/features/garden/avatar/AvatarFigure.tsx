@@ -861,11 +861,24 @@ export function AvatarFigure({
     );
   }
 
-  // 갤러리 합성 아바타 — base/outfit/hat/accessory 4장을 같은 사이즈로 겹쳐 표시.
-  // 모든 슬롯이 비어있으면 placeholder.
+  // 갤러리 합성 아바타 — base/outfit/hat/accessory 4장을 슬롯별 박스에 contain 으로 겹쳐 표시.
+  // 슬롯 박스는 viewBox(120×170) 내 사람 부위 위치에서 비율로 환산 (대략):
+  //  - base    : 캔버스 전체     (머리부터 발까지)
+  //  - outfit  : top 28% h 42%   (몸통 + 팔 영역)
+  //  - hat     : top 0%  h 32%   (머리 위에서 정수리까지)
+  //  - accessory: top 10% h 26%  (눈/안경/소품 영역)
+  // 업로드 시 콘텐츠 바운딩박스로 크롭되므로 PNG 의 인트린식 크기 = 콘텐츠 크기 → 슬롯 박스 안에서
+  // 자연스럽게 비율이 잡힌다. 모든 슬롯이 비어있으면 placeholder.
   if (cfg.kind === "gallery") {
     const h = (size * 170) / 120;
-    const layers: Array<{ key: string; url?: string; z: number }> = [
+    type Frame = { top: string; height: string };
+    const SLOT_FRAMES: Record<string, Frame> = {
+      base:      { top: "0%",  height: "100%" },
+      outfit:    { top: "28%", height: "42%" },
+      hat:       { top: "0%",  height: "32%" },
+      accessory: { top: "10%", height: "26%" },
+    };
+    const layers: Array<{ key: keyof typeof SLOT_FRAMES; url?: string; z: number }> = [
       { key: "base", url: cfg.base, z: 1 },
       { key: "outfit", url: cfg.outfit, z: 2 },
       { key: "hat", url: cfg.hat, z: 3 },
@@ -883,25 +896,28 @@ export function AvatarFigure({
         }}
       >
         {hasAny ? (
-          layers.map((l) =>
-            l.url ? (
+          layers.map((l) => {
+            if (!l.url) return null;
+            const frame = SLOT_FRAMES[l.key];
+            return (
               <img
                 key={l.key}
                 src={l.url}
                 alt=""
                 style={{
                   position: "absolute",
-                  inset: 0,
+                  left: 0,
                   width: "100%",
-                  height: "100%",
+                  top: frame.top,
+                  height: frame.height,
                   objectFit: "contain",
-                  objectPosition: "center bottom",
+                  objectPosition: "center",
                   zIndex: l.z,
                   pointerEvents: "none",
                 }}
               />
-            ) : null,
-          )
+            );
+          })
         ) : (
           <div
             style={{
