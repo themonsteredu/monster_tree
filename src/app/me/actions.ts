@@ -146,7 +146,7 @@ export async function listGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, position, sort_order, active, created_at")
     .eq("active", true)
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
