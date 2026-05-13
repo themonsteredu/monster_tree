@@ -473,11 +473,12 @@ function CategorySection({
 }
 
 // 카테고리별 합성 순서 (z-index) — GalleryAvatar 와 동일하게 유지.
+// hair 가 face 위에 와야 머리카락이 이마/얼굴을 자연스럽게 덮음.
 const CATEGORY_Z: Record<AvatarGalleryCategory, number> = {
-  base: 1, bottom: 2, outfit: 3, shoes: 4, hair: 5, face: 6, accessory: 7, hat: 8,
+  base: 1, face: 2, hair: 3, bottom: 4, outfit: 5, shoes: 6, accessory: 7, hat: 8,
 };
 const ALL_CATEGORIES: AvatarGalleryCategory[] = [
-  "base", "bottom", "outfit", "shoes", "hair", "face", "accessory", "hat",
+  "base", "face", "hair", "bottom", "outfit", "shoes", "accessory", "hat",
 ];
 
 // 위치/크기 조정 에디터 — 300×300 미리보기 + 슬라이더 4개.

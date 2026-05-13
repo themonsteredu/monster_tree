@@ -944,7 +944,8 @@ function Hat({ variant }: { variant: string }) {
 //   최대 직사각형을 inner 박스로 만들고, 그 안에 layers 를 쌓음. 모든 좌표는
 //   inner 박스 % 기준.
 //
-// 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
+// 레이어 순서(z): base → face → hair → bottom → outfit → shoes → accessory → hat
+// (hair 가 face 위에 와야 머리카락이 이마/얼굴을 자연스럽게 덮음)
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
 
@@ -1061,11 +1062,11 @@ function GalleryAvatar({
 }) {
   const ordered: Array<{ key: GallerySlot; url?: string; z: number }> = [
     { key: "base", url: cfg.base, z: 1 },
-    { key: "bottom", url: cfg.bottom, z: 2 },
-    { key: "outfit", url: cfg.outfit, z: 3 },
-    { key: "shoes", url: cfg.shoes, z: 4 },
-    { key: "hair", url: cfg.hair, z: 5 },
-    { key: "face", url: cfg.face, z: 6 },
+    { key: "face", url: cfg.face, z: 2 },
+    { key: "hair", url: cfg.hair, z: 3 },
+    { key: "bottom", url: cfg.bottom, z: 4 },
+    { key: "outfit", url: cfg.outfit, z: 5 },
+    { key: "shoes", url: cfg.shoes, z: 6 },
     { key: "accessory", url: cfg.accessory, z: 7 },
     { key: "hat", url: cfg.hat, z: 8 },
   ];
