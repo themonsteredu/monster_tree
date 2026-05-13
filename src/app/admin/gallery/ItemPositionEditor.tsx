@@ -1,20 +1,68 @@
 "use client";
 
-// 갤러리 항목 위치 미세조정 모달.
+// 갤러리 항목 위치/크기/레이어 미세조정 모달.
 // - 미리보기: base 아바타(반투명) 위에 항목을 겹쳐 그림.
-// - 항목을 드래그(터치/마우스) 해서 위치 이동, 슬라이더로 크기 조절.
+// - 드래그(터치/마우스) 로 위치 이동, 슬라이더로 가로폭/세로길이/레이어 순서 조절.
 // - 모든 처리는 CSS transform 만 사용 → 60fps, canvas 연산 없음.
-// - "확정저장" 시 {x, y, scale} 만 DB 에 저장 (이미지 파일 미변경).
+// - "확정저장" 시 {x, y, scaleX, scaleY, zIndex?} 만 DB 에 저장 (이미지 파일 미변경).
+// - 레거시 scale 데이터(scaleX/scaleY 없이 scale 만 있는 형태)도 자동으로 정규화해 로드.
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { AvatarGalleryItem, AvatarItemPosition } from "@/lib/types";
-import { DEFAULT_ITEM_POSITION } from "@/lib/types";
+import type {
+  AvatarGalleryCategory,
+  AvatarGalleryItem,
+  AvatarItemPosition,
+} from "@/lib/types";
+import {
+  DEFAULT_ITEM_POSITION,
+  DEFAULT_LAYER_Z,
+  resolveItemScale,
+} from "@/lib/types";
 import {
   setGalleryItemPositionAction,
   propagateGalleryItemPositionAction,
 } from "../actions";
 
 const PREVIEW_SIZE = 300;
+
+// 에디터 내부에서 사용하는 normalize 된 모양 — scaleX/scaleY/zIndex 항상 채움.
+type EditPos = {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  zIndex: number;
+};
+
+function readEditPos(
+  raw: AvatarItemPosition | null | undefined,
+  category: AvatarGalleryCategory,
+): EditPos {
+  const r = resolveItemScale(raw, category);
+  return {
+    x: r.x,
+    y: r.y,
+    scaleX: r.scaleX,
+    scaleY: r.scaleY,
+    zIndex: r.zIndex,
+  };
+}
+
+function readCategoryDefault(category: AvatarGalleryCategory): EditPos {
+  return readEditPos(DEFAULT_ITEM_POSITION[category], category);
+}
+
+// 에디터 상태 → DB 저장용 AvatarItemPosition (scale 도 동봉해 레거시 호환).
+function toSavePosition(p: EditPos): AvatarItemPosition {
+  return {
+    x: p.x,
+    y: p.y,
+    scaleX: p.scaleX,
+    scaleY: p.scaleY,
+    scale: p.scaleX, // 레거시 코드 호환 — scaleX 와 동일.
+    zIndex: p.zIndex,
+  };
+}
 
 type Props = {
   item: AvatarGalleryItem;
@@ -24,29 +72,27 @@ type Props = {
 };
 
 export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Props) {
-  const [pos, setPos] = useState<AvatarItemPosition>(
-    (item.position ?? null) ?? DEFAULT_ITEM_POSITION[item.category],
-  );
+  const [pos, setPos] = useState<EditPos>(() => readEditPos(item.position, item.category));
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [savedPosition, setSavedPosition] = useState<AvatarItemPosition | null>((item.position ?? null));
+  const [savedPosition, setSavedPosition] = useState<AvatarItemPosition | null>(item.position ?? null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ startPos: AvatarItemPosition; pointerId: number } | null>(null);
+  const dragRef = useRef<{ pointerId: number } | null>(null);
 
   useEffect(() => {
-    setPos((item.position ?? null) ?? DEFAULT_ITEM_POSITION[item.category]);
-    setSavedPosition((item.position ?? null));
+    setPos(readEditPos(item.position, item.category));
+    setSavedPosition(item.position ?? null);
     setInfo(null);
     setError(null);
-  }, [item.id, (item.position ?? null), item.category]);
+  }, [item.id, item.position, item.category]);
 
-  // 포인터 이동 핸들러 — 드래그 중에는 stage 좌표계의 % 변화량을 누적.
+  // 포인터 이동 — stage 좌표계에서 % 위치로 변환해 setPos.
   const onPointerDown = (e: React.PointerEvent) => {
     if (!stageRef.current) return;
     e.preventDefault();
     (e.target as Element).setPointerCapture(e.pointerId);
-    dragRef.current = { startPos: pos, pointerId: e.pointerId };
+    dragRef.current = { pointerId: e.pointerId };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
@@ -57,33 +103,31 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
     const xPct = ((e.clientX - rect.left) / rect.width) * 100;
     const yPct = ((e.clientY - rect.top) / rect.height) * 100;
     setPos((p) => ({
+      ...p,
       x: Math.max(0, Math.min(100, xPct)),
       y: Math.max(0, Math.min(100, yPct)),
-      scale: p.scale,
     }));
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    if (dragRef.current?.pointerId === e.pointerId) {
-      dragRef.current = null;
-    }
+    if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null;
   };
 
   const onSave = () => {
     setError(null);
     setInfo(null);
     startTransition(async () => {
-      const r = await setGalleryItemPositionAction({ id: item.id, position: pos });
+      const save = toSavePosition(pos);
+      const r = await setGalleryItemPositionAction({ id: item.id, position: save });
       if (!r.ok) {
         setError(r.message);
         return;
       }
-      setSavedPosition(pos);
+      setSavedPosition(save);
       setInfo("저장됨. 새로 선택하는 학생부터 적용돼요.");
-      onSaved(pos);
+      onSaved(save);
     });
   };
 
-  // 저장된 위치를, 이 항목을 이미 선택한 모든 학생 아바타에 일괄 전파.
   const onPropagate = () => {
     if (!savedPosition) {
       setError("먼저 위치를 저장한 뒤 전파할 수 있어요.");
@@ -102,7 +146,7 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
     });
   };
 
-  const onResetToCategory = () => setPos(DEFAULT_ITEM_POSITION[item.category]);
+  const onResetToCategory = () => setPos(readCategoryDefault(item.category));
 
   const onClearOverride = () => {
     setError(null);
@@ -112,9 +156,14 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
         setError(r.message);
         return;
       }
-      onSaved(DEFAULT_ITEM_POSITION[item.category]);
+      const def = DEFAULT_ITEM_POSITION[item.category];
+      setSavedPosition(null);
+      setPos(readEditPos(def, item.category));
+      onSaved(def);
     });
   };
+
+  const defaultZ = DEFAULT_LAYER_Z[item.category];
 
   return (
     <div
@@ -141,6 +190,8 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
           padding: 16,
           width: "100%",
           maxWidth: 360,
+          maxHeight: "92vh",
+          overflowY: "auto",
           boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
         }}
       >
@@ -206,13 +257,13 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
               width: "100%",
               height: "100%",
               objectFit: "contain",
-              transform: `translate(-50%, -50%) scale(${pos.scale / 100})`,
+              transform: `translate(-50%, -50%) scaleX(${pos.scaleX / 100}) scaleY(${pos.scaleY / 100})`,
               transformOrigin: "center center",
               cursor: dragRef.current ? "grabbing" : "grab",
               userSelect: "none",
             }}
           />
-          {/* 중앙 십자선 — 위치 가늠 보조 */}
+          {/* 중앙 십자선 */}
           <div
             style={{
               position: "absolute",
@@ -227,26 +278,44 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
         {/* 슬라이더 */}
         <div style={{ marginTop: 12, fontSize: 12, color: "#3d2818" }}>
           <SliderRow
-            label="X"
+            label="X 위치"
             value={pos.x}
             min={0}
             max={100}
             onChange={(v) => setPos((p) => ({ ...p, x: v }))}
           />
           <SliderRow
-            label="Y"
+            label="Y 위치"
             value={pos.y}
             min={0}
             max={100}
             onChange={(v) => setPos((p) => ({ ...p, y: v }))}
           />
           <SliderRow
-            label="크기"
-            value={pos.scale}
+            label="가로폭"
+            value={pos.scaleX}
             min={10}
             max={200}
-            onChange={(v) => setPos((p) => ({ ...p, scale: v }))}
+            onChange={(v) => setPos((p) => ({ ...p, scaleX: v }))}
             suffix="%"
+          />
+          <SliderRow
+            label="세로길이"
+            value={pos.scaleY}
+            min={10}
+            max={200}
+            onChange={(v) => setPos((p) => ({ ...p, scaleY: v }))}
+            suffix="%"
+          />
+          <SliderRow
+            label="레이어"
+            value={pos.zIndex}
+            min={0}
+            max={10}
+            step={1}
+            onChange={(v) => setPos((p) => ({ ...p, zIndex: v }))}
+            suffix=""
+            hint={`기본 ${defaultZ} — 숫자가 클수록 앞`}
           />
         </div>
 
@@ -320,31 +389,41 @@ function SliderRow({
   value,
   min,
   max,
+  step,
   onChange,
   suffix,
+  hint,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (v: number) => void;
   suffix?: string;
+  hint?: string;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-      <span style={{ width: 32, fontWeight: 700 }}>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={Math.round(value)}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ flex: 1 }}
-      />
-      <span style={{ width: 44, textAlign: "right", color: "#9a8b6c" }}>
-        {Math.round(value)}
-        {suffix ?? "%"}
-      </span>
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 56, fontWeight: 700 }}>{label}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step ?? 1}
+          value={Math.round(value)}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <span style={{ width: 44, textAlign: "right", color: "#9a8b6c" }}>
+          {Math.round(value)}
+          {suffix ?? "%"}
+        </span>
+      </div>
+      {hint && (
+        <div style={{ paddingLeft: 64, fontSize: 11, color: "#9a8b6c", marginTop: 2 }}>{hint}</div>
+      )}
     </div>
   );
 }

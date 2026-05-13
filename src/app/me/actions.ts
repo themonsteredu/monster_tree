@@ -130,11 +130,24 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
         if (!Number.isFinite(n)) return fb;
         return Math.min(hi, Math.max(lo, n));
       };
-      return {
+      // 신규(scaleX/scaleY/zIndex) + 레거시(scale) 모두 허용.
+      const legacy = typeof r.scale === "number" ? r.scale : Number(r.scale);
+      const sxRaw = r.scaleX ?? (Number.isFinite(legacy) ? legacy : undefined);
+      const syRaw = r.scaleY ?? (Number.isFinite(legacy) ? legacy : undefined);
+      const scaleX = num(sxRaw, 10, 200, 100);
+      const scaleY = num(syRaw, 10, 200, 100);
+      const out: AvatarItemPosition = {
         x: num(r.x, 0, 100, 50),
         y: num(r.y, 0, 100, 50),
-        scale: num(r.scale, 10, 200, 100),
+        scaleX,
+        scaleY,
+        // 레거시 호환을 위해 scale 도 함께 (scaleX 와 동일).
+        scale: scaleX,
       };
+      if (r.zIndex !== undefined && r.zIndex !== null) {
+        out.zIndex = num(r.zIndex, 0, 10, 0);
+      }
+      return out;
     };
     const slot = (v: unknown): AvatarGallerySlotValue | undefined => {
       if (typeof v === "string") {

@@ -327,8 +327,16 @@ function isGalleryCategory(v: unknown): v is GalleryCategory {
   return typeof v === "string" && (GALLERY_CATEGORIES as readonly string[]).includes(v);
 }
 
-// {x, y, scale} 위치 메타데이터의 형식만 검증해 정상화 — 범위 클램프.
-function normalizeItemPosition(raw: unknown): { x: number; y: number; scale: number } | null {
+// 위치 메타데이터 정상화 — 신규(scaleX/scaleY/zIndex) 와 레거시(scale) 모두 수용.
+// 출력은 항상 신규 형태 + 호환을 위해 scale 도 함께 (scaleX 와 동일값) 채워 보낸다.
+function normalizeItemPosition(raw: unknown): {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  scale: number;
+  zIndex?: number;
+} | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const num = (v: unknown, lo: number, hi: number, fb: number) => {
@@ -336,11 +344,25 @@ function normalizeItemPosition(raw: unknown): { x: number; y: number; scale: num
     if (!Number.isFinite(n)) return fb;
     return Math.min(hi, Math.max(lo, n));
   };
-  return {
+  const legacyScale = typeof r.scale === "number" ? r.scale : Number(r.scale);
+  const sxRaw = r.scaleX ?? (Number.isFinite(legacyScale) ? legacyScale : undefined);
+  const syRaw = r.scaleY ?? (Number.isFinite(legacyScale) ? legacyScale : undefined);
+  const scaleX = num(sxRaw, 10, 200, 100);
+  const scaleY = num(syRaw, 10, 200, 100);
+  const out: {
+    x: number; y: number; scaleX: number; scaleY: number; scale: number; zIndex?: number;
+  } = {
     x: num(r.x, 0, 100, 50),
     y: num(r.y, 0, 100, 50),
-    scale: num(r.scale, 10, 200, 100),
+    scaleX,
+    scaleY,
+    // 레거시 호환 — scaleX 와 동일하게 (오래된 코드가 .scale 만 읽어도 동작).
+    scale: scaleX,
   };
+  if (r.zIndex !== undefined && r.zIndex !== null) {
+    out.zIndex = num(r.zIndex, 0, 10, 0);
+  }
+  return out;
 }
 
 // 진단용: 인증 통과 후 즉시 응답하는 가장 단순한 server action.
@@ -477,7 +499,17 @@ export async function setGalleryItemActiveAction(args: { id: string; active: boo
 // position === null 이면 카테고리 기본값으로 fallback.
 export async function setGalleryItemPositionAction(args: {
   id: string;
-  position: { x: number; y: number; scale: number } | null;
+  // 신규(scaleX/scaleY/zIndex) 와 레거시(scale) 모두 허용 — 서버에서 정규화.
+  position:
+    | {
+        x: number;
+        y: number;
+        scaleX?: number;
+        scaleY?: number;
+        scale?: number;
+        zIndex?: number;
+      }
+    | null;
 }) {
   ensureAuth();
   if (typeof args.id !== "string" || args.id.length === 0) {
@@ -527,7 +559,8 @@ export async function propagateGalleryItemPositionAction(args: { id: string }) {
     return { ok: false as const, message: "항목을 찾지 못했어요." };
   }
   const targetUrl = item.image_url as string;
-  const newPosition = item.position as { x: number; y: number; scale: number } | null;
+  // 임의 jsonb 라 키 구성을 그대로 전파 — scaleX/scaleY/zIndex/scale 모두 통과.
+  const newPosition = item.position as Record<string, unknown> | null;
 
   const { data: rows, error: selErr } = await sb
     .from("garden_students")
@@ -570,15 +603,17 @@ export async function propagateGalleryItemPositionAction(args: { id: string }) {
 // 일괄 재처리 흐름의 보조 단계 — 신규 항목/마이그레이션 직후 일괄 초기화에 사용.
 export async function seedDefaultPositionsAction() {
   ensureAuth();
-  const DEFAULT_ITEM_POSITION: Record<string, { x: number; y: number; scale: number }> = {
-    base:      { x: 50, y: 50, scale: 100 },
-    hat:       { x: 50, y: 15, scale: 45 },
-    hair:      { x: 50, y: 20, scale: 50 },
-    face:      { x: 50, y: 33, scale: 35 },
-    accessory: { x: 50, y: 33, scale: 35 },
-    outfit:    { x: 50, y: 52, scale: 50 },
-    bottom:    { x: 50, y: 70, scale: 45 },
-    shoes:     { x: 50, y: 88, scale: 35 },
+  type DefPos = { x: number; y: number; scaleX: number; scaleY: number; scale: number };
+  const mk = (x: number, y: number, s: number): DefPos => ({ x, y, scaleX: s, scaleY: s, scale: s });
+  const DEFAULT_ITEM_POSITION: Record<string, DefPos> = {
+    base:      mk(50, 50, 100),
+    hat:       mk(50, 15, 45),
+    hair:      mk(50, 20, 50),
+    face:      mk(50, 33, 35),
+    accessory: mk(50, 33, 35),
+    outfit:    mk(50, 52, 50),
+    bottom:    mk(50, 70, 45),
+    shoes:     mk(50, 88, 35),
   };
   const sb = createSupabaseServiceClient();
   const { data: rows, error: selErr } = await sb

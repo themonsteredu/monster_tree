@@ -10,7 +10,7 @@ import type {
   AvatarGallerySlotValue,
   AvatarItemPosition,
 } from "@/lib/types";
-import { DEFAULT_AVATAR, DEFAULT_ITEM_POSITION } from "@/lib/types";
+import { DEFAULT_AVATAR, DEFAULT_LAYER_Z, resolveItemScale } from "@/lib/types";
 
 // ============================================================
 // Palette type — 모든 부위가 4단계 음영을 가짐 (light=하이라이트, base=정면, shade=측면, dark=그림자/외곽선)
@@ -868,8 +868,10 @@ function resolveSlot(value: AvatarGallerySlotValue | undefined): {
 export function galleryItemLayerStyle(
   category: AvatarGalleryCategory,
   position: AvatarItemPosition | null,
-  zIndex: number,
+  zOverride?: number,
 ): CSSProperties {
+  const resolved = resolveItemScale(position, category);
+  const zIndex = zOverride ?? resolved.zIndex;
   if (category === "base") {
     return {
       position: "absolute",
@@ -882,16 +884,15 @@ export function galleryItemLayerStyle(
       pointerEvents: "none",
     };
   }
-  const pos = position ?? DEFAULT_ITEM_POSITION[category];
   return {
     position: "absolute",
-    left: `${pos.x}%`,
-    top: `${pos.y}%`,
+    left: `${resolved.x}%`,
+    top: `${resolved.y}%`,
     width: "100%",
     height: "100%",
     objectFit: "contain",
     objectPosition: "center",
-    transform: `translate(-50%, -50%) scale(${pos.scale / 100})`,
+    transform: `translate(-50%, -50%) scaleX(${resolved.scaleX / 100}) scaleY(${resolved.scaleY / 100})`,
     transformOrigin: "center center",
     zIndex,
     pointerEvents: "none",
@@ -907,19 +908,20 @@ function GalleryAvatar({
   size: number;
   className?: string;
 }) {
-  const layers: Array<{ category: AvatarGalleryCategory; z: number }> = [
-    { category: "base", z: 1 },
-    { category: "bottom", z: 2 },
-    { category: "outfit", z: 3 },
-    { category: "shoes", z: 4 },
-    { category: "hair", z: 5 },
-    { category: "face", z: 6 },
-    { category: "accessory", z: 7 },
-    { category: "hat", z: 8 },
+  // 항목별 position.zIndex 가 있으면 그 값 사용, 없으면 카테고리 기본 DEFAULT_LAYER_Z.
+  // 같은 z 일 경우 안정 정렬을 위해 카테고리 기본 z 를 tiebreaker 로.
+  const categories: AvatarGalleryCategory[] = [
+    "base", "bottom", "outfit", "shoes", "hair", "face", "accessory", "hat",
   ];
-  const resolved = layers
-    .map((l) => ({ ...l, slot: resolveSlot(cfg[l.category]) }))
-    .filter((l): l is typeof l & { slot: NonNullable<ReturnType<typeof resolveSlot>> } => !!l.slot);
+  const resolved = categories
+    .map((category) => {
+      const slot = resolveSlot(cfg[category]);
+      if (!slot) return null;
+      const zIndex = slot.position?.zIndex ?? DEFAULT_LAYER_Z[category];
+      return { category, slot, zIndex };
+    })
+    .filter((l): l is { category: AvatarGalleryCategory; slot: NonNullable<ReturnType<typeof resolveSlot>>; zIndex: number } => !!l)
+    .sort((a, b) => a.zIndex - b.zIndex || DEFAULT_LAYER_Z[a.category] - DEFAULT_LAYER_Z[b.category]);
 
   return (
     <div
@@ -938,7 +940,7 @@ function GalleryAvatar({
             key={l.category}
             src={l.slot.url}
             alt=""
-            style={galleryItemLayerStyle(l.category, l.slot.position, l.z)}
+            style={galleryItemLayerStyle(l.category, l.slot.position, l.zIndex)}
           />
         ))
       ) : (
