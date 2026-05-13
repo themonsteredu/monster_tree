@@ -82,13 +82,16 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   };
 
   const handleUpload = (cat: AvatarGalleryCategory, file: File, label: string) => {
+    alert("업로드 함수 실행됨 — " + cat + " / " + file.name);
     console.log("[gallery] 업로드 시작", { cat, name: file.name, sizeKB: Math.round(file.size / 1024) });
     setError(null);
     if (file.size > 5_242_880) {
+      alert("크기 초과로 중단: " + Math.round(file.size / 1024) + "KB");
       setError("이미지가 너무 커요 (5MB 이하).");
       return;
     }
     startTransition(async () => {
+      alert("startTransition 진입 — 서버 액션 호출 직전");
       let processed: File;
       try {
         processed = await stripBackgroundToPng(file);
@@ -106,9 +109,11 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       fd.append("file", processed);
       fd.append("category", cat);
       if (label) fd.append("label", label);
+      alert("서버 액션 호출 직전");
       console.log("[gallery] 스토리지 + DB 저장 시작");
       try {
         const r = await uploadGalleryItemAction(fd);
+        alert("서버 응답: " + (r.ok ? "OK" : "실패 — " + r.message));
         if (!r.ok) {
           console.error("[gallery] 서버 업로드 실패", r.message);
           setError(r.message);
@@ -116,6 +121,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
         }
         console.log("[gallery] 서버 업로드 완료");
       } catch (e) {
+        alert("서버 액션 예외: " + (e as Error).message);
         console.error("[gallery] 서버 업로드 예외", e);
         setError(`업로드 실패: ${(e as Error).message}`);
         return;
@@ -229,9 +235,13 @@ function CategorySection({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
 
-  const onPick = () => fileRef.current?.click();
+  const onPick = () => {
+    alert("이미지 추가 버튼 눌림");
+    fileRef.current?.click();
+  };
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
+    alert("파일 선택됨: " + (f?.name ?? "(없음)"));
     e.target.value = "";
     if (!f) return;
     onUpload(category, f, draftLabel);
