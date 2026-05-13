@@ -320,7 +320,11 @@ export async function resetSemesterAction(args: { confirmText: string }) {
 
 /* ============== 아바타 갤러리 관리 (관리자 업로드) ============== */
 
-const GALLERY_CATEGORIES = ["base", "outfit", "bottom", "shoes", "hat", "accessory"] as const;
+// DB check 제약 (마이그레이션 0022) 과 동기화. 누락되면 업로드가 "잘못된 카테고리"
+// 로 거부됨.
+const GALLERY_CATEGORIES = [
+  "base", "outfit", "bottom", "shoes", "hair", "face", "hat", "accessory",
+] as const;
 type GalleryCategory = (typeof GALLERY_CATEGORIES)[number];
 
 function isGalleryCategory(v: unknown): v is GalleryCategory {
