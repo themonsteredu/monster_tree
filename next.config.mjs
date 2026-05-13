@@ -25,6 +25,13 @@ const nextConfig = {
   basePath: '/tree',
   assetPrefix: '/tree',
   reactStrictMode: true,
+  experimental: {
+    serverActions: {
+      // 기본값 1MB 로는 ChatGPT 생성 PNG(보통 1~3MB) 가 silent fail.
+      // 갤러리 업로드 파일 + 폼 메타데이터를 합쳐 통과시키도록 10MB 까지 허용.
+      bodySizeLimit: '10mb',
+    },
+  },
 };
 
 export default nextConfig;
