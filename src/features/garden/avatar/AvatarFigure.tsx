@@ -926,120 +926,38 @@ function Hat({ variant }: { variant: string }) {
 // ============================================================
 // 갤러리 합성 아바타 — 8 슬롯을 base 캐릭터 위에 겹쳐 표시.
 //
-// 각 갤러리 아이템은 DB 의 garden_avatar_gallery.position 컬럼에
-// {x, y, scaleX, scaleY} 를 저장 (관리자가 /admin/gallery 위치조정 에디터로 편집).
-// 렌더 시 해당 위치/크기를 CSS transform 으로 적용. canvas 연산 없음.
+// 좌표계 동기화 (중요):
+//   에디터(/admin/gallery 위치조정) 미리보기와 실제 렌더(/me, /tv) 가 같은
+//   좌표/스케일/object-fit/auto-crop 로직을 쓰도록 AvatarLayer + AvatarComposite
+//   두 컴포넌트로 묶어 export. 둘 다 이 컴포넌트만 통해 렌더되므로 한 픽셀
+//   어긋남도 발생하지 않음.
 //
-// inner 박스: base PNG 의 alpha bbox 비율을 측정해 size×size 안에 들어가는
-// 최대 직사각형. 모든 레이어 좌표는 이 inner 박스를 기준으로 함.
+// AvatarLayer: 단일 레이어. position {x,y,scaleX,scaleY} 를 CSS 로 그대로 적용.
+//   - 좌표 컨테이너(inner 박스) 의 100% × 100% 가 레이어 기본 박스.
+//   - left: x% / top: y% / translate(-50%, -50%) 로 중심점 위치.
+//   - scaleX/scaleY 로 100 기준 % 스케일.
+//   - 이미지는 width/height 100% + object-fit: contain + useFittedImage 로
+//     투명 여백 잘라낸 PNG 사용 (인트린식 비율 유지).
 //
-// 레이어 박스: inner 박스 100% × 100% 를 기본 크기로 두고 transform 으로 위치 +
-// 스케일. 이미지(<img>) 는 레이어 박스 안에서 object-fit: contain 으로 가운데
-// 정렬 — 자동 크롭된 PNG 의 인트린식 비율은 유지됨.
-//
-// galleryPositions: url → position 매핑이 제공되면 그 값을 우선 사용. 없거나
-// 매핑에 없는 URL 은 카테고리 기본값(DEFAULT_GALLERY_POSITION_BY_CATEGORY) 사용.
+// AvatarComposite: 외곽 size×size 컨테이너 + base bbox 비율로 만든 inner 박스.
+//   baseUrl 의 alpha bbox 비율(h/w) 을 측정해서 size×size 안에 들어가는
+//   최대 직사각형을 inner 박스로 만들고, 그 안에 layers 를 쌓음. 모든 좌표는
+//   inner 박스 % 기준.
 //
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
 
-function GalleryAvatar({
-  cfg,
-  size,
-  className,
-  galleryPositions,
-}: {
-  cfg: Extract<AvatarConfig, { kind: "gallery" }>;
-  size: number;
-  className?: string;
-  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
-}) {
-  // base 가 있으면 그 bbox 비율을 그대로 사용 — 없으면 portrait 기본값 1.4.
-  // inner 박스는 외곽 size×size 안에 들어가는 최대 크기로 계산.
-  const baseFitted = useFittedImage(cfg.base);
-  const ratio = baseFitted?.ratio ?? 1.4; // height / width
-  const innerHeight = ratio >= 1 ? size : size * ratio;
-  const innerWidth = ratio >= 1 ? size / ratio : size;
-
-  const layers: Array<{ key: GallerySlot; url?: string; z: number }> = [
-    { key: "base", url: cfg.base, z: 1 },
-    { key: "bottom", url: cfg.bottom, z: 2 },
-    { key: "outfit", url: cfg.outfit, z: 3 },
-    { key: "shoes", url: cfg.shoes, z: 4 },
-    { key: "hair", url: cfg.hair, z: 5 },
-    { key: "face", url: cfg.face, z: 6 },
-    { key: "accessory", url: cfg.accessory, z: 7 },
-    { key: "hat", url: cfg.hat, z: 8 },
-  ];
-  const hasAny = layers.some((l) => l.url);
-
-  return (
-    <div
-      className={className}
-      style={{
-        position: "relative",
-        width: size,
-        height: size,
-        display: "block",
-        overflow: "hidden",
-      }}
-    >
-      {hasAny ? (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: innerWidth,
-            height: innerHeight,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {layers.map((l) => {
-            if (!l.url) return null;
-            const pos =
-              (galleryPositions && galleryPositions[l.url]) ??
-              DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key];
-            return (
-              <PositionedLayer
-                key={l.key}
-                url={l.url}
-                position={pos}
-                zIndex={l.z}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#9a8b6c",
-            fontSize: 12,
-          }}
-        >
-          아이템을 골라주세요
-        </div>
-      )}
-    </div>
-  );
-}
-
-// inner 박스 100% × 100% 의 레이어 박스에 이미지를 object-fit: contain 으로 그리고,
-// position {x,y,scaleX,scaleY} 를 left/top/% + transform scale 로 적용.
-function PositionedLayer({
+export function AvatarLayer({
   url,
   position,
   zIndex,
+  opacity,
 }: {
   url: string;
   position: AvatarGalleryItemPosition;
-  zIndex: number;
+  zIndex?: number;
+  opacity?: number;
 }) {
   const fitted = useFittedImage(url);
   return (
@@ -1053,6 +971,7 @@ function PositionedLayer({
         transform: `translate(-50%, -50%) scaleX(${position.scaleX / 100}) scaleY(${position.scaleY / 100})`,
         transformOrigin: "center center",
         zIndex,
+        opacity,
         pointerEvents: "none",
       }}
     >
@@ -1068,6 +987,135 @@ function PositionedLayer({
         }}
       />
     </div>
+  );
+}
+
+export type AvatarCompositeLayer = {
+  key: string;
+  url: string;
+  position: AvatarGalleryItemPosition;
+  zIndex?: number;
+  opacity?: number;
+};
+
+export function AvatarComposite({
+  size,
+  baseUrl,
+  layers,
+  className,
+}: {
+  size: number;
+  baseUrl: string | undefined;
+  layers: AvatarCompositeLayer[];
+  className?: string;
+}) {
+  const baseFitted = useFittedImage(baseUrl);
+  const ratio = baseFitted?.ratio ?? 1.4; // height / width
+  const innerHeight = ratio >= 1 ? size : size * ratio;
+  const innerWidth = ratio >= 1 ? size / ratio : size;
+  return (
+    <div
+      className={className}
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        display: "block",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: innerWidth,
+          height: innerHeight,
+          transform: "translate(-50%, -50%)",
+        }}
+      >
+        {layers.map((l) => (
+          <AvatarLayer
+            key={l.key}
+            url={l.url}
+            position={l.position}
+            zIndex={l.zIndex}
+            opacity={l.opacity}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GalleryAvatar({
+  cfg,
+  size,
+  className,
+  galleryPositions,
+}: {
+  cfg: Extract<AvatarConfig, { kind: "gallery" }>;
+  size: number;
+  className?: string;
+  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
+}) {
+  const ordered: Array<{ key: GallerySlot; url?: string; z: number }> = [
+    { key: "base", url: cfg.base, z: 1 },
+    { key: "bottom", url: cfg.bottom, z: 2 },
+    { key: "outfit", url: cfg.outfit, z: 3 },
+    { key: "shoes", url: cfg.shoes, z: 4 },
+    { key: "hair", url: cfg.hair, z: 5 },
+    { key: "face", url: cfg.face, z: 6 },
+    { key: "accessory", url: cfg.accessory, z: 7 },
+    { key: "hat", url: cfg.hat, z: 8 },
+  ];
+  const layers: AvatarCompositeLayer[] = ordered
+    .filter((l): l is { key: GallerySlot; url: string; z: number } => !!l.url)
+    .map((l) => ({
+      key: l.key,
+      url: l.url,
+      position:
+        (galleryPositions && galleryPositions[l.url]) ??
+        DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key],
+      zIndex: l.z,
+    }));
+
+  if (layers.length === 0) {
+    return (
+      <div
+        className={className}
+        style={{
+          position: "relative",
+          width: size,
+          height: size,
+          display: "block",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#9a8b6c",
+            fontSize: 12,
+          }}
+        >
+          아이템을 골라주세요
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <AvatarComposite
+      size={size}
+      baseUrl={cfg.base}
+      layers={layers}
+      className={className}
+    />
   );
 }
 
