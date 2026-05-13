@@ -327,6 +327,22 @@ function isGalleryCategory(v: unknown): v is GalleryCategory {
   return typeof v === "string" && (GALLERY_CATEGORIES as readonly string[]).includes(v);
 }
 
+// {x, y, scale} 위치 메타데이터의 형식만 검증해 정상화 — 범위 클램프.
+function normalizeItemPosition(raw: unknown): { x: number; y: number; scale: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number, fb: number) => {
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n)) return fb;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  return {
+    x: num(r.x, 0, 100, 50),
+    y: num(r.y, 0, 100, 50),
+    scale: num(r.scale, 30, 200, 100),
+  };
+}
+
 // 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
 export async function uploadGalleryItemAction(formData: FormData) {
   ensureAuth();
@@ -407,6 +423,70 @@ export async function setGalleryItemActiveAction(args: { id: string; active: boo
   return { ok: true as const };
 }
 
+// 관리자: 갤러리 항목 위치/크기 메타데이터 갱신.
+// position === null 이면 카테고리 기본값으로 fallback.
+export async function setGalleryItemPositionAction(args: {
+  id: string;
+  position: { x: number; y: number; scale: number } | null;
+}) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  const position = args.position === null ? null : normalizeItemPosition(args.position);
+  if (args.position !== null && position === null) {
+    return { ok: false as const, message: "잘못된 위치 데이터." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_avatar_gallery")
+    .update({ position })
+    .eq("id", args.id);
+  if (error) {
+    return { ok: false as const, message: `위치 저장 실패: ${error.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  revalidatePath("/me");
+  revalidatePath("/");
+  return { ok: true as const };
+}
+
+// 관리자: position 이 null 인 항목들에 카테고리별 기본 위치를 한 번에 채워준다.
+// 일괄 재처리 흐름의 보조 단계 — 신규 항목/마이그레이션 직후 일괄 초기화에 사용.
+export async function seedDefaultPositionsAction() {
+  ensureAuth();
+  const DEFAULT_ITEM_POSITION: Record<string, { x: number; y: number; scale: number }> = {
+    base:      { x: 50, y: 50, scale: 100 },
+    hat:       { x: 50, y: 15, scale: 60 },
+    hair:      { x: 50, y: 20, scale: 65 },
+    face:      { x: 50, y: 33, scale: 40 },
+    accessory: { x: 50, y: 33, scale: 40 },
+    outfit:    { x: 50, y: 52, scale: 55 },
+    bottom:    { x: 50, y: 70, scale: 50 },
+    shoes:     { x: 50, y: 88, scale: 40 },
+  };
+  const sb = createSupabaseServiceClient();
+  const { data: rows, error: selErr } = await sb
+    .from("garden_avatar_gallery")
+    .select("id, category")
+    .is("position", null);
+  if (selErr) return { ok: false as const, message: `조회 실패: ${selErr.message}` };
+  let updated = 0;
+  for (const r of rows ?? []) {
+    const def = DEFAULT_ITEM_POSITION[r.category as string];
+    if (!def) continue;
+    const { error } = await sb
+      .from("garden_avatar_gallery")
+      .update({ position: def })
+      .eq("id", r.id);
+    if (!error) updated++;
+  }
+  revalidatePath("/admin/gallery");
+  revalidatePath("/me");
+  revalidatePath("/");
+  return { ok: true as const, updated };
+}
+
 // 관리자: 갤러리 항목 삭제. Storage 파일도 함께 제거.
 export async function deleteGalleryItemAction(args: { id: string }) {
   ensureAuth();
@@ -442,7 +522,7 @@ export async function listAllGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, sort_order, active, created_at, position")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {

@@ -6,13 +6,15 @@
 // "가짜 투명" 회색 체크무늬 패턴을 둘 다 감지해 알파 0 으로 만든다.
 // 원본 캔버스 크기는 보존 (정렬을 위해 base 와 같은 좌표계 유지).
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import type { AvatarGalleryCategory, AvatarGalleryItem } from "@/lib/types";
 import {
   uploadGalleryItemAction,
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
+  seedDefaultPositionsAction,
 } from "../actions";
+import { ItemPositionEditor } from "./ItemPositionEditor";
 
 // ChatGPT 이미지 생성기가 만든 PNG 는 알파 채널이 전부 255 (완전 불투명) 이면서
 // 체크무늬(투명 표시) 가 실제 픽셀로 그려져 있는 경우가 흔하다. 가장자리 도미넌트
@@ -198,8 +200,28 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [editorItem, setEditorItem] = useState<AvatarGalleryItem | null>(null);
 
   const byCategory = (cat: AvatarGalleryCategory) => items.filter((i) => i.category === cat);
+
+  // 위치 에디터의 base 오버레이용 — 활성 base 항목 중 첫 번째.
+  const baseImageUrl = useMemo(() => {
+    const base = items.find((i) => i.category === "base" && i.active);
+    return base?.image_url ?? null;
+  }, [items]);
+
+  const handleSeedDefaults = () => {
+    if (!confirm("위치값이 비어있는 항목들에 카테고리 기본 위치를 채울까요?")) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await seedDefaultPositionsAction();
+      if (!r.ok) {
+        setError(r.message);
+        return;
+      }
+      await refreshFromServer();
+    });
+  };
 
   const refreshFromServer = async () => {
     // 간단히 page refresh — server action 후 revalidatePath 가 호출되긴 하나 클라이언트 state 도 갱신 필요
@@ -345,16 +367,27 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           "가짜 투명" 인 경우가 있어요. 강화된 배경 제거 로직으로 모든 항목을 한
           번에 다시 정리할 수 있습니다.
         </div>
-        <button
-          type="button"
-          onClick={handleRecleanAll}
-          disabled={pending || items.length === 0}
-          className="px-3 py-2 rounded bg-pot text-white font-extrabold text-sm disabled:opacity-50 whitespace-nowrap"
-        >
-          {bulkProgress
-            ? `🧹 ${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
-            : `🧹 전체 항목 배경 재처리 (${items.length})`}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleSeedDefaults}
+            disabled={pending || items.length === 0}
+            className="px-3 py-2 rounded bg-cream text-ink font-extrabold text-sm disabled:opacity-50 whitespace-nowrap border-[1.5px] border-pot/30"
+            title="position 이 비어있는 항목에 카테고리별 기본 위치를 자동 채움"
+          >
+            📐 기본 위치 채우기
+          </button>
+          <button
+            type="button"
+            onClick={handleRecleanAll}
+            disabled={pending || items.length === 0}
+            className="px-3 py-2 rounded bg-pot text-white font-extrabold text-sm disabled:opacity-50 whitespace-nowrap"
+          >
+            {bulkProgress
+              ? `🧹 ${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
+              : `🧹 전체 항목 배경 재처리 (${items.length})`}
+          </button>
+        </div>
       </div>
       {CATEGORIES.map((c) => (
         <CategorySection
@@ -368,14 +401,28 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           onToggle={handleToggle}
           onDelete={handleDelete}
           onReclean={handleReclean}
+          onEditPosition={(it) => setEditorItem(it)}
         />
       ))}
+      {editorItem && (
+        <ItemPositionEditor
+          item={editorItem}
+          baseImageUrl={baseImageUrl}
+          onClose={() => setEditorItem(null)}
+          onSaved={(position) => {
+            setItems((prev) =>
+              prev.map((p) => (p.id === editorItem.id ? { ...p, position } : p)),
+            );
+            setEditorItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function CategorySection({
-  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean,
+  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean, onEditPosition,
 }: {
   category: AvatarGalleryCategory;
   label: string;
@@ -386,6 +433,7 @@ function CategorySection({
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
   onReclean: (it: AvatarGalleryItem) => void;
+  onEditPosition: (it: AvatarGalleryItem) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -451,10 +499,25 @@ function CategorySection({
                   className="w-full h-full object-contain bg-white"
                 />
               </div>
-              <div className="px-1.5 py-1 text-[11px] text-ink truncate">
-                {it.label ?? "(라벨 없음)"}
+              <div className="px-1.5 py-1 text-[11px] text-ink truncate flex items-center gap-1">
+                <span
+                  title={it.position ? "위치 저장됨" : "카테고리 기본 위치"}
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    it.position ? "bg-apple" : "bg-pot/30"
+                  }`}
+                />
+                <span className="truncate">{it.label ?? "(라벨 없음)"}</span>
               </div>
               <div className="flex border-t border-pot/20">
+                <button
+                  type="button"
+                  onClick={() => onEditPosition(it)}
+                  disabled={pending}
+                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  title="아바타 base 위에 겹쳐서 위치/크기 미세조정"
+                >
+                  📍 위치
+                </button>
                 <button
                   type="button"
                   onClick={() => onReclean(it)}
@@ -470,7 +533,7 @@ function CategorySection({
                   disabled={pending}
                   className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
                 >
-                  {it.active ? "비활성" : "활성화"}
+                  {it.active ? "끔" : "켬"}
                 </button>
                 <button
                   type="button"

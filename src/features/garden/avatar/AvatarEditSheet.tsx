@@ -9,6 +9,7 @@ import type {
   AvatarConfig,
   AvatarGalleryCategory,
   AvatarGalleryItem,
+  AvatarGallerySlotValue,
 } from "@/lib/types";
 import { AvatarFigure } from "./AvatarFigure";
 import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
@@ -75,14 +76,29 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
 
   if (!open) return null;
 
-  const setGallerySlot = (slot: AvatarGalleryCategory, url: string | undefined) => {
+  // 슬롯에 항목을 끼울 때 항목의 현재 위치 메타데이터를 함께 스냅샷.
+  // (관리자가 나중에 위치를 바꿔도 이미 선택한 학생 아바타는 그 시점의 위치 유지.)
+  const setGallerySlot = (slot: AvatarGalleryCategory, item: AvatarGalleryItem | null) => {
+    const value: AvatarGallerySlotValue | undefined = item
+      ? { url: item.image_url, ...(item.position && { position: item.position }) }
+      : undefined;
     if (draft.kind !== "gallery") {
-      setDraft({ kind: "gallery", [slot]: url });
+      setDraft({ kind: "gallery", ...(value && { [slot]: value }) });
       return;
     }
-    const next = { ...draft, [slot]: url };
-    if (!url) delete (next as Record<string, unknown>)[slot];
+    const next = { ...draft, [slot]: value };
+    if (!value) delete (next as Record<string, unknown>)[slot];
     setDraft(next);
+  };
+
+  const slotUrl = (slot: AvatarGalleryCategory): string | undefined => {
+    if (draft.kind !== "gallery") return undefined;
+    const v = (draft as Record<string, unknown>)[slot];
+    if (typeof v === "string") return v;
+    if (v && typeof v === "object" && typeof (v as { url?: unknown }).url === "string") {
+      return (v as { url: string }).url;
+    }
+    return undefined;
   };
 
   const onSave = () => {
@@ -189,8 +205,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
           ) : (
             GALLERY_CAT_ORDER.map((cat) => {
               const inCat = galleryItems.filter((it) => it.category === cat);
-              const selected =
-                draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;
+              const selected = slotUrl(cat);
               return (
                 <div key={cat} style={{ marginBottom: 14 }}>
                   <div
@@ -220,7 +235,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                     >
                       <button
                         type="button"
-                        onClick={() => setGallerySlot(cat, undefined)}
+                        onClick={() => setGallerySlot(cat, null)}
                         style={{
                           aspectRatio: "1",
                           border: !selected ? "2px solid #F26522" : "1.5px solid #d6c2a0",
@@ -240,7 +255,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
                           <button
                             key={it.id}
                             type="button"
-                            onClick={() => setGallerySlot(cat, it.image_url)}
+                            onClick={() => setGallerySlot(cat, it)}
                             style={{
                               aspectRatio: "1",
                               border: isActive ? "2px solid #F26522" : "1.5px solid #d6c2a0",

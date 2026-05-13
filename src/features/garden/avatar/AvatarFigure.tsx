@@ -3,8 +3,14 @@
 // 얼굴은 큰 픽셀 단위(4px 격자)로 또렷한 캐릭터성을 만든다.
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
-import type { AvatarConfig } from "@/lib/types";
-import { DEFAULT_AVATAR } from "@/lib/types";
+import type { CSSProperties } from "react";
+import type {
+  AvatarConfig,
+  AvatarGalleryCategory,
+  AvatarGallerySlotValue,
+  AvatarItemPosition,
+} from "@/lib/types";
+import { DEFAULT_AVATAR, DEFAULT_ITEM_POSITION } from "@/lib/types";
 
 // ============================================================
 // Palette type — 모든 부위가 4단계 음영을 가짐 (light=하이라이트, base=정면, shade=측면, dark=그림자/외곽선)
@@ -828,23 +834,62 @@ function Hat({ variant }: { variant: string }) {
 }
 
 // ============================================================
-// 갤러리 합성 아바타 — 8 슬롯을 같은 캔버스 위에 그대로 겹쳐 표시.
+// 갤러리 합성 아바타 — 카테고리별 위치 메타데이터 기반 레이어 배치.
 //
-// 전제: 각 아이템 PNG 는 base 와 동일한 캔버스(같은 크기, 같은 좌표계)에
-// 그려져 있다. 즉 모자는 캔버스 상단의 머리 위치, 신발은 캔버스 하단의 발
-// 위치에 이미 배치돼 있는 상태. 그러므로 렌더 시에는 슬롯별 % 좌표/크기
-// 계산 없이 모든 레이어를 inset:0, width/height 100% 로 단순히 겹치기만
-// 하면 정렬된다.
+// 각 슬롯은 (a) 단순 URL 문자열 (레거시), 또는 (b) { url, position } 객체.
+// position 이 있으면 그 값으로, 없으면 카테고리 기본값(DEFAULT_ITEM_POSITION) 으로
+// CSS transform(translate + scale) 으로 배치. base 는 항상 컨테이너 전체.
 //
-// 이전 구조(useFittedImage + 슬롯별 GALLERY_SLOT_FRAMES) 는 아이템마다
-// 여백/비율이 달라 % 좌표가 결코 일치하지 않았음. 또한 ChatGPT 가 만든
-// "가짜 투명" 배경(체크무늬 무늬가 실제로 그려진 PNG)은 alpha bbox 측정에
-// 실패해 비율 계산 자체가 무의미했음. 그래서 단순 겹치기로 전환하고,
-// 아이템 정규화는 업로드 파이프라인(stripBackgroundToPng)에 위임.
+// 모든 좌표 계산은 CSS 만 사용 — JS 연산이나 canvas 처리 없음. 드래그 미리보기와
+// 학생 화면이 정확히 같은 식을 사용해 WYSIWYG.
 //
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
-type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
+function resolveSlot(value: AvatarGallerySlotValue | undefined): {
+  url: string;
+  position: AvatarItemPosition | null;
+} | null {
+  if (!value) return null;
+  if (typeof value === "string") return { url: value, position: null };
+  if (typeof value === "object" && typeof value.url === "string") {
+    return { url: value.url, position: value.position ?? null };
+  }
+  return null;
+}
+
+export function galleryItemLayerStyle(
+  category: AvatarGalleryCategory,
+  position: AvatarItemPosition | null,
+  zIndex: number,
+): CSSProperties {
+  // base 는 컨테이너 전체에 contain.
+  if (category === "base") {
+    return {
+      position: "absolute",
+      inset: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "contain",
+      objectPosition: "center",
+      zIndex,
+      pointerEvents: "none",
+    };
+  }
+  const pos = position ?? DEFAULT_ITEM_POSITION[category];
+  return {
+    position: "absolute",
+    left: `${pos.x}%`,
+    top: `${pos.y}%`,
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    objectPosition: "center",
+    transform: `translate(-50%, -50%) scale(${pos.scale / 100})`,
+    transformOrigin: "center center",
+    zIndex,
+    pointerEvents: "none",
+  };
+}
 
 function GalleryAvatar({
   cfg,
@@ -855,17 +900,19 @@ function GalleryAvatar({
   size: number;
   className?: string;
 }) {
-  const layers: Array<{ key: GallerySlot; url?: string; z: number }> = [
-    { key: "base", url: cfg.base, z: 1 },
-    { key: "bottom", url: cfg.bottom, z: 2 },
-    { key: "outfit", url: cfg.outfit, z: 3 },
-    { key: "shoes", url: cfg.shoes, z: 4 },
-    { key: "hair", url: cfg.hair, z: 5 },
-    { key: "face", url: cfg.face, z: 6 },
-    { key: "accessory", url: cfg.accessory, z: 7 },
-    { key: "hat", url: cfg.hat, z: 8 },
+  const layers: Array<{ category: AvatarGalleryCategory; z: number }> = [
+    { category: "base", z: 1 },
+    { category: "bottom", z: 2 },
+    { category: "outfit", z: 3 },
+    { category: "shoes", z: 4 },
+    { category: "hair", z: 5 },
+    { category: "face", z: 6 },
+    { category: "accessory", z: 7 },
+    { category: "hat", z: 8 },
   ];
-  const hasAny = layers.some((l) => l.url);
+  const resolved = layers
+    .map((l) => ({ ...l, slot: resolveSlot(cfg[l.category]) }))
+    .filter((l): l is typeof l & { slot: NonNullable<ReturnType<typeof resolveSlot>> } => !!l.slot);
 
   return (
     <div
@@ -878,27 +925,15 @@ function GalleryAvatar({
         overflow: "hidden",
       }}
     >
-      {hasAny ? (
-        layers.map((l) => {
-          if (!l.url) return null;
-          return (
-            <img
-              key={l.key}
-              src={l.url}
-              alt=""
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                objectPosition: "center",
-                zIndex: l.z,
-                pointerEvents: "none",
-              }}
-            />
-          );
-        })
+      {resolved.length > 0 ? (
+        resolved.map((l) => (
+          <img
+            key={l.category}
+            src={l.slot.url}
+            alt=""
+            style={galleryItemLayerStyle(l.category, l.slot.position, l.z)}
+          />
+        ))
       ) : (
         <div
           style={{

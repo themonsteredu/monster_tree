@@ -8,7 +8,13 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { AvatarConfig, AvatarAccessories, BackgroundConfig } from "@/lib/types";
+import type {
+  AvatarConfig,
+  AvatarAccessories,
+  AvatarGallerySlotValue,
+  AvatarItemPosition,
+  BackgroundConfig,
+} from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -108,13 +114,41 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
     return { kind: "image", url: a.url };
   }
   if (kind === "gallery") {
-    // 각 슬롯이 비어있거나 우리 Supabase URL 인지만 점검.
+    // 각 슬롯은 (a) 단순 URL 문자열 — 레거시, 또는 (b) { url, position? } 객체.
+    // 두 형태 모두 우리 Supabase Storage URL 만 허용.
     const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-    const slot = (v: unknown): string | undefined => {
-      if (typeof v !== "string" || v.length === 0) return undefined;
-      if (v.length > 500) return undefined;
-      if (!allowed || !v.startsWith(allowed)) return undefined;
+    const validUrl = (v: unknown): string | null => {
+      if (typeof v !== "string" || v.length === 0 || v.length > 500) return null;
+      if (!allowed || !v.startsWith(allowed)) return null;
       return v;
+    };
+    const validPos = (v: unknown): AvatarItemPosition | null => {
+      if (!v || typeof v !== "object") return null;
+      const r = v as Record<string, unknown>;
+      const num = (val: unknown, lo: number, hi: number, fb: number) => {
+        const n = typeof val === "number" ? val : Number(val);
+        if (!Number.isFinite(n)) return fb;
+        return Math.min(hi, Math.max(lo, n));
+      };
+      return {
+        x: num(r.x, 0, 100, 50),
+        y: num(r.y, 0, 100, 50),
+        scale: num(r.scale, 30, 200, 100),
+      };
+    };
+    const slot = (v: unknown): AvatarGallerySlotValue | undefined => {
+      if (typeof v === "string") {
+        const url = validUrl(v);
+        return url ?? undefined;
+      }
+      if (v && typeof v === "object") {
+        const r = v as Record<string, unknown>;
+        const url = validUrl(r.url);
+        if (!url) return undefined;
+        const pos = validPos(r.position);
+        return pos ? { url, position: pos } : { url };
+      }
+      return undefined;
     };
     const base = slot(a.base);
     const outfit = slot(a.outfit);
@@ -124,7 +158,6 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
     const face = slot(a.face);
     const hat = slot(a.hat);
     const accessory = slot(a.accessory);
-    // 최소 1개 슬롯은 있어야 함
     if (!base && !outfit && !bottom && !shoes && !hair && !face && !hat && !accessory) return null;
     return {
       kind: "gallery",
@@ -146,7 +179,7 @@ export async function listGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, sort_order, active, created_at, position")
     .eq("active", true)
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
