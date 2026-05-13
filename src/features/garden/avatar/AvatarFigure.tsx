@@ -834,58 +834,50 @@ function Hat({ variant }: { variant: string }) {
 }
 
 // ============================================================
-// 갤러리 합성 아바타 — 카테고리별 위치 메타데이터 기반 레이어 배치.
+// 갤러리 합성 아바타 — 모든 레이어를 같은 크기로 단순 겹치기.
 //
-// 각 슬롯은 (a) 단순 URL 문자열 (레거시), 또는 (b) { url, position } 객체.
-// position 이 있으면 그 값으로, 없으면 카테고리 기본값(DEFAULT_ITEM_POSITION) 으로
-// CSS transform(translate + scale) 으로 배치. base 는 항상 컨테이너 전체.
+// 전제: 각 아이템 PNG (모자/상의/하의/신발 등) 는 base 와 동일한 정사각 캔버스
+// (보통 1254×1254) 안에 이미 해부학적으로 올바른 위치에 그려져 있다. 즉
+// 모자는 캔버스 상단의 머리 위치, 신발은 캔버스 하단의 발 위치에 이미
+// 배치된 상태로 업로드됨. 그러므로 렌더 시에는 슬롯별 % 좌표/크기/transform
+// 계산 없이 모든 레이어를 inset:0, width/height 100%, objectFit:contain 으로
+// 그대로 겹치기만 하면 정렬된다.
 //
-// 모든 좌표 계산은 CSS 만 사용 — JS 연산이나 canvas 처리 없음. 드래그 미리보기와
-// 학생 화면이 정확히 같은 식을 사용해 WYSIWYG.
+// 절대 하면 안 되는 것:
+//   ❌ 슬롯별 top/left/width/height % 계산
+//   ❌ useFittedImage 로 bbox 크롭
+//   ❌ transform: scale() 로 항목별 크기 조정
+// 위 시도들은 모두 "아이템마다 캔버스 안 위치가 다를 것" 이라는 잘못된 전제
+// 에서 출발해 오히려 비율을 망친다. 캔버스가 모든 항목에서 동일하다는 전제를
+// 유지하면 단순 겹치기가 정답.
+//
+// position 메타데이터(garden_avatar_gallery.position)는 데이터 모델에는 남아
+// 있지만 이 렌더러는 무시한다. 향후 캔버스 규격이 다양해질 때 다시 활용
+// 가능한 데이터로만 보존.
 //
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
-function resolveSlot(value: AvatarGallerySlotValue | undefined): {
-  url: string;
-  position: AvatarItemPosition | null;
-} | null {
+function resolveSlot(value: AvatarGallerySlotValue | undefined): string | null {
   if (!value) return null;
-  if (typeof value === "string") return { url: value, position: null };
-  if (typeof value === "object" && typeof value.url === "string") {
-    return { url: value.url, position: value.position ?? null };
-  }
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && typeof value.url === "string") return value.url;
   return null;
 }
 
+// 모든 레이어가 사용하는 공통 스타일 — base 든 액세서리든 동일.
 export function galleryItemLayerStyle(
-  category: AvatarGalleryCategory,
-  position: AvatarItemPosition | null,
+  _category: AvatarGalleryCategory,
+  _position: AvatarItemPosition | null,
   zIndex: number,
 ): CSSProperties {
-  // base 는 컨테이너 전체에 contain.
-  if (category === "base") {
-    return {
-      position: "absolute",
-      inset: 0,
-      width: "100%",
-      height: "100%",
-      objectFit: "contain",
-      objectPosition: "center",
-      zIndex,
-      pointerEvents: "none",
-    };
-  }
-  const pos = position ?? DEFAULT_ITEM_POSITION[category];
   return {
     position: "absolute",
-    left: `${pos.x}%`,
-    top: `${pos.y}%`,
+    top: 0,
+    left: 0,
     width: "100%",
     height: "100%",
     objectFit: "contain",
     objectPosition: "center",
-    transform: `translate(-50%, -50%) scale(${pos.scale / 100})`,
-    transformOrigin: "center center",
     zIndex,
     pointerEvents: "none",
   };
@@ -911,8 +903,8 @@ function GalleryAvatar({
     { category: "hat", z: 8 },
   ];
   const resolved = layers
-    .map((l) => ({ ...l, slot: resolveSlot(cfg[l.category]) }))
-    .filter((l): l is typeof l & { slot: NonNullable<ReturnType<typeof resolveSlot>> } => !!l.slot);
+    .map((l) => ({ ...l, url: resolveSlot(cfg[l.category]) }))
+    .filter((l): l is typeof l & { url: string } => !!l.url);
 
   return (
     <div
@@ -929,9 +921,18 @@ function GalleryAvatar({
         resolved.map((l) => (
           <img
             key={l.category}
-            src={l.slot.url}
+            src={l.url}
             alt=""
-            style={galleryItemLayerStyle(l.category, l.slot.position, l.z)}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              zIndex: l.z,
+              pointerEvents: "none",
+            }}
           />
         ))
       ) : (
