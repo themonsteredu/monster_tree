@@ -339,7 +339,7 @@ function normalizeItemPosition(raw: unknown): { x: number; y: number; scale: num
   return {
     x: num(r.x, 0, 100, 50),
     y: num(r.y, 0, 100, 50),
-    scale: num(r.scale, 30, 200, 100),
+    scale: num(r.scale, 10, 200, 100),
   };
 }
 
@@ -572,13 +572,13 @@ export async function seedDefaultPositionsAction() {
   ensureAuth();
   const DEFAULT_ITEM_POSITION: Record<string, { x: number; y: number; scale: number }> = {
     base:      { x: 50, y: 50, scale: 100 },
-    hat:       { x: 50, y: 15, scale: 60 },
-    hair:      { x: 50, y: 20, scale: 65 },
-    face:      { x: 50, y: 33, scale: 40 },
-    accessory: { x: 50, y: 33, scale: 40 },
-    outfit:    { x: 50, y: 52, scale: 55 },
-    bottom:    { x: 50, y: 70, scale: 50 },
-    shoes:     { x: 50, y: 88, scale: 40 },
+    hat:       { x: 50, y: 15, scale: 45 },
+    hair:      { x: 50, y: 20, scale: 50 },
+    face:      { x: 50, y: 33, scale: 35 },
+    accessory: { x: 50, y: 33, scale: 35 },
+    outfit:    { x: 50, y: 52, scale: 50 },
+    bottom:    { x: 50, y: 70, scale: 45 },
+    shoes:     { x: 50, y: 88, scale: 35 },
   };
   const sb = createSupabaseServiceClient();
   const { data: rows, error: selErr } = await sb
@@ -637,7 +637,7 @@ export async function listAllGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, sort_order, active, created_at, position")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {

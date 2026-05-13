@@ -133,7 +133,7 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
       return {
         x: num(r.x, 0, 100, 50),
         y: num(r.y, 0, 100, 50),
-        scale: num(r.scale, 30, 200, 100),
+        scale: num(r.scale, 10, 200, 100),
       };
     };
     const slot = (v: unknown): AvatarGallerySlotValue | undefined => {
@@ -179,7 +179,7 @@ export async function listGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, sort_order, active, created_at, position")
     .eq("active", true)
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });

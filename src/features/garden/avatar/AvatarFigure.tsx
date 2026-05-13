@@ -834,50 +834,65 @@ function Hat({ variant }: { variant: string }) {
 }
 
 // ============================================================
-// 갤러리 합성 아바타 — 모든 레이어를 같은 크기로 단순 겹치기.
+// 갤러리 합성 아바타 — 항목별 position 메타데이터(x, y, scale) 로 레이어 배치.
 //
-// 전제: 각 아이템 PNG (모자/상의/하의/신발 등) 는 base 와 동일한 정사각 캔버스
-// (보통 1254×1254) 안에 이미 해부학적으로 올바른 위치에 그려져 있다. 즉
-// 모자는 캔버스 상단의 머리 위치, 신발은 캔버스 하단의 발 위치에 이미
-// 배치된 상태로 업로드됨. 그러므로 렌더 시에는 슬롯별 % 좌표/크기/transform
-// 계산 없이 모든 레이어를 inset:0, width/height 100%, objectFit:contain 으로
-// 그대로 겹치기만 하면 정렬된다.
+// 슬롯 값은 (a) 단순 URL 문자열 (레거시), 또는 (b) { url, position? } 객체.
+// 학생 picker 가 항목을 선택할 때 항목의 position 을 함께 스냅샷.
+// position 이 없으면 카테고리 기본값(DEFAULT_ITEM_POSITION).
 //
-// 절대 하면 안 되는 것:
-//   ❌ 슬롯별 top/left/width/height % 계산
-//   ❌ useFittedImage 로 bbox 크롭
-//   ❌ transform: scale() 로 항목별 크기 조정
-// 위 시도들은 모두 "아이템마다 캔버스 안 위치가 다를 것" 이라는 잘못된 전제
-// 에서 출발해 오히려 비율을 망친다. 캔버스가 모든 항목에서 동일하다는 전제를
-// 유지하면 단순 겹치기가 정답.
+// base 는 항상 컨테이너 전체 (100%×100% contain).
+// 그 외 슬롯은:
+//   left/top  = (x, y) % — 항목 중심점 위치
+//   width/height = 100% — 컨테이너 기준
+//   transform = translate(-50%, -50%) scale(scale/100)
+// ChatGPT 가 만든 옷 이미지가 캔버스 전체를 가득 채우는 경우가 많아 그대로
+// 100% 로 겹치면 아바타를 덮어버린다. scale 을 50% 정도로 잡아 적절히 축소.
 //
-// position 메타데이터(garden_avatar_gallery.position)는 데이터 모델에는 남아
-// 있지만 이 렌더러는 무시한다. 향후 캔버스 규격이 다양해질 때 다시 활용
-// 가능한 데이터로만 보존.
+// 모든 좌표 계산은 CSS 만 사용 — JS 연산이나 canvas 처리 없음. ItemPositionEditor
+// 의 드래그 미리보기와 학생 화면이 정확히 같은 식을 사용해 WYSIWYG.
 //
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
-function resolveSlot(value: AvatarGallerySlotValue | undefined): string | null {
+function resolveSlot(value: AvatarGallerySlotValue | undefined): {
+  url: string;
+  position: AvatarItemPosition | null;
+} | null {
   if (!value) return null;
-  if (typeof value === "string") return value;
-  if (typeof value === "object" && typeof value.url === "string") return value.url;
+  if (typeof value === "string") return { url: value, position: null };
+  if (typeof value === "object" && typeof value.url === "string") {
+    return { url: value.url, position: value.position ?? null };
+  }
   return null;
 }
 
-// 모든 레이어가 사용하는 공통 스타일 — base 든 액세서리든 동일.
 export function galleryItemLayerStyle(
-  _category: AvatarGalleryCategory,
-  _position: AvatarItemPosition | null,
+  category: AvatarGalleryCategory,
+  position: AvatarItemPosition | null,
   zIndex: number,
 ): CSSProperties {
+  if (category === "base") {
+    return {
+      position: "absolute",
+      inset: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "contain",
+      objectPosition: "center",
+      zIndex,
+      pointerEvents: "none",
+    };
+  }
+  const pos = position ?? DEFAULT_ITEM_POSITION[category];
   return {
     position: "absolute",
-    top: 0,
-    left: 0,
+    left: `${pos.x}%`,
+    top: `${pos.y}%`,
     width: "100%",
     height: "100%",
     objectFit: "contain",
     objectPosition: "center",
+    transform: `translate(-50%, -50%) scale(${pos.scale / 100})`,
+    transformOrigin: "center center",
     zIndex,
     pointerEvents: "none",
   };
@@ -903,8 +918,8 @@ function GalleryAvatar({
     { category: "hat", z: 8 },
   ];
   const resolved = layers
-    .map((l) => ({ ...l, url: resolveSlot(cfg[l.category]) }))
-    .filter((l): l is typeof l & { url: string } => !!l.url);
+    .map((l) => ({ ...l, slot: resolveSlot(cfg[l.category]) }))
+    .filter((l): l is typeof l & { slot: NonNullable<ReturnType<typeof resolveSlot>> } => !!l.slot);
 
   return (
     <div
@@ -921,18 +936,9 @@ function GalleryAvatar({
         resolved.map((l) => (
           <img
             key={l.category}
-            src={l.url}
+            src={l.slot.url}
             alt=""
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              zIndex: l.z,
-              pointerEvents: "none",
-            }}
+            style={galleryItemLayerStyle(l.category, l.slot.position, l.z)}
           />
         ))
       ) : (

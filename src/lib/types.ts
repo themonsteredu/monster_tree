@@ -77,16 +77,18 @@ export type AvatarGalleryItem = {
 };
 
 // 카테고리별 위치 기본값 — 항목에 position 메타데이터가 없을 때 fallback.
-// (대략적 시작점이며 관리자가 항목별로 미세조정하는 게 정상.)
+// ChatGPT 가 만든 옷 PNG 는 캔버스를 가득 채우는 경우가 많아 그대로 100% 로
+// 겹치면 아바타를 덮어버린다. 시작값을 모자 45% / 상의 50% 처럼 작게 잡아두고
+// 관리자가 항목별로 미세조정.
 export const DEFAULT_ITEM_POSITION: Record<AvatarGalleryCategory, AvatarItemPosition> = {
   base:      { x: 50, y: 50, scale: 100 },
-  hat:       { x: 50, y: 15, scale: 60 },
-  hair:      { x: 50, y: 20, scale: 65 },
-  face:      { x: 50, y: 33, scale: 40 },
-  accessory: { x: 50, y: 33, scale: 40 },
-  outfit:    { x: 50, y: 52, scale: 55 },
-  bottom:    { x: 50, y: 70, scale: 50 },
-  shoes:     { x: 50, y: 88, scale: 40 },
+  hat:       { x: 50, y: 15, scale: 45 },
+  hair:      { x: 50, y: 20, scale: 50 },
+  face:      { x: 50, y: 33, scale: 35 },
+  accessory: { x: 50, y: 33, scale: 35 },
+  outfit:    { x: 50, y: 52, scale: 50 },
+  bottom:    { x: 50, y: 70, scale: 45 },
+  shoes:     { x: 50, y: 88, scale: 35 },
 };
 
 export const DEFAULT_AVATAR: AvatarConfig = {

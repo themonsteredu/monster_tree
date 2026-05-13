@@ -243,7 +243,7 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
           <SliderRow
             label="크기"
             value={pos.scale}
-            min={30}
+            min={10}
             max={200}
             onChange={(v) => setPos((p) => ({ ...p, scale: v }))}
             suffix="%"
