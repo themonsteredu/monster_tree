@@ -969,33 +969,33 @@ function Hat({ variant }: { variant: string }) {
 // 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
 // 좌우/상하로 어긋났음.
 //
-// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 % (top/left/width/height).
-// 마인크래프트 캐릭터는 팔이 좌우로 벌어진 bbox 라, 몸통/머리/다리 같은 가운데
-// 부위는 bbox 의 40~55% 너비만 차지. 너비를 100% 로 두면 모자/안경/상의가
-// 캔버스 전체 너비에 contain 되며 너무 커지거나 위치가 어긋남. 그래서 각
-// 슬롯에 left/width 도 명시.
+// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 %.
+// width 는 100% (left 0%) 로 두고, 각 레이어 PNG 의 bbox 비율이 contain 으로
+// 자연스럽게 슬롯 안에서 가운데 정렬되도록 함. 슬롯 height 만 인체 해부학
+// 기준으로 보수적으로 잡아 모자가 얼굴을 덮거나 상의가 다리까지 내려오는
+// 일을 막음.
 //
-//   base    : 100% × 100%   (전체)
-//   hair    :  44% w, top  -1%, h 16%, 중앙
-//   hat     :  48% w, top  -4%, h 20%, 중앙
-//   face    :  36% w, top  10%, h 10%, 중앙 (눈코입)
-//   accessory: 42% w, top  11%, h  8%, 중앙 (안경)
-//   outfit  :  52% w, top  24%, h 26%, 중앙 (목 아래~허리)
-//   bottom  :  44% w, top  48%, h 32%, 중앙 (허리~발목)
-//   shoes   :  54% w, top  82%, h 16%, 중앙 (양발)
+//   base    : top   0%, h 100% (전체)
+//   hair    : top   0%, h 14%  (윗머리 — 베이스 머리 위에 살짝)
+//   hat     : top  -3%, h 18%  (정수리 위로 살짝 솟음, 얼굴 안 덮음)
+//   face    : top  11%, h  9%  (눈코입)
+//   accessory: top 12%, h  7%  (안경 — 눈 위치)
+//   outfit  : top  25%, h 22%  (목 아래~허리)
+//   bottom  : top  50%, h 26%  (허리~무릎 아래)
+//   shoes   : top  84%, h 12%  (양발)
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
 type SlotFrame = { top: string; left: string; width: string; height: string };
 const GALLERY_SLOT_FRAMES: Record<GallerySlot, SlotFrame> = {
-  base:      { top: "0%",   left: "0%",  width: "100%", height: "100%" },
-  hair:      { top: "-1%",  left: "28%", width: "44%",  height: "16%" },
-  hat:       { top: "-4%",  left: "26%", width: "48%",  height: "20%" },
-  face:      { top: "10%",  left: "32%", width: "36%",  height: "10%" },
-  accessory: { top: "11%",  left: "29%", width: "42%",  height: "8%" },
-  outfit:    { top: "24%",  left: "24%", width: "52%",  height: "26%" },
-  bottom:    { top: "48%",  left: "28%", width: "44%",  height: "32%" },
-  shoes:     { top: "82%",  left: "23%", width: "54%",  height: "16%" },
+  base:      { top: "0%",   left: "0%", width: "100%", height: "100%" },
+  hair:      { top: "0%",   left: "0%", width: "100%", height: "14%" },
+  hat:       { top: "-3%",  left: "0%", width: "100%", height: "18%" },
+  face:      { top: "11%",  left: "0%", width: "100%", height: "9%" },
+  accessory: { top: "12%",  left: "0%", width: "100%", height: "7%" },
+  outfit:    { top: "25%",  left: "0%", width: "100%", height: "22%" },
+  bottom:    { top: "50%",  left: "0%", width: "100%", height: "26%" },
+  shoes:     { top: "84%",  left: "0%", width: "100%", height: "12%" },
 };
 
 function GalleryAvatar({
