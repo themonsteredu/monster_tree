@@ -25,14 +25,26 @@ import { ItemPositionEditor } from "./ItemPositionEditor";
 // 등 각 아이템이 base 와 동일한 좌표계에서 같은 위치에 있는 채로 렌더 시점에
 // 100%×100% 로 겹쳐졌을 때 정렬된다.
 async function stripBackgroundToPng(file: File): Promise<File> {
+  console.log("[gallery] 배경 제거 시작", {
+    name: file.name,
+    type: file.type,
+    sizeKB: Math.round(file.size / 1024),
+  });
+  const t0 = performance.now();
+
   const bitmap = await createImageBitmap(file);
   const w = bitmap.width;
   const h = bitmap.height;
+  console.log("[gallery] createImageBitmap 완료", { w, h, ms: Math.round(performance.now() - t0) });
+
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
+  if (!ctx) {
+    console.warn("[gallery] 2d context 없음 — 원본 그대로 반환");
+    return file;
+  }
   ctx.drawImage(bitmap, 0, 0);
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
@@ -40,6 +52,7 @@ async function stripBackgroundToPng(file: File): Promise<File> {
 
   // ── 1차 패스: 가장자리 도미넌트 색 기반 투명화 ──
   // 가장자리 5px 깊이 픽셀을 24 단위로 양자화해 빈도 집계.
+  const t1 = performance.now();
   const border = 5;
   const quant = (v: number) => Math.round(v / 24) * 24;
   const counts = new Map<string, { c: number; r: number; g: number; b: number }>();
@@ -84,22 +97,42 @@ async function stripBackgroundToPng(file: File): Promise<File> {
       }
     }
   }
+  console.log("[gallery] 1차 패스 완료", { ms: Math.round(performance.now() - t1) });
 
   // ── 2차 패스: 1차에서 충분히 투명화되지 않았으면 체크무늬 감지 모드 ──
-  // 코너 4 곳 10×10 영역을 살펴 R≈G≈B(차이<10) & 값>=225 인 회색 픽셀이 다수면
-  // baked-in 체크무늬 배경으로 판단.
-  let transparentPx = 0;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] === 0) transparentPx++;
-  }
-  if (transparentPx / totalPx < 0.1) {
-    if (detectGreyCheckerCorners(data, w, h)) {
-      stripGreyChecker(data, w, h);
+  // 이 단계에서 버그/행이 발생해도 업로드가 막히지 않도록 try/catch 로 격리.
+  // 실패 시엔 1차 패스 결과만으로 진행.
+  try {
+    const t2 = performance.now();
+    let transparentPx = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] === 0) transparentPx++;
     }
+    const transparentPct = transparentPx / totalPx;
+    console.log("[gallery] 1차 투명 픽셀 비율", {
+      pct: Math.round(transparentPct * 100),
+    });
+    if (transparentPct < 0.1) {
+      const detected = detectGreyCheckerCorners(data, w, h);
+      console.log("[gallery] 체크무늬 감지 결과", { detected });
+      if (detected) {
+        stripGreyChecker(data, w, h);
+        console.log("[gallery] 체크무늬 제거 완료", {
+          ms: Math.round(performance.now() - t2),
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[gallery] 2차 패스 실패 — 1차 결과만 사용", e);
   }
 
   ctx.putImageData(imgData, 0, 0);
-  return await canvasToPngFile(canvas, file.name);
+  const out = await canvasToPngFile(canvas, file.name);
+  console.log("[gallery] 배경 제거 종료", {
+    outSizeKB: Math.round(out.size / 1024),
+    totalMs: Math.round(performance.now() - t0),
+  });
+  return out;
 }
 
 // 네 코너의 10×10 영역에서 회색(R==G==B, ±10) & 값 >= 225 인 픽셀 비율을
@@ -229,6 +262,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   };
 
   const handleUpload = (cat: AvatarGalleryCategory, file: File, label: string) => {
+    console.log("[gallery] 업로드 시작", { cat, name: file.name, sizeKB: Math.round(file.size / 1024) });
     setError(null);
     if (file.size > 4_194_304) {
       setError("이미지가 너무 커요 (4MB 이하 원본만 처리해요).");
@@ -239,10 +273,12 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       try {
         processed = await stripBackgroundToPng(file);
       } catch (e) {
+        console.error("[gallery] 배경 제거 실패", e);
         setError(`이미지 처리 실패: ${(e as Error).message}`);
         return;
       }
       if (processed.size > 2_097_152) {
+        console.warn("[gallery] 처리 결과 2MB 초과", { sizeKB: Math.round(processed.size / 1024) });
         setError("처리된 이미지가 2MB 를 초과해요. 더 작은 해상도로 다시 시도해주세요.");
         return;
       }
@@ -250,11 +286,21 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       fd.append("file", processed);
       fd.append("category", cat);
       if (label) fd.append("label", label);
-      const r = await uploadGalleryItemAction(fd);
-      if (!r.ok) {
-        setError(r.message);
+      console.log("[gallery] 스토리지 + DB 저장 시작");
+      try {
+        const r = await uploadGalleryItemAction(fd);
+        if (!r.ok) {
+          console.error("[gallery] 서버 업로드 실패", r.message);
+          setError(r.message);
+          return;
+        }
+        console.log("[gallery] 서버 업로드 완료");
+      } catch (e) {
+        console.error("[gallery] 서버 업로드 예외", e);
+        setError(`업로드 실패: ${(e as Error).message}`);
         return;
       }
+      console.log("[gallery] 페이지 새로고침");
       await refreshFromServer();
     });
   };
