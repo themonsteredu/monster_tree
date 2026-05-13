@@ -320,7 +320,16 @@ export async function resetSemesterAction(args: { confirmText: string }) {
 
 /* ============== 아바타 갤러리 관리 (관리자 업로드) ============== */
 
-const GALLERY_CATEGORIES = ["base", "outfit", "bottom", "shoes", "hat", "accessory"] as const;
+const GALLERY_CATEGORIES = [
+  "base",
+  "outfit",
+  "bottom",
+  "shoes",
+  "hair",
+  "face",
+  "hat",
+  "accessory",
+] as const;
 type GalleryCategory = (typeof GALLERY_CATEGORIES)[number];
 
 function isGalleryCategory(v: unknown): v is GalleryCategory {
