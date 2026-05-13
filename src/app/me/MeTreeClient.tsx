@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
+import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
 import {
@@ -150,6 +151,7 @@ export function MeTreeClient({
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
+  const galleryPositions = useGalleryPositions();
 
   useEffect(() => {
     setNow(new Date());
@@ -440,7 +442,7 @@ export function MeTreeClient({
                     pointerEvents: "none",
                   }}
                 >
-                  <AvatarFigure config={currentAvatar} size={160} />
+                  <AvatarFigure config={currentAvatar} size={160} galleryPositions={galleryPositions} />
                 </div>
               </div>
             </div>
