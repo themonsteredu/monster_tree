@@ -71,7 +71,9 @@ export type AvatarGalleryItem = {
   sort_order: number;
   active: boolean;
   created_at: string;
-  position: AvatarItemPosition | null;
+  // position 컬럼은 마이그레이션 0023 적용 후에만 존재. 컬럼이 없거나 select 에서
+  // 제외되면 undefined. 렌더러는 DEFAULT_ITEM_POSITION fallback 사용.
+  position?: AvatarItemPosition | null;
 };
 
 // 카테고리별 위치 기본값 — 항목에 position 메타데이터가 없을 때 fallback.

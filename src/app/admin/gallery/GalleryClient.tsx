@@ -13,6 +13,7 @@ import {
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
   seedDefaultPositionsAction,
+  pingAction,
 } from "../actions";
 import { ItemPositionEditor } from "./ItemPositionEditor";
 
@@ -63,6 +64,22 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     return base?.image_url ?? null;
   }, [items]);
 
+  // 진단용: 가장 단순한 server action 호출. 응답이 오면 인프라 OK.
+  const handlePing = () => {
+    alert("🏓 핑 호출 직전");
+    startTransition(async () => {
+      try {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT_15s")), 15000),
+        );
+        const r = await Promise.race([pingAction(), timeout]);
+        alert("🏓 핑 응답: ok=" + r.ok + " ts=" + r.ts);
+      } catch (e) {
+        alert("🏓 핑 예외: " + (e as Error).message);
+      }
+    });
+  };
+
   const handleSeedDefaults = () => {
     if (!confirm("위치값이 비어있는 항목들에 카테고리 기본 위치를 채울까요?")) return;
     setError(null);
@@ -109,10 +126,15 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       fd.append("file", processed);
       fd.append("category", cat);
       if (label) fd.append("label", label);
-      alert("서버 액션 호출 직전");
+      alert("서버 액션 호출 직전 (최대 30초 대기)");
       console.log("[gallery] 스토리지 + DB 저장 시작");
       try {
-        const r = await uploadGalleryItemAction(fd);
+        // 30초 타임아웃으로 silent hang 방지 — server action 이 응답 안 하면
+        // TIMEOUT_30s 로 reject 되어 catch 에서 alert 가 무조건 뜬다.
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT_30s")), 30000),
+        );
+        const r = await Promise.race([uploadGalleryItemAction(fd), timeout]);
         alert("서버 응답: " + (r.ok ? "OK" : "실패 — " + r.message));
         if (!r.ok) {
           console.error("[gallery] 서버 업로드 실패", r.message);
@@ -178,15 +200,26 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
         <div className="text-xs text-ink-soft flex-1 min-w-[180px]">
           position 이 비어있는 항목에 카테고리별 기본 위치를 한 번에 채울 수 있어요.
         </div>
-        <button
-          type="button"
-          onClick={handleSeedDefaults}
-          disabled={pending || items.length === 0}
-          className="px-3 py-2 rounded bg-cream text-ink font-extrabold text-sm disabled:opacity-50 whitespace-nowrap border-[1.5px] border-pot/30"
-          title="position 이 비어있는 항목에 카테고리별 기본 위치를 자동 채움"
-        >
-          📐 기본 위치 채우기
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handlePing}
+            disabled={pending}
+            className="px-3 py-2 rounded bg-white text-ink font-extrabold text-sm disabled:opacity-50 whitespace-nowrap border-[1.5px] border-pot/30"
+            title="서버 액션 인프라 점검용 — 즉시 응답하는 빈 액션"
+          >
+            🏓 핑 테스트
+          </button>
+          <button
+            type="button"
+            onClick={handleSeedDefaults}
+            disabled={pending || items.length === 0}
+            className="px-3 py-2 rounded bg-cream text-ink font-extrabold text-sm disabled:opacity-50 whitespace-nowrap border-[1.5px] border-pot/30"
+            title="position 이 비어있는 항목에 카테고리별 기본 위치를 자동 채움"
+          >
+            📐 기본 위치 채우기
+          </button>
+        </div>
       </div>
       {CATEGORIES.map((c) => (
         <CategorySection

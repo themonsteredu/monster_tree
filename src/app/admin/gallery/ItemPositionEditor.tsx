@@ -25,21 +25,21 @@ type Props = {
 
 export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Props) {
   const [pos, setPos] = useState<AvatarItemPosition>(
-    item.position ?? DEFAULT_ITEM_POSITION[item.category],
+    (item.position ?? null) ?? DEFAULT_ITEM_POSITION[item.category],
   );
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [savedPosition, setSavedPosition] = useState<AvatarItemPosition | null>(item.position);
+  const [savedPosition, setSavedPosition] = useState<AvatarItemPosition | null>((item.position ?? null));
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startPos: AvatarItemPosition; pointerId: number } | null>(null);
 
   useEffect(() => {
-    setPos(item.position ?? DEFAULT_ITEM_POSITION[item.category]);
-    setSavedPosition(item.position);
+    setPos((item.position ?? null) ?? DEFAULT_ITEM_POSITION[item.category]);
+    setSavedPosition((item.position ?? null));
     setInfo(null);
     setError(null);
-  }, [item.id, item.position, item.category]);
+  }, [item.id, (item.position ?? null), item.category]);
 
   // 포인터 이동 핸들러 — 드래그 중에는 stage 좌표계의 % 변화량을 누적.
   const onPointerDown = (e: React.PointerEvent) => {
@@ -291,7 +291,7 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
           <button
             type="button"
             onClick={onClearOverride}
-            disabled={pending || item.position === null}
+            disabled={pending || (item.position ?? null) === null}
             style={btnStyle("ghost")}
             title="저장된 항목 위치를 삭제 — 이후 카테고리 기본값 사용"
           >

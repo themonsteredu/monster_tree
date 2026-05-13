@@ -343,24 +343,48 @@ function normalizeItemPosition(raw: unknown): { x: number; y: number; scale: num
   };
 }
 
-// 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
-export async function uploadGalleryItemAction(formData: FormData) {
+// 진단용: 인증 통과 후 즉시 응답하는 가장 단순한 server action.
+// 갤러리 업로드 hang 의 원인이 server action 인프라인지(여기도 hang),
+// 업로드 로직 자체(이건 OK, 업로드는 hang)인지 가르기 위함.
+export async function pingAction() {
   ensureAuth();
+  return { ok: true as const, ts: Date.now() };
+}
+
+// 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
+// 진단을 위해 각 단계에 console.log 를 깐다 — Vercel → Logs 탭에서 확인.
+export async function uploadGalleryItemAction(formData: FormData) {
+  console.log("[upload] ① 진입");
+  ensureAuth();
+  console.log("[upload] ② 인증 통과");
+
   const file = formData.get("file");
   const category = formData.get("category");
   const label = formData.get("label");
+  console.log("[upload] ③ formData 파싱", {
+    fileIsFile: file instanceof File,
+    fileName: file instanceof File ? file.name : null,
+    fileType: file instanceof File ? file.type : null,
+    fileSizeKB: file instanceof File ? Math.round(file.size / 1024) : null,
+    category,
+    label,
+  });
   if (!(file instanceof File)) {
+    console.warn("[upload] ✗ 파일 없음");
     return { ok: false as const, message: "파일이 없어요." };
   }
   if (!isGalleryCategory(category)) {
+    console.warn("[upload] ✗ 카테고리 잘못됨", category);
     return { ok: false as const, message: "잘못된 카테고리." };
   }
   if (file.size > 5_242_880) {
+    console.warn("[upload] ✗ 사이즈 초과", file.size);
     return { ok: false as const, message: "이미지가 너무 커요 (5MB 이하)." };
   }
   // JPG 는 투명도를 지원하지 않아 정원 배경 위에서 회색·흰색 사각형으로 보이므로 차단.
   const allowedTypes = ["image/png", "image/webp"];
   if (!allowedTypes.includes(file.type)) {
+    console.warn("[upload] ✗ 타입 거부", file.type);
     return {
       ok: false as const,
       message: "투명 배경 PNG 또는 WebP 만 업로드할 수 있어요. (JPG 는 투명도 미지원)",
@@ -369,39 +393,65 @@ export async function uploadGalleryItemAction(formData: FormData) {
   const ext = file.type === "image/png" ? "png" : "webp";
   const id = crypto.randomUUID();
   const path = `gallery/${category}/${id}.${ext}`;
+  console.log("[upload] ④ 경로 준비", { path });
 
   const sb = createSupabaseServiceClient();
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { error: uploadErr } = await sb.storage
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(await file.arrayBuffer());
+  } catch (e) {
+    console.error("[upload] ✗ arrayBuffer 실패", e);
+    return { ok: false as const, message: `파일 읽기 실패: ${(e as Error).message}` };
+  }
+  console.log("[upload] ⑤ 버퍼 준비 완료", { bufferKB: Math.round(buffer.length / 1024) });
+
+  const storageResult = await sb.storage
     .from("avatars")
     .upload(path, buffer, { contentType: file.type, upsert: false, cacheControl: "31536000" });
-  if (uploadErr) {
-    return { ok: false as const, message: `업로드 실패: ${uploadErr.message}` };
+  console.log("[upload] ⑥ 스토리지 결과", {
+    data: storageResult.data,
+    error: storageResult.error,
+  });
+  if (storageResult.error) {
+    return { ok: false as const, message: `업로드 실패: ${storageResult.error.message}` };
   }
+
   const { data: pub } = sb.storage.from("avatars").getPublicUrl(path);
   const url = pub.publicUrl;
+  console.log("[upload] ⑦ public URL", { url });
 
-  const { data: maxRow } = await sb
+  const sortResult = await sb
     .from("garden_avatar_gallery")
     .select("sort_order")
     .eq("category", category)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const sort_order = (maxRow?.sort_order ?? 0) + 1;
+  console.log("[upload] ⑧ sort_order 조회", {
+    data: sortResult.data,
+    error: sortResult.error,
+  });
+  const sort_order = (sortResult.data?.sort_order ?? 0) + 1;
 
-  const { error: dbErr } = await sb.from("garden_avatar_gallery").insert({
+  const insertResult = await sb.from("garden_avatar_gallery").insert({
     category,
     label: typeof label === "string" && label.length > 0 ? label.slice(0, 60) : null,
     image_url: url,
     sort_order,
     active: true,
   });
-  if (dbErr) {
+  console.log("[upload] ⑨ DB insert 결과", {
+    data: insertResult.data,
+    error: insertResult.error,
+    status: insertResult.status,
+  });
+  if (insertResult.error) {
     await sb.storage.from("avatars").remove([path]);
-    return { ok: false as const, message: `DB 저장 실패: ${dbErr.message}` };
+    return { ok: false as const, message: `DB 저장 실패: ${insertResult.error.message}` };
   }
+
   revalidatePath("/admin/gallery");
+  console.log("[upload] ✓ 완료");
   return { ok: true as const };
 }
 
@@ -587,7 +637,7 @@ export async function listAllGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at, position")
+    .select("id, category, label, image_url, sort_order, active, created_at")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {
