@@ -11,7 +11,11 @@ import type {
   AvatarGalleryItem,
   AvatarGalleryItemPosition,
 } from "@/lib/types";
-import { getGalleryItemPosition } from "@/lib/types";
+import { DEFAULT_GALLERY_POSITION_BY_CATEGORY, getGalleryItemPosition } from "@/lib/types";
+import {
+  AvatarComposite,
+  type AvatarCompositeLayer,
+} from "@/features/garden/avatar/AvatarFigure";
 import {
   uploadGalleryItemAction,
   setGalleryItemActiveAction,
@@ -493,7 +497,29 @@ function PositionEditor({
 }) {
   const [pos, setPos] = useState<AvatarGalleryItemPosition>(() => getGalleryItemPosition(item));
 
-  const showBackdrop = item.category !== "base" && !!baseBackdropUrl;
+  // base 카테고리 편집 시엔 backdrop 없이 자기 자신을 직접 inner-box 비율의
+  // 기준으로 사용. 그 외엔 활성 base 아이템을 opacity 0.4 로 깔고 그 위에
+  // 편집 중인 아이템을 같은 좌표계로 표시 — 실제 렌더와 한 함수(AvatarLayer)
+  // 로 그려지므로 차이가 발생할 수 없음.
+  const previewLayers = useMemo<AvatarCompositeLayer[]>(() => {
+    const out: AvatarCompositeLayer[] = [];
+    if (item.category !== "base" && baseBackdropUrl) {
+      out.push({
+        key: "backdrop",
+        url: baseBackdropUrl,
+        position: DEFAULT_GALLERY_POSITION_BY_CATEGORY.base,
+        opacity: 0.4,
+        zIndex: 1,
+      });
+    }
+    out.push({
+      key: "edit",
+      url: item.image_url,
+      position: pos,
+      zIndex: 2,
+    });
+    return out;
+  }, [item.category, item.image_url, baseBackdropUrl, pos]);
 
   const update = (patch: Partial<AvatarGalleryItemPosition>) =>
     setPos((p) => ({ ...p, ...patch }));
@@ -541,60 +567,23 @@ function PositionEditor({
           </button>
         </div>
 
-        {/* 미리보기 — 300×300, CSS transform 으로만 배치 */}
+        {/* 미리보기 — AvatarComposite 로 실제 렌더와 100% 동일하게 그림.
+            base 카테고리 편집 시엔 자기 자신이 backdrop 이므로 별도 backdrop 레이어 없음. */}
         <div
           style={{
-            position: "relative",
-            width: 300,
-            height: 300,
             margin: "0 auto 14px",
+            width: 300,
             background: "#fff5d6",
             border: "1.5px solid #f0c050",
             borderRadius: 12,
             overflow: "hidden",
           }}
         >
-          {showBackdrop && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={baseBackdropUrl}
-              alt=""
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                opacity: 0.4,
-                pointerEvents: "none",
-              }}
-            />
-          )}
-          <div
-            style={{
-              position: "absolute",
-              left: `${pos.x}%`,
-              top: `${pos.y}%`,
-              width: "100%",
-              height: "100%",
-              transform: `translate(-50%, -50%) scaleX(${pos.scaleX / 100}) scaleY(${pos.scaleY / 100})`,
-              transformOrigin: "center center",
-              pointerEvents: "none",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={item.image_url}
-              alt={item.label ?? ""}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                objectPosition: "center",
-                display: "block",
-              }}
-            />
-          </div>
+          <AvatarComposite
+            size={300}
+            baseUrl={item.category === "base" ? item.image_url : baseBackdropUrl}
+            layers={previewLayers}
+          />
         </div>
 
         {/* 슬라이더 4개 */}
