@@ -11,7 +11,7 @@ import type {
   AvatarGalleryItem,
   AvatarGalleryItemPosition,
 } from "@/lib/types";
-import { DEFAULT_GALLERY_POSITION_BY_CATEGORY, getGalleryItemPosition } from "@/lib/types";
+import { getGalleryItemPosition } from "@/lib/types";
 import {
   AvatarComposite,
   type AvatarCompositeLayer,
@@ -152,12 +152,6 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   const [editingItem, setEditingItem] = useState<AvatarGalleryItem | null>(null);
 
   const byCategory = (cat: AvatarGalleryCategory) => items.filter((i) => i.category === cat);
-
-  // 위치 에디터 미리보기에서 배경에 깔 base 이미지 — 활성 base 아이템 중 첫번째.
-  const baseBackdropUrl = useMemo(
-    () => items.find((i) => i.category === "base" && i.active)?.image_url,
-    [items],
-  );
 
   const handleSavePosition = (id: string, position: AvatarGalleryItemPosition) => {
     setError(null);
@@ -343,7 +337,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       {editingItem && (
         <PositionEditor
           item={editingItem}
-          baseBackdropUrl={baseBackdropUrl}
+          allItems={items}
           pending={pending}
           onClose={() => setEditingItem(null)}
           onSave={(position) => handleSavePosition(editingItem.id, position)}
@@ -478,48 +472,76 @@ function CategorySection({
   );
 }
 
+// 카테고리별 합성 순서 (z-index) — GalleryAvatar 와 동일하게 유지.
+const CATEGORY_Z: Record<AvatarGalleryCategory, number> = {
+  base: 1, bottom: 2, outfit: 3, shoes: 4, hair: 5, face: 6, accessory: 7, hat: 8,
+};
+const ALL_CATEGORIES: AvatarGalleryCategory[] = [
+  "base", "bottom", "outfit", "shoes", "hair", "face", "accessory", "hat",
+];
+
 // 위치/크기 조정 에디터 — 300×300 미리보기 + 슬라이더 4개.
-// canvas 연산 없음, CSS transform 만으로 실시간 미리보기.
-//   left: ${x}% / top: ${y}% / transform: translate(-50%,-50%) scaleX(...) scaleY(...)
-// base 카테고리 아이템을 편집할 땐 backdrop 을 깔지 않음 (자기 자신이 base).
+// 미리보기는 실 렌더(/me, /tv) 와 동일한 AvatarComposite 로 그림.
+// 배경 레이어: 편집 중 카테고리를 제외한 각 카테고리에서 첫 활성 아이템을 골라
+// DB 에 저장된 position(없으면 카테고리 기본값) 으로 opacity 0.4 합성 — 그래서
+// base 가 작게 저장되어 있으면 옷/모자도 그 작은 base 에 맞춰 조정 가능.
 function PositionEditor({
   item,
-  baseBackdropUrl,
+  allItems,
   pending,
   onClose,
   onSave,
 }: {
   item: AvatarGalleryItem;
-  baseBackdropUrl: string | undefined;
+  allItems: AvatarGalleryItem[];
   pending: boolean;
   onClose: () => void;
   onSave: (position: AvatarGalleryItemPosition) => void;
 }) {
   const [pos, setPos] = useState<AvatarGalleryItemPosition>(() => getGalleryItemPosition(item));
 
-  // base 카테고리 편집 시엔 backdrop 없이 자기 자신을 직접 inner-box 비율의
-  // 기준으로 사용. 그 외엔 활성 base 아이템을 opacity 0.4 로 깔고 그 위에
-  // 편집 중인 아이템을 같은 좌표계로 표시 — 실제 렌더와 한 함수(AvatarLayer)
-  // 로 그려지므로 차이가 발생할 수 없음.
+  // 카테고리별 대표 아이템 (활성 우선, 그 다음 sort_order 첫번째).
+  const representativeByCat = useMemo(() => {
+    const map: Partial<Record<AvatarGalleryCategory, AvatarGalleryItem>> = {};
+    for (const cat of ALL_CATEGORIES) {
+      const candidates = allItems.filter((i) => i.category === cat);
+      map[cat] =
+        candidates.find((i) => i.active && i.id !== item.id) ??
+        candidates.find((i) => i.id !== item.id);
+    }
+    return map;
+  }, [allItems, item.id]);
+
+  // inner-box 비율 결정용 base url — base 편집 중이면 자기 자신, 아니면 대표 base.
+  const innerBoxBaseUrl =
+    item.category === "base" ? item.image_url : representativeByCat.base?.image_url;
+
+  // 미리보기 레이어 구성: 편집 중 카테고리는 현재 슬라이더 값으로 풀 불투명도,
+  // 나머지 카테고리는 대표 아이템의 저장된 position 으로 opacity 0.4.
   const previewLayers = useMemo<AvatarCompositeLayer[]>(() => {
     const out: AvatarCompositeLayer[] = [];
-    if (item.category !== "base" && baseBackdropUrl) {
+    for (const cat of ALL_CATEGORIES) {
+      if (cat === item.category) {
+        out.push({
+          key: `edit-${cat}`,
+          url: item.image_url,
+          position: pos,
+          zIndex: CATEGORY_Z[cat],
+        });
+        continue;
+      }
+      const rep = representativeByCat[cat];
+      if (!rep) continue;
       out.push({
-        key: "backdrop",
-        url: baseBackdropUrl,
-        position: DEFAULT_GALLERY_POSITION_BY_CATEGORY.base,
+        key: `bg-${cat}-${rep.id}`,
+        url: rep.image_url,
+        position: getGalleryItemPosition(rep),
         opacity: 0.4,
-        zIndex: 1,
+        zIndex: CATEGORY_Z[cat],
       });
     }
-    out.push({
-      key: "edit",
-      url: item.image_url,
-      position: pos,
-      zIndex: 2,
-    });
     return out;
-  }, [item.category, item.image_url, baseBackdropUrl, pos]);
+  }, [item.category, item.image_url, pos, representativeByCat]);
 
   const update = (patch: Partial<AvatarGalleryItemPosition>) =>
     setPos((p) => ({ ...p, ...patch }));
@@ -581,7 +603,7 @@ function PositionEditor({
         >
           <AvatarComposite
             size={300}
-            baseUrl={item.category === "base" ? item.image_url : baseBackdropUrl}
+            baseUrl={innerBoxBaseUrl}
             layers={previewLayers}
           />
         </div>
