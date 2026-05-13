@@ -103,14 +103,19 @@ function useFittedImage(url: string | undefined): FittedImage | undefined {
 }
 
 // 슬롯 프레임 안에서 auto-fit 된 이미지를 그리는 레이어 — 일반 <img object-fit:contain>.
+// frame 의 top/left/width/height 는 모두 inner 박스(=base bbox) 기준 %.
 function FittedLayer({
   url,
   top,
+  left,
+  width,
   height,
   zIndex,
 }: {
   url: string;
   top: string;
+  left: string;
+  width: string;
   height: string;
   zIndex: number;
 }) {
@@ -121,9 +126,9 @@ function FittedLayer({
       alt=""
       style={{
         position: "absolute",
-        left: 0,
-        width: "100%",
+        left,
         top,
+        width,
         height,
         objectFit: "contain",
         objectPosition: "center",
@@ -964,27 +969,33 @@ function Hat({ variant }: { variant: string }) {
 // 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
 // 좌우/상하로 어긋났음.
 //
-// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 %:
-//   base    : top  0%   h 100% (전체)
-//   hair    : top -2%   h 24%  (윗머리)
-//   hat     : top -8%   h 28%  (머리 위 — 정수리 위로 살짝 솟음)
-//   face    : top 10%   h 16%  (눈코입)
-//   accessory: top 10%  h 16%  (안경)
-//   outfit  : top 26%   h 30%  (목 아래 ~ 허리)
-//   bottom  : top 52%   h 32%  (허리 ~ 발목)
-//   shoes   : top 82%   h 18%  (발)
+// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 % (top/left/width/height).
+// 마인크래프트 캐릭터는 팔이 좌우로 벌어진 bbox 라, 몸통/머리/다리 같은 가운데
+// 부위는 bbox 의 40~55% 너비만 차지. 너비를 100% 로 두면 모자/안경/상의가
+// 캔버스 전체 너비에 contain 되며 너무 커지거나 위치가 어긋남. 그래서 각
+// 슬롯에 left/width 도 명시.
+//
+//   base    : 100% × 100%   (전체)
+//   hair    :  44% w, top  -1%, h 16%, 중앙
+//   hat     :  48% w, top  -4%, h 20%, 중앙
+//   face    :  36% w, top  10%, h 10%, 중앙 (눈코입)
+//   accessory: 42% w, top  11%, h  8%, 중앙 (안경)
+//   outfit  :  52% w, top  24%, h 26%, 중앙 (목 아래~허리)
+//   bottom  :  44% w, top  48%, h 32%, 중앙 (허리~발목)
+//   shoes   :  54% w, top  82%, h 16%, 중앙 (양발)
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
-const GALLERY_SLOT_FRAMES: Record<GallerySlot, { top: string; height: string }> = {
-  base:      { top: "0%",   height: "100%" },
-  hair:      { top: "-2%",  height: "24%" },
-  hat:       { top: "-8%",  height: "28%" },
-  face:      { top: "10%",  height: "16%" },
-  accessory: { top: "10%",  height: "16%" },
-  outfit:    { top: "26%",  height: "30%" },
-  bottom:    { top: "52%",  height: "32%" },
-  shoes:     { top: "82%",  height: "18%" },
+type SlotFrame = { top: string; left: string; width: string; height: string };
+const GALLERY_SLOT_FRAMES: Record<GallerySlot, SlotFrame> = {
+  base:      { top: "0%",   left: "0%",  width: "100%", height: "100%" },
+  hair:      { top: "-1%",  left: "28%", width: "44%",  height: "16%" },
+  hat:       { top: "-4%",  left: "26%", width: "48%",  height: "20%" },
+  face:      { top: "10%",  left: "32%", width: "36%",  height: "10%" },
+  accessory: { top: "11%",  left: "29%", width: "42%",  height: "8%" },
+  outfit:    { top: "24%",  left: "24%", width: "52%",  height: "26%" },
+  bottom:    { top: "48%",  left: "28%", width: "44%",  height: "32%" },
+  shoes:     { top: "82%",  left: "23%", width: "54%",  height: "16%" },
 };
 
 function GalleryAvatar({
@@ -1045,6 +1056,8 @@ function GalleryAvatar({
                 key={l.key}
                 url={l.url}
                 top={frame.top}
+                left={frame.left}
+                width={frame.width}
                 height={frame.height}
                 zIndex={l.z}
               />
