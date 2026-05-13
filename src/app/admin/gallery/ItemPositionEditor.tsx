@@ -9,7 +9,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { AvatarGalleryItem, AvatarItemPosition } from "@/lib/types";
 import { DEFAULT_ITEM_POSITION } from "@/lib/types";
-import { setGalleryItemPositionAction } from "../actions";
+import {
+  setGalleryItemPositionAction,
+  propagateGalleryItemPositionAction,
+} from "../actions";
 
 const PREVIEW_SIZE = 300;
 
@@ -25,12 +28,17 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
     item.position ?? DEFAULT_ITEM_POSITION[item.category],
   );
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [savedPosition, setSavedPosition] = useState<AvatarItemPosition | null>(item.position);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startPos: AvatarItemPosition; pointerId: number } | null>(null);
 
   useEffect(() => {
     setPos(item.position ?? DEFAULT_ITEM_POSITION[item.category]);
+    setSavedPosition(item.position);
+    setInfo(null);
+    setError(null);
   }, [item.id, item.position, item.category]);
 
   // 포인터 이동 핸들러 — 드래그 중에는 stage 좌표계의 % 변화량을 누적.
@@ -62,13 +70,35 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
 
   const onSave = () => {
     setError(null);
+    setInfo(null);
     startTransition(async () => {
       const r = await setGalleryItemPositionAction({ id: item.id, position: pos });
       if (!r.ok) {
         setError(r.message);
         return;
       }
+      setSavedPosition(pos);
+      setInfo("저장됨. 새로 선택하는 학생부터 적용돼요.");
       onSaved(pos);
+    });
+  };
+
+  // 저장된 위치를, 이 항목을 이미 선택한 모든 학생 아바타에 일괄 전파.
+  const onPropagate = () => {
+    if (!savedPosition) {
+      setError("먼저 위치를 저장한 뒤 전파할 수 있어요.");
+      return;
+    }
+    if (!confirm("이 항목을 선택한 모든 학생 아바타에 새 위치를 적용할까요?")) return;
+    setError(null);
+    setInfo(null);
+    startTransition(async () => {
+      const r = await propagateGalleryItemPositionAction({ id: item.id });
+      if (!r.ok) {
+        setError(r.message);
+        return;
+      }
+      setInfo(`${r.updated}명 학생 아바타에 적용됐어요.`);
     });
   };
 
@@ -234,6 +264,20 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
             {error}
           </div>
         )}
+        {info && (
+          <div
+            style={{
+              background: "#e6f4e2",
+              color: "#3a6b1f",
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+              marginTop: 10,
+            }}
+          >
+            {info}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
           <button
@@ -255,6 +299,15 @@ export function ItemPositionEditor({ item, baseImageUrl, onClose, onSaved }: Pro
           </button>
           <button type="button" onClick={onSave} disabled={pending} style={btnStyle("primary")}>
             {pending ? "저장 중..." : "확정 저장"}
+          </button>
+          <button
+            type="button"
+            onClick={onPropagate}
+            disabled={pending || !savedPosition}
+            style={btnStyle("ghost")}
+            title="이 항목을 이미 선택한 학생들에게도 새 위치를 적용"
+          >
+            🔄 학생들에게 전파
           </button>
         </div>
       </div>

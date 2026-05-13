@@ -451,6 +451,71 @@ export async function setGalleryItemPositionAction(args: {
   return { ok: true as const };
 }
 
+// 관리자: 한 갤러리 항목의 현재 position 을, 그 항목을 슬롯에 끼운 모든 학생
+// 아바타에 일괄 전파한다. 학생 picker 가 선택 시점에 position 을 스냅샷하므로
+// 관리자가 위치를 바꿔도 기본적으로는 기존 학생에 반영되지 않음 — 이 액션이
+// 명시적 동의를 받아 일괄 갱신해주는 역할.
+//
+// 매칭 기준: 학생 avatar.kind === 'gallery' 이고, 어떤 슬롯의 값이
+//   - 단순 URL 문자열로 image_url 과 일치, 또는
+//   - { url, position? } 객체에서 url 이 image_url 과 일치
+// 인 학생을 골라, 해당 슬롯을 { url, position: <새 위치> } 로 갱신.
+//
+// 학생 수가 많지 않은 학원 환경 가정 — 한 줄씩 SELECT/UPDATE.
+export async function propagateGalleryItemPositionAction(args: { id: string }) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { data: item, error: itemErr } = await sb
+    .from("garden_avatar_gallery")
+    .select("image_url, position")
+    .eq("id", args.id)
+    .maybeSingle();
+  if (itemErr || !item) {
+    return { ok: false as const, message: "항목을 찾지 못했어요." };
+  }
+  const targetUrl = item.image_url as string;
+  const newPosition = item.position as { x: number; y: number; scale: number } | null;
+
+  const { data: rows, error: selErr } = await sb
+    .from("garden_students")
+    .select("id, avatar")
+    .not("avatar", "is", null);
+  if (selErr) return { ok: false as const, message: `학생 조회 실패: ${selErr.message}` };
+
+  const SLOT_KEYS = ["base", "outfit", "bottom", "shoes", "hair", "face", "hat", "accessory"];
+  let updated = 0;
+  for (const row of rows ?? []) {
+    const avatar = row.avatar as Record<string, unknown> | null;
+    if (!avatar || avatar.kind !== "gallery") continue;
+    let mutated = false;
+    const next: Record<string, unknown> = { ...avatar };
+    for (const slot of SLOT_KEYS) {
+      const v = avatar[slot];
+      let url: string | null = null;
+      if (typeof v === "string") url = v;
+      else if (v && typeof v === "object" && typeof (v as { url?: unknown }).url === "string") {
+        url = (v as { url: string }).url;
+      }
+      if (url !== targetUrl) continue;
+      next[slot] = newPosition ? { url, position: newPosition } : { url };
+      mutated = true;
+    }
+    if (!mutated) continue;
+    const { error: updErr } = await sb
+      .from("garden_students")
+      .update({ avatar: next })
+      .eq("id", row.id);
+    if (!updErr) updated++;
+  }
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const, updated };
+}
+
 // 관리자: position 이 null 인 항목들에 카테고리별 기본 위치를 한 번에 채워준다.
 // 일괄 재처리 흐름의 보조 단계 — 신규 항목/마이그레이션 직후 일괄 초기화에 사용.
 export async function seedDefaultPositionsAction() {
