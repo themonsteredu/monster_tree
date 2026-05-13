@@ -459,21 +459,34 @@ export async function uploadGalleryItemAction(formData: FormData) {
   });
   const sort_order = (sortResult.data?.sort_order ?? 0) + 1;
 
-  const insertResult = await sb.from("garden_avatar_gallery").insert({
+  const insertPayload = {
     category,
     label: typeof label === "string" && label.length > 0 ? label.slice(0, 60) : null,
     image_url: url,
     sort_order,
     active: true,
-  });
+  };
+  console.log("[upload] ⑨ DB insert payload", insertPayload);
+  const insertResult = await sb.from("garden_avatar_gallery").insert(insertPayload);
   console.log("[upload] ⑨ DB insert 결과", {
     data: insertResult.data,
     error: insertResult.error,
     status: insertResult.status,
+    statusText: insertResult.statusText,
   });
   if (insertResult.error) {
     await sb.storage.from("avatars").remove([path]);
-    return { ok: false as const, message: `DB 저장 실패: ${insertResult.error.message}` };
+    const err = insertResult.error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    };
+    // 클라이언트 alert + Vercel 로그 양쪽에 자세한 내용을 노출.
+    const detail = [err.message, err.code && `code=${err.code}`, err.details, err.hint]
+      .filter(Boolean)
+      .join(" | ");
+    return { ok: false as const, message: `DB 저장 실패: ${detail || "(상세 없음)"}` };
   }
 
   revalidatePath("/admin/gallery");
