@@ -355,8 +355,8 @@ export async function uploadGalleryItemAction(formData: FormData) {
   if (!isGalleryCategory(category)) {
     return { ok: false as const, message: "잘못된 카테고리." };
   }
-  if (file.size > 2_097_152) {
-    return { ok: false as const, message: "이미지가 너무 커요 (2MB 이하)." };
+  if (file.size > 5_242_880) {
+    return { ok: false as const, message: "이미지가 너무 커요 (5MB 이하)." };
   }
   // JPG 는 투명도를 지원하지 않아 정원 배경 위에서 회색·흰색 사각형으로 보이므로 차단.
   const allowedTypes = ["image/png", "image/webp"];
