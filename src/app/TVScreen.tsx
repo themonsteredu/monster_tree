@@ -27,6 +27,8 @@ import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
 import { fireConfetti } from "@/features/garden/effects/confetti";
 import { useTvRealtime } from "@/features/garden/hooks/useTvRealtime";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
+import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
+import type { AvatarGalleryItemPosition } from "@/lib/types";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 
 // 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
@@ -79,6 +81,7 @@ export function TVScreen({
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [focusedIdx, setFocusedIdx] = useState(0);
+  const galleryPositions = useGalleryPositions();
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [todayApples, setTodayApples] = useState<number>(initialTodayHarvest);
@@ -285,6 +288,7 @@ export function TVScreen({
               cycleLabel={cycleLabel}
               isShaking={!!spotlight && shakingId === spotlight.id}
               compact={!isDesktop}
+              galleryPositions={galleryPositions}
             />
           </div>
           <div className="flex flex-col gap-3 min-h-0 flex-1">
@@ -383,8 +387,9 @@ const Spotlight = forwardRef<
     cycleLabel: string;
     isShaking: boolean;
     compact?: boolean;
+    galleryPositions?: Record<string, AvatarGalleryItemPosition>;
   }
->(function Spotlight({ student, highlight, now, cycleLabel, isShaking, compact = false }, ref) {
+>(function Spotlight({ student, highlight, now, cycleLabel, isShaking, compact = false, galleryPositions }, ref) {
   if (!student) {
     return (
       <div
@@ -467,7 +472,7 @@ const Spotlight = forwardRef<
                 growthBoost={progress}
               />
               <div className="pb-3 shrink-0" aria-hidden>
-                <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} />
+                <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
               </div>
               {isPositive && (
                 <>
