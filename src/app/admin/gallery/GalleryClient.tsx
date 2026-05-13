@@ -5,12 +5,18 @@
 // 업로드 시 클라이언트에서 자동 배경 제거 — 가장자리 픽셀에서 1~2 개 우세 색을 찾아
 // (체크무늬 baked-in 케이스 포함) 일치 픽셀을 투명 처리한 PNG 로 변환한 뒤 전송.
 
-import { useRef, useState, useTransition } from "react";
-import type { AvatarGalleryCategory, AvatarGalleryItem } from "@/lib/types";
+import { useMemo, useRef, useState, useTransition } from "react";
+import type {
+  AvatarGalleryCategory,
+  AvatarGalleryItem,
+  AvatarGalleryItemPosition,
+} from "@/lib/types";
+import { getGalleryItemPosition } from "@/lib/types";
 import {
   uploadGalleryItemAction,
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
+  updateGalleryItemPositionAction,
 } from "../actions";
 
 // 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
@@ -139,8 +145,28 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [editingItem, setEditingItem] = useState<AvatarGalleryItem | null>(null);
 
   const byCategory = (cat: AvatarGalleryCategory) => items.filter((i) => i.category === cat);
+
+  // 위치 에디터 미리보기에서 배경에 깔 base 이미지 — 활성 base 아이템 중 첫번째.
+  const baseBackdropUrl = useMemo(
+    () => items.find((i) => i.category === "base" && i.active)?.image_url,
+    [items],
+  );
+
+  const handleSavePosition = (id: string, position: AvatarGalleryItemPosition) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await updateGalleryItemPositionAction({ id, position });
+      if (!r.ok) {
+        setError(r.message);
+        return;
+      }
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, position } : i)));
+      setEditingItem(null);
+    });
+  };
 
   const refreshFromServer = async () => {
     // 간단히 page refresh — server action 후 revalidatePath 가 호출되긴 하나 클라이언트 state 도 갱신 필요
@@ -307,14 +333,24 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           onToggle={handleToggle}
           onDelete={handleDelete}
           onReclean={handleReclean}
+          onEditPosition={(it) => setEditingItem(it)}
         />
       ))}
+      {editingItem && (
+        <PositionEditor
+          item={editingItem}
+          baseBackdropUrl={baseBackdropUrl}
+          pending={pending}
+          onClose={() => setEditingItem(null)}
+          onSave={(position) => handleSavePosition(editingItem.id, position)}
+        />
+      )}
     </div>
   );
 }
 
 function CategorySection({
-  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean,
+  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean, onEditPosition,
 }: {
   category: AvatarGalleryCategory;
   label: string;
@@ -325,6 +361,7 @@ function CategorySection({
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
   onReclean: (it: AvatarGalleryItem) => void;
+  onEditPosition: (it: AvatarGalleryItem) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -396,6 +433,15 @@ function CategorySection({
               <div className="flex border-t border-pot/20">
                 <button
                   type="button"
+                  onClick={() => onEditPosition(it)}
+                  disabled={pending}
+                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  title="아바타 안에서 이 아이템의 위치/크기 조정"
+                >
+                  🎯 위치조정
+                </button>
+                <button
+                  type="button"
                   onClick={() => onReclean(it)}
                   disabled={pending}
                   className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
@@ -425,5 +471,232 @@ function CategorySection({
         </div>
       )}
     </section>
+  );
+}
+
+// 위치/크기 조정 에디터 — 300×300 미리보기 + 슬라이더 4개.
+// canvas 연산 없음, CSS transform 만으로 실시간 미리보기.
+//   left: ${x}% / top: ${y}% / transform: translate(-50%,-50%) scaleX(...) scaleY(...)
+// base 카테고리 아이템을 편집할 땐 backdrop 을 깔지 않음 (자기 자신이 base).
+function PositionEditor({
+  item,
+  baseBackdropUrl,
+  pending,
+  onClose,
+  onSave,
+}: {
+  item: AvatarGalleryItem;
+  baseBackdropUrl: string | undefined;
+  pending: boolean;
+  onClose: () => void;
+  onSave: (position: AvatarGalleryItemPosition) => void;
+}) {
+  const [pos, setPos] = useState<AvatarGalleryItemPosition>(() => getGalleryItemPosition(item));
+
+  const showBackdrop = item.category !== "base" && !!baseBackdropUrl;
+
+  const update = (patch: Partial<AvatarGalleryItemPosition>) =>
+    setPos((p) => ({ ...p, ...patch }));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="위치/크기 조정"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(61,40,24,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 380,
+          background: "#fffaf2",
+          borderRadius: 14,
+          padding: 16,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 16, color: "#3d2818", fontWeight: 800 }}>
+            위치 / 크기 — {item.category}
+            {item.label ? ` · ${item.label}` : ""}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            style={{ border: "none", background: "transparent", fontSize: 20, color: "#9a8b6c", cursor: "pointer", padding: 4 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* 미리보기 — 300×300, CSS transform 으로만 배치 */}
+        <div
+          style={{
+            position: "relative",
+            width: 300,
+            height: 300,
+            margin: "0 auto 14px",
+            background: "#fff5d6",
+            border: "1.5px solid #f0c050",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          {showBackdrop && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={baseBackdropUrl}
+              alt=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                opacity: 0.4,
+                pointerEvents: "none",
+              }}
+            />
+          )}
+          <div
+            style={{
+              position: "absolute",
+              left: `${pos.x}%`,
+              top: `${pos.y}%`,
+              width: "100%",
+              height: "100%",
+              transform: `translate(-50%, -50%) scaleX(${pos.scaleX / 100}) scaleY(${pos.scaleY / 100})`,
+              transformOrigin: "center center",
+              pointerEvents: "none",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.image_url}
+              alt={item.label ?? ""}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                objectPosition: "center",
+                display: "block",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* 슬라이더 4개 */}
+        <SliderRow label="X 위치" value={pos.x} min={0} max={100} onChange={(v) => update({ x: v })} suffix="%" />
+        <SliderRow label="Y 위치" value={pos.y} min={0} max={100} onChange={(v) => update({ y: v })} suffix="%" />
+        <SliderRow label="가로폭" value={pos.scaleX} min={10} max={200} onChange={(v) => update({ scaleX: v })} suffix="%" />
+        <SliderRow label="세로길이" value={pos.scaleY} min={10} max={200} onChange={(v) => update({ scaleY: v })} suffix="%" />
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button
+            type="button"
+            onClick={() => setPos(getGalleryItemPosition({ category: item.category, position: null }))}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#3d2818",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            기본값
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#3d2818",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(pos)}
+            disabled={pending}
+            style={{
+              flex: 2,
+              padding: "10px 0",
+              border: "none",
+              background: pending ? "#d6c2a0" : "#F26522",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            {pending ? "저장 중..." : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  suffix?: string;
+}) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#3d2818", fontWeight: 700, marginBottom: 2 }}>
+        <span>{label}</span>
+        <span style={{ color: "#9a8b6c" }}>
+          {Math.round(value)}
+          {suffix ?? ""}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: "100%" }}
+      />
+    </div>
   );
 }

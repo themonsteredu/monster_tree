@@ -4,8 +4,8 @@
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
 import { useEffect, useState } from "react";
-import type { AvatarConfig } from "@/lib/types";
-import { DEFAULT_AVATAR } from "@/lib/types";
+import type { AvatarConfig, AvatarGalleryItemPosition } from "@/lib/types";
+import { DEFAULT_AVATAR, DEFAULT_GALLERY_POSITION_BY_CATEGORY } from "@/lib/types";
 
 // ============================================================
 // 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
@@ -100,43 +100,6 @@ function useFittedImage(url: string | undefined): FittedImage | undefined {
     };
   }, [url]);
   return fitted;
-}
-
-// 슬롯 프레임 안에서 auto-fit 된 이미지를 그리는 레이어 — 일반 <img object-fit:contain>.
-// frame 의 top/left/width/height 는 모두 inner 박스(=base bbox) 기준 %.
-function FittedLayer({
-  url,
-  top,
-  left,
-  width,
-  height,
-  zIndex,
-}: {
-  url: string;
-  top: string;
-  left: string;
-  width: string;
-  height: string;
-  zIndex: number;
-}) {
-  const fitted = useFittedImage(url);
-  return (
-    <img
-      src={fitted?.url ?? url}
-      alt=""
-      style={{
-        position: "absolute",
-        left,
-        top,
-        width,
-        height,
-        objectFit: "contain",
-        objectPosition: "center",
-        zIndex,
-        pointerEvents: "none",
-      }}
-    />
-  );
 }
 
 // ============================================================
@@ -963,49 +926,34 @@ function Hat({ variant }: { variant: string }) {
 // ============================================================
 // 갤러리 합성 아바타 — 8 슬롯을 base 캐릭터 위에 겹쳐 표시.
 //
-// 핵심: base PNG 의 실제 bbox 비율(h/w) 을 측정해서 그 비율의 inner 박스를
-// 만들고, 모든 슬롯을 inner 박스의 자식으로 배치한다. 그러면 어떤 base 이미지가
-// 올라와도 모자/안경/상의/하의/신발이 항상 몸의 같은 위치(머리/가슴/다리/발) 에
-// 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
-// 좌우/상하로 어긋났음.
+// 각 갤러리 아이템은 DB 의 garden_avatar_gallery.position 컬럼에
+// {x, y, scaleX, scaleY} 를 저장 (관리자가 /admin/gallery 위치조정 에디터로 편집).
+// 렌더 시 해당 위치/크기를 CSS transform 으로 적용. canvas 연산 없음.
 //
-// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 % (top/left/width/height).
-// 마인크래프트 캐릭터는 팔이 좌우로 벌어진 bbox 라, 몸통/머리/다리 같은 가운데
-// 부위는 bbox 의 40~55% 너비만 차지. 너비를 100% 로 두면 모자/안경/상의가
-// 캔버스 전체 너비에 contain 되며 너무 커지거나 위치가 어긋남. 그래서 각
-// 슬롯에 left/width 도 명시.
+// inner 박스: base PNG 의 alpha bbox 비율을 측정해 size×size 안에 들어가는
+// 최대 직사각형. 모든 레이어 좌표는 이 inner 박스를 기준으로 함.
 //
-//   base    : 100% × 100%   (전체)
-//   hair    :  44% w, top  -1%, h 16%, 중앙
-//   hat     :  48% w, top  -4%, h 20%, 중앙
-//   face    :  36% w, top  10%, h 10%, 중앙 (눈코입)
-//   accessory: 42% w, top  11%, h  8%, 중앙 (안경)
-//   outfit  :  52% w, top  24%, h 26%, 중앙 (목 아래~허리)
-//   bottom  :  44% w, top  48%, h 32%, 중앙 (허리~발목)
-//   shoes   :  54% w, top  82%, h 16%, 중앙 (양발)
+// 레이어 박스: inner 박스 100% × 100% 를 기본 크기로 두고 transform 으로 위치 +
+// 스케일. 이미지(<img>) 는 레이어 박스 안에서 object-fit: contain 으로 가운데
+// 정렬 — 자동 크롭된 PNG 의 인트린식 비율은 유지됨.
+//
+// galleryPositions: url → position 매핑이 제공되면 그 값을 우선 사용. 없거나
+// 매핑에 없는 URL 은 카테고리 기본값(DEFAULT_GALLERY_POSITION_BY_CATEGORY) 사용.
+//
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
-type SlotFrame = { top: string; left: string; width: string; height: string };
-const GALLERY_SLOT_FRAMES: Record<GallerySlot, SlotFrame> = {
-  base:      { top: "0%",   left: "0%",  width: "100%", height: "100%" },
-  hair:      { top: "-1%",  left: "28%", width: "44%",  height: "16%" },
-  hat:       { top: "-4%",  left: "26%", width: "48%",  height: "20%" },
-  face:      { top: "10%",  left: "32%", width: "36%",  height: "10%" },
-  accessory: { top: "11%",  left: "29%", width: "42%",  height: "8%" },
-  outfit:    { top: "24%",  left: "24%", width: "52%",  height: "26%" },
-  bottom:    { top: "48%",  left: "28%", width: "44%",  height: "32%" },
-  shoes:     { top: "82%",  left: "23%", width: "54%",  height: "16%" },
-};
 
 function GalleryAvatar({
   cfg,
   size,
   className,
+  galleryPositions,
 }: {
   cfg: Extract<AvatarConfig, { kind: "gallery" }>;
   size: number;
   className?: string;
+  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
 }) {
   // base 가 있으면 그 bbox 비율을 그대로 사용 — 없으면 portrait 기본값 1.4.
   // inner 박스는 외곽 size×size 안에 들어가는 최대 크기로 계산.
@@ -1050,15 +998,14 @@ function GalleryAvatar({
         >
           {layers.map((l) => {
             if (!l.url) return null;
-            const frame = GALLERY_SLOT_FRAMES[l.key];
+            const pos =
+              (galleryPositions && galleryPositions[l.url]) ??
+              DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key];
             return (
-              <FittedLayer
+              <PositionedLayer
                 key={l.key}
                 url={l.url}
-                top={frame.top}
-                left={frame.left}
-                width={frame.width}
-                height={frame.height}
+                position={pos}
                 zIndex={l.z}
               />
             );
@@ -1083,6 +1030,47 @@ function GalleryAvatar({
   );
 }
 
+// inner 박스 100% × 100% 의 레이어 박스에 이미지를 object-fit: contain 으로 그리고,
+// position {x,y,scaleX,scaleY} 를 left/top/% + transform scale 로 적용.
+function PositionedLayer({
+  url,
+  position,
+  zIndex,
+}: {
+  url: string;
+  position: AvatarGalleryItemPosition;
+  zIndex: number;
+}) {
+  const fitted = useFittedImage(url);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${position.x}%`,
+        top: `${position.y}%`,
+        width: "100%",
+        height: "100%",
+        transform: `translate(-50%, -50%) scaleX(${position.scaleX / 100}) scaleY(${position.scaleY / 100})`,
+        transformOrigin: "center center",
+        zIndex,
+        pointerEvents: "none",
+      }}
+    >
+      <img
+        src={fitted?.url ?? url}
+        alt=""
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          objectPosition: "center",
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
+
 // ============================================================
 // 최상위 렌더 컴포넌트
 // ============================================================
@@ -1090,10 +1078,12 @@ export function AvatarFigure({
   config,
   size = 144,
   className,
+  galleryPositions,
 }: {
   config?: AvatarConfig | null;
   size?: number;
   className?: string;
+  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
 }) {
   const cfg: AvatarConfig = config ?? DEFAULT_AVATAR;
 
@@ -1118,7 +1108,14 @@ export function AvatarFigure({
   }
 
   if (cfg.kind === "gallery") {
-    return <GalleryAvatar cfg={cfg} size={size} className={className} />;
+    return (
+      <GalleryAvatar
+        cfg={cfg}
+        size={size}
+        className={className}
+        galleryPositions={galleryPositions}
+      />
+    );
   }
 
   const skinPal = (cfg.kind === "human" ? SKIN[cfg.skin] : undefined) ?? SKIN.light;

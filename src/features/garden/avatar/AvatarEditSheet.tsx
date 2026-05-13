@@ -4,11 +4,12 @@
 // 관리자 갤러리(base/outfit/hat/accessory)에서 슬롯마다 1개씩 골라 합성한다.
 // 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type {
   AvatarConfig,
   AvatarGalleryCategory,
   AvatarGalleryItem,
+  AvatarGalleryItemPosition,
 } from "@/lib/types";
 import { AvatarFigure } from "./AvatarFigure";
 import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
@@ -72,6 +73,14 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
       cancelled = true;
     };
   }, [open, galleryLoaded]);
+
+  const galleryPositions = useMemo(() => {
+    const map: Record<string, AvatarGalleryItemPosition> = {};
+    for (const it of galleryItems) {
+      if (it.position) map[it.image_url] = it.position;
+    }
+    return map;
+  }, [galleryItems]);
 
   if (!open) return null;
 
@@ -163,7 +172,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
             zIndex: 1,
           }}
         >
-          <AvatarFigure config={draft} size={180} />
+          <AvatarFigure config={draft} size={180} galleryPositions={galleryPositions} />
         </div>
 
         {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
