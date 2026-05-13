@@ -3,141 +3,8 @@
 // 얼굴은 큰 픽셀 단위(4px 격자)로 또렷한 캐릭터성을 만든다.
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
-import { useEffect, useState } from "react";
 import type { AvatarConfig } from "@/lib/types";
 import { DEFAULT_AVATAR } from "@/lib/types";
-
-// ============================================================
-// 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
-// 그 영역만 잘라낸 data URL + bbox 비율(h/w) 을 반환.
-// 잘라낸 이미지가 슬롯 박스에 object-fit:contain 으로 들어가면 슬롯에 꽉 차게
-// 그려진다. base 의 bbox 비율은 inner 박스(실제 캐릭터 영역) 크기 계산에 사용 —
-// 다른 슬롯들이 base 의 몸 위치에 정확히 정렬되도록.
-// CORS 실패 시 원본 URL fallback — broken image 아이콘 노출 방지.
-// ============================================================
-type FittedImage = { url: string; ratio: number }; // ratio = bboxHeight / bboxWidth
-const CROP_CACHE = new Map<string, FittedImage>();
-
-function useFittedImage(url: string | undefined): FittedImage | undefined {
-  const [fitted, setFitted] = useState<FittedImage | undefined>(() =>
-    url ? CROP_CACHE.get(url) : undefined,
-  );
-  useEffect(() => {
-    if (!url) {
-      setFitted(undefined);
-      return;
-    }
-    const cached = CROP_CACHE.get(url);
-    if (cached) {
-      setFitted(cached);
-      return;
-    }
-    let cancelled = false;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const w = img.naturalWidth;
-        const h = img.naturalHeight;
-        if (w === 0 || h === 0) return;
-        const c1 = document.createElement("canvas");
-        c1.width = w;
-        c1.height = h;
-        const ctx = c1.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        const data = ctx.getImageData(0, 0, w, h).data;
-        let minX = w, minY = h, maxX = -1, maxY = -1;
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            if (data[(y * w + x) * 4 + 3] >= 16) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-          }
-        }
-        if (maxX < 0) return;
-        const cw = maxX - minX + 1;
-        const ch = maxY - minY + 1;
-        const ratio = ch / cw;
-        // 이미 tight 한 이미지면 원본 그대로 사용 (data URL 변환 비용 회피)
-        if (cw === w && ch === h) {
-          const result = { url, ratio };
-          CROP_CACHE.set(url, result);
-          if (!cancelled) setFitted(result);
-          return;
-        }
-        const c2 = document.createElement("canvas");
-        c2.width = cw;
-        c2.height = ch;
-        const ctx2 = c2.getContext("2d");
-        if (!ctx2) return;
-        ctx2.drawImage(img, minX, minY, cw, ch, 0, 0, cw, ch);
-        const dataUrl = c2.toDataURL("image/png");
-        const result = { url: dataUrl, ratio };
-        CROP_CACHE.set(url, result);
-        if (!cancelled) setFitted(result);
-      } catch {
-        // CORS / 알 수 없는 에러 → 원본 URL + naturalWidth/Height 기반 비율
-        const fallback = {
-          url,
-          ratio: img.naturalWidth > 0 ? img.naturalHeight / img.naturalWidth : 1.4,
-        };
-        CROP_CACHE.set(url, fallback);
-        if (!cancelled) setFitted(fallback);
-      }
-    };
-    img.onerror = () => {
-      const fallback = { url, ratio: 1.4 };
-      CROP_CACHE.set(url, fallback);
-      if (!cancelled) setFitted(fallback);
-    };
-    img.src = url;
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-  return fitted;
-}
-
-// 슬롯 프레임 안에서 auto-fit 된 이미지를 그리는 레이어 — 일반 <img object-fit:contain>.
-// frame 의 top/left/width/height 는 모두 inner 박스(=base bbox) 기준 %.
-function FittedLayer({
-  url,
-  top,
-  left,
-  width,
-  height,
-  zIndex,
-}: {
-  url: string;
-  top: string;
-  left: string;
-  width: string;
-  height: string;
-  zIndex: number;
-}) {
-  const fitted = useFittedImage(url);
-  return (
-    <img
-      src={fitted?.url ?? url}
-      alt=""
-      style={{
-        position: "absolute",
-        left,
-        top,
-        width,
-        height,
-        objectFit: "contain",
-        objectPosition: "center",
-        zIndex,
-        pointerEvents: "none",
-      }}
-    />
-  );
-}
 
 // ============================================================
 // Palette type — 모든 부위가 4단계 음영을 가짐 (light=하이라이트, base=정면, shade=측면, dark=그림자/외곽선)
@@ -961,42 +828,23 @@ function Hat({ variant }: { variant: string }) {
 }
 
 // ============================================================
-// 갤러리 합성 아바타 — 8 슬롯을 base 캐릭터 위에 겹쳐 표시.
+// 갤러리 합성 아바타 — 8 슬롯을 같은 캔버스 위에 그대로 겹쳐 표시.
 //
-// 핵심: base PNG 의 실제 bbox 비율(h/w) 을 측정해서 그 비율의 inner 박스를
-// 만들고, 모든 슬롯을 inner 박스의 자식으로 배치한다. 그러면 어떤 base 이미지가
-// 올라와도 모자/안경/상의/하의/신발이 항상 몸의 같은 위치(머리/가슴/다리/발) 에
-// 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
-// 좌우/상하로 어긋났음.
+// 전제: 각 아이템 PNG 는 base 와 동일한 캔버스(같은 크기, 같은 좌표계)에
+// 그려져 있다. 즉 모자는 캔버스 상단의 머리 위치, 신발은 캔버스 하단의 발
+// 위치에 이미 배치돼 있는 상태. 그러므로 렌더 시에는 슬롯별 % 좌표/크기
+// 계산 없이 모든 레이어를 inset:0, width/height 100% 로 단순히 겹치기만
+// 하면 정렬된다.
 //
-// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 % (top/left/width/height).
-// 마인크래프트 캐릭터는 팔이 좌우로 벌어진 bbox 라, 몸통/머리/다리 같은 가운데
-// 부위는 bbox 의 40~55% 너비만 차지. 너비를 100% 로 두면 모자/안경/상의가
-// 캔버스 전체 너비에 contain 되며 너무 커지거나 위치가 어긋남. 그래서 각
-// 슬롯에 left/width 도 명시.
+// 이전 구조(useFittedImage + 슬롯별 GALLERY_SLOT_FRAMES) 는 아이템마다
+// 여백/비율이 달라 % 좌표가 결코 일치하지 않았음. 또한 ChatGPT 가 만든
+// "가짜 투명" 배경(체크무늬 무늬가 실제로 그려진 PNG)은 alpha bbox 측정에
+// 실패해 비율 계산 자체가 무의미했음. 그래서 단순 겹치기로 전환하고,
+// 아이템 정규화는 업로드 파이프라인(stripBackgroundToPng)에 위임.
 //
-//   base    : 100% × 100%   (전체)
-//   hair    :  44% w, top  -1%, h 16%, 중앙
-//   hat     :  48% w, top  -4%, h 20%, 중앙
-//   face    :  36% w, top  10%, h 10%, 중앙 (눈코입)
-//   accessory: 42% w, top  11%, h  8%, 중앙 (안경)
-//   outfit  :  52% w, top  24%, h 26%, 중앙 (목 아래~허리)
-//   bottom  :  44% w, top  48%, h 32%, 중앙 (허리~발목)
-//   shoes   :  54% w, top  82%, h 16%, 중앙 (양발)
 // 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
-type SlotFrame = { top: string; left: string; width: string; height: string };
-const GALLERY_SLOT_FRAMES: Record<GallerySlot, SlotFrame> = {
-  base:      { top: "0%",   left: "0%",  width: "100%", height: "100%" },
-  hair:      { top: "-1%",  left: "28%", width: "44%",  height: "16%" },
-  hat:       { top: "-4%",  left: "26%", width: "48%",  height: "20%" },
-  face:      { top: "10%",  left: "32%", width: "36%",  height: "10%" },
-  accessory: { top: "11%",  left: "29%", width: "42%",  height: "8%" },
-  outfit:    { top: "24%",  left: "24%", width: "52%",  height: "26%" },
-  bottom:    { top: "48%",  left: "28%", width: "44%",  height: "32%" },
-  shoes:     { top: "82%",  left: "23%", width: "54%",  height: "16%" },
-};
 
 function GalleryAvatar({
   cfg,
@@ -1007,13 +855,6 @@ function GalleryAvatar({
   size: number;
   className?: string;
 }) {
-  // base 가 있으면 그 bbox 비율을 그대로 사용 — 없으면 portrait 기본값 1.4.
-  // inner 박스는 외곽 size×size 안에 들어가는 최대 크기로 계산.
-  const baseFitted = useFittedImage(cfg.base);
-  const ratio = baseFitted?.ratio ?? 1.4; // height / width
-  const innerHeight = ratio >= 1 ? size : size * ratio;
-  const innerWidth = ratio >= 1 ? size / ratio : size;
-
   const layers: Array<{ key: GallerySlot; url?: string; z: number }> = [
     { key: "base", url: cfg.base, z: 1 },
     { key: "bottom", url: cfg.bottom, z: 2 },
@@ -1038,32 +879,26 @@ function GalleryAvatar({
       }}
     >
       {hasAny ? (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: innerWidth,
-            height: innerHeight,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {layers.map((l) => {
-            if (!l.url) return null;
-            const frame = GALLERY_SLOT_FRAMES[l.key];
-            return (
-              <FittedLayer
-                key={l.key}
-                url={l.url}
-                top={frame.top}
-                left={frame.left}
-                width={frame.width}
-                height={frame.height}
-                zIndex={l.z}
-              />
-            );
-          })}
-        </div>
+        layers.map((l) => {
+          if (!l.url) return null;
+          return (
+            <img
+              key={l.key}
+              src={l.url}
+              alt=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                objectPosition: "center",
+                zIndex: l.z,
+                pointerEvents: "none",
+              }}
+            />
+          );
+        })
       ) : (
         <div
           style={{

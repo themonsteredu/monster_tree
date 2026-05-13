@@ -2,8 +2,9 @@
 
 // 아바타 갤러리 관리 UI.
 // 카테고리별 섹션: 업로드 버튼 + 라벨 input + 그리드(썸네일 + 토글 + 삭제).
-// 업로드 시 클라이언트에서 자동 배경 제거 — 가장자리 픽셀에서 1~2 개 우세 색을 찾아
-// (체크무늬 baked-in 케이스 포함) 일치 픽셀을 투명 처리한 PNG 로 변환한 뒤 전송.
+// 업로드 시 클라이언트에서 자동 배경 제거 — 가장자리 dominant 색 + ChatGPT 류
+// "가짜 투명" 회색 체크무늬 패턴을 둘 다 감지해 알파 0 으로 만든다.
+// 원본 캔버스 크기는 보존 (정렬을 위해 base 와 같은 좌표계 유지).
 
 import { useRef, useState, useTransition } from "react";
 import type { AvatarGalleryCategory, AvatarGalleryItem } from "@/lib/types";
@@ -13,10 +14,14 @@ import {
   deleteGalleryItemAction,
 } from "../actions";
 
-// 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
-// 본문 전체에서 tolerance 안에 들어오는 픽셀을 알파 0 으로 만든다.
-// (편집기에서 체크무늬 transparency 배경이 픽셀로 baked-in 된 경우를 자동 정리)
-// 마지막으로 투명 가장자리를 잘라내(crop) 인트린식 크기 = 콘텐츠 크기로 맞춰 슬롯 간 비율 정렬을 돕는다.
+// ChatGPT 이미지 생성기가 만든 PNG 는 알파 채널이 전부 255 (완전 불투명) 이면서
+// 체크무늬(투명 표시) 가 실제 픽셀로 그려져 있는 경우가 흔하다. 가장자리 도미넌트
+// 색만 제거하는 1차 패스가 실패하면 (=투명 처리된 픽셀이 전체의 10% 미만)
+// 2차 패스로 "회색 체크무늬" 패턴을 직접 감지해 제거한다.
+//
+// 결정적으로, 캔버스 크기는 보존한다 (cropping 하지 않음). 그래야 모자/상의/신발
+// 등 각 아이템이 base 와 동일한 좌표계에서 같은 위치에 있는 채로 렌더 시점에
+// 100%×100% 로 겹쳐졌을 때 정렬된다.
 async function stripBackgroundToPng(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const w = bitmap.width;
@@ -29,8 +34,10 @@ async function stripBackgroundToPng(file: File): Promise<File> {
   ctx.drawImage(bitmap, 0, 0);
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
+  const totalPx = w * h;
 
-  // 가장자리 5px 깊이의 픽셀을 24 단위로 양자화해 빈도 집계.
+  // ── 1차 패스: 가장자리 도미넌트 색 기반 투명화 ──
+  // 가장자리 5px 깊이 픽셀을 24 단위로 양자화해 빈도 집계.
   const border = 5;
   const quant = (v: number) => Math.round(v / 24) * 24;
   const counts = new Map<string, { c: number; r: number; g: number; b: number }>();
@@ -39,7 +46,7 @@ async function stripBackgroundToPng(file: File): Promise<File> {
     for (let x = 0; x < w; x++) {
       if (x >= border && x < w - border && y >= border && y < h - border) continue;
       const i = (y * w + x) * 4;
-      if (data[i + 3] < 8) continue; // 이미 투명한 픽셀은 무시
+      if (data[i + 3] < 8) continue;
       const r = quant(data[i]);
       const g = quant(data[i + 1]);
       const b = quant(data[i + 2]);
@@ -73,44 +80,96 @@ async function stripBackgroundToPng(file: File): Promise<File> {
           }
         }
       }
-      ctx.putImageData(imgData, 0, 0);
     }
   }
 
-  // 투명 가장자리 자르기 — alpha >= 16 픽셀의 바운딩 박스를 찾아 그 영역만 남긴다.
-  return await cropTransparentToPng(canvas, file.name);
+  // ── 2차 패스: 1차에서 충분히 투명화되지 않았으면 체크무늬 감지 모드 ──
+  // 코너 4 곳 10×10 영역을 살펴 R≈G≈B(차이<10) & 값>=225 인 회색 픽셀이 다수면
+  // baked-in 체크무늬 배경으로 판단.
+  let transparentPx = 0;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] === 0) transparentPx++;
+  }
+  if (transparentPx / totalPx < 0.1) {
+    if (detectGreyCheckerCorners(data, w, h)) {
+      stripGreyChecker(data, w, h);
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  return await canvasToPngFile(canvas, file.name);
 }
 
-// 캔버스에서 알파 >= 16 인 픽셀의 바운딩 박스를 찾아 그 부분만 잘라 PNG File 로 반환.
-// 콘텐츠 없으면 원본 캔버스 그대로.
-async function cropTransparentToPng(canvas: HTMLCanvasElement, originalName: string): Promise<File> {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return await canvasToPngFile(canvas, originalName);
-  const w = canvas.width;
-  const h = canvas.height;
-  const { data } = ctx.getImageData(0, 0, w, h);
-  let minX = w, minY = h, maxX = -1, maxY = -1;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4 + 3] >= 16) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
+// 네 코너의 10×10 영역에서 회색(R==G==B, ±10) & 값 >= 225 인 픽셀 비율을
+// 측정. 4 개 코너 중 3 개 이상에서 60% 이상이 그런 픽셀이면 체크무늬로 판정.
+function detectGreyCheckerCorners(data: Uint8ClampedArray, w: number, h: number): boolean {
+  const size = 10;
+  const corners: Array<[number, number]> = [
+    [0, 0],
+    [w - size, 0],
+    [0, h - size],
+    [w - size, h - size],
+  ];
+  let positive = 0;
+  for (const [cx, cy] of corners) {
+    let grey = 0;
+    let total = 0;
+    for (let y = cy; y < cy + size && y < h; y++) {
+      for (let x = cx; x < cx + size && x < w; x++) {
+        const i = (y * w + x) * 4;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        total++;
+        if (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10 && r >= 225) {
+          grey++;
+        }
       }
     }
+    if (total > 0 && grey / total >= 0.6) positive++;
   }
-  if (maxX < 0) return await canvasToPngFile(canvas, originalName);
-  const cw = maxX - minX + 1;
-  const ch = maxY - minY + 1;
-  if (cw === w && ch === h) return await canvasToPngFile(canvas, originalName);
-  const out = document.createElement("canvas");
-  out.width = cw;
-  out.height = ch;
-  const octx = out.getContext("2d");
-  if (!octx) return await canvasToPngFile(canvas, originalName);
-  octx.drawImage(canvas, minX, minY, cw, ch, 0, 0, cw, ch);
-  return await canvasToPngFile(out, originalName);
+  return positive >= 3;
+}
+
+// 회색 체크무늬 제거 — R==G==B(±8) & 값>225 인 픽셀을 알파 0 으로.
+// 본문 가장자리(1px 안쪽) 픽셀이 그 기준에 걸리면 부분 알파(180) 로 두어
+// anti-aliasing 효과를 살린다.
+function stripGreyChecker(data: Uint8ClampedArray, w: number, h: number) {
+  const isCheckerPx = (i: number) => {
+    if (data[i + 3] === 0) return false;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    return (
+      Math.abs(r - g) <= 8 &&
+      Math.abs(g - b) <= 8 &&
+      Math.abs(r - b) <= 8 &&
+      r > 225
+    );
+  };
+  // 1패스: 마스크 구성
+  const mask = new Uint8Array(w * h);
+  for (let p = 0, i = 0; p < mask.length; p++, i += 4) {
+    if (isCheckerPx(i)) mask[p] = 1;
+  }
+  // 2패스: 마스크가 1 인 픽셀은 알파 0, 인접 8픽셀 중 하나라도 0(콘텐츠) 이면
+  // 알파 0 대신 부분 알파로 두어 콘텐츠 경계가 거칠게 잘리지 않게.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      if (!mask[p]) continue;
+      const i = p * 4;
+      let touchesContent = false;
+      outer: for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          if (!mask[ny * w + nx]) {
+            touchesContent = true;
+            break outer;
+          }
+        }
+      }
+      data[i + 3] = touchesContent ? 180 : 0;
+    }
+  }
 }
 
 function canvasToPngFile(canvas: HTMLCanvasElement, originalName: string): Promise<File> {
@@ -240,12 +299,13 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     });
   };
 
-  // 전체 항목을 순차 재크롭. 자동 크롭 도입 이전에 올린 이미지들의 투명 여백을 제거해
-  // 슬롯 박스 안 비율을 통일하기 위함. 진행률을 표시하고, 일부 실패해도 나머지는 계속.
+  // 전체 항목을 순차 재처리. ChatGPT 가짜 투명(체크무늬 baked-in) 배경을 비롯한
+  // 모든 baked-in 배경을 강화된 stripBackgroundToPng 로 다시 정리한다. 진행률을
+  // 표시하고, 일부 실패해도 나머지는 계속.
   const handleRecleanAll = async () => {
     const targets = items.slice();
     if (targets.length === 0) return;
-    if (!confirm(`전체 ${targets.length}개 항목을 다시 크롭할까요? 시간이 좀 걸려요.`)) return;
+    if (!confirm(`전체 ${targets.length}개 항목 배경을 다시 정리할까요? 시간이 좀 걸려요.`)) return;
     setError(null);
     setBulkProgress({ done: 0, total: targets.length, failed: 0 });
     startTransition(async () => {
@@ -261,7 +321,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
         setBulkProgress({ done: i + 1, total: targets.length, failed });
       }
       if (failures.length > 0) {
-        setError(`일괄 재크롭 ${failures.length}/${targets.length} 실패 — ${failures.slice(0, 3).join(" / ")}${failures.length > 3 ? " …" : ""}`);
+        setError(`일괄 재처리 ${failures.length}/${targets.length} 실패 — ${failures.slice(0, 3).join(" / ")}${failures.length > 3 ? " …" : ""}`);
       }
       setBulkProgress(null);
       await refreshFromServer();
@@ -281,8 +341,9 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
       </p>
       <div className="bg-cream/60 border-[1.5px] border-pot/30 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="text-xs text-ink-soft flex-1 min-w-[180px]">
-          자동 크롭 도입 이전에 올린 이미지는 PNG 투명 여백이 남아 슬롯 비율이 어긋날 수 있어요.
-          한 번에 모든 항목을 다시 크롭할 수 있습니다.
+          ChatGPT 가 만든 PNG 는 알파 채널이 불투명한 채 체크무늬가 픽셀로 그려진
+          "가짜 투명" 인 경우가 있어요. 강화된 배경 제거 로직으로 모든 항목을 한
+          번에 다시 정리할 수 있습니다.
         </div>
         <button
           type="button"
@@ -292,7 +353,7 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
         >
           {bulkProgress
             ? `🧹 ${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
-            : `🧹 전체 항목 다시 크롭 (${items.length})`}
+            : `🧹 전체 항목 배경 재처리 (${items.length})`}
         </button>
       </div>
       {CATEGORIES.map((c) => (
