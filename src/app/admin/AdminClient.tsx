@@ -1,38 +1,30 @@
 "use client";
 
-// Admin 메인 화면 (모바일 한 손 조작 최적화)
-// - 반(class) 필터
-// - 가로 행 학생 카드 + 빠른 적립 버튼 (+1, +2, +3, +5, -1)
-// - 길게 누르면 사유 입력 모달
-// - 선택 모드 시 여러 학생 일괄 +pt 적립
-// - 점수 적립 시 카드 초록 플래시 + 포인트 카운트업
-// - 단계 상승 시 큰 모달 + 컨페티
-// - 하단 시트로 "오늘 입력 기록" + "대기 중" 펼치기 + 되돌리기/취소
-// - 대기 중 포인트가 12시간 / 3일 묵으면 색으로 강조 (미수령 모니터링)
-// - Realtime 으로 다른 화면에서 입력해도 즉시 갱신됨
+// Admin 메인 화면 (PC + 모바일)
+// - 상단 필터 바: 반(class) pill + 이름 검색
+// - 학생 그리드(컴팩트 카드): 한 화면에 30명+ 표시
+// - 카드 탭 → 하단 포인트 패널: 초등/중고등 자동 분기
+//   • 초등: [출석 +1] [숙제 +1] [단원테스트 +10] / 일일테스트 1~4 / 월말테스트 1~10
+//   • 중고등: [출석 +1] [숙제 +1] / 주간테스트 1~10 / 월말테스트 1~10
+// - 모든 적립은 garden_pending_points 로 들어가 학생 화면에서 받기 누르면 확정 (기존과 동일)
+// - 사유(reason) 자동 기록: "출석", "숙제", "단원테스트", "일일테스트 N점", "주간테스트 N점", "월말테스트 N점", "취소 -1"
+// - 단계 상승, 수확, Realtime, 되돌리기 시트는 기존 로직 유지
 
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AppleTree } from "@/components/AppleTree";
 import { calculateStage, getStageInfo, stageProgress } from "@/lib/garden";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import {
   addPointsAction,
-  addPointsBulkAction,
   cancelPendingAction,
   harvestStudentAction,
   undoLogAction,
 } from "./actions";
 
-const QUICK_BUTTONS = [1, 2, 3, 4, 5] as const;
-const LONG_PRESS_MS = 500;
-const FLASH_MS = 600;
-
-// 미수령 모니터링 임계값
-const STALE_THRESHOLD_HOURS = 72; // 3일 이상 → 빨강
-const WARM_THRESHOLD_HOURS = 12; // 12시간 이상 → 노랑
+const STALE_THRESHOLD_HOURS = 72;
+const WARM_THRESHOLD_HOURS = 12;
 
 type PendingSeverity = "fresh" | "warm" | "stale";
 
@@ -82,6 +74,29 @@ type StageUp = {
   isHarvest: boolean;
 };
 
+type ClassLevel = "elementary" | "middlehigh";
+
+function detectClassLevel(className: string | null | undefined): ClassLevel {
+  if (!className) return "elementary";
+  if (className.includes("초")) return "elementary";
+  if (className.includes("중") || className.includes("고")) return "middlehigh";
+  return "elementary";
+}
+
+function stageEmoji(stage: number): string {
+  switch (stage) {
+    case 1: return "🪴";
+    case 2: return "🌱";
+    case 3: return "🌿";
+    case 4: return "🌳";
+    case 5: return "🌲";
+    case 6: return "🌸";
+    case 7: return "🍎";
+    case 8: return "🎉";
+    default: return "🪴";
+  }
+}
+
 export function AdminClient({
   students: initialStudents,
   recentLogs: initialLogs,
@@ -95,11 +110,7 @@ export function AdminClient({
   const [undoneIds, setUndoneIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState<string | null>(initialClass);
   const [search, setSearch] = useState("");
-  const [reasonModal, setReasonModal] = useState<{
-    studentId: string;
-    delta: number;
-  } | null>(null);
-  const [bulkReasonDelta, setBulkReasonDelta] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -107,18 +118,12 @@ export function AdminClient({
   const [harvestTarget, setHarvestTarget] = useState<GardenStudent | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // 선택 모드 (다중 +pt)
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // 미수령 묵음 표시용 시계 (1분마다 갱신)
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
 
-  // 묵은 pending 카운트 (3일 이상)
   const stalePendingCount = useMemo(
     () =>
       pendingPoints.filter(
@@ -142,12 +147,31 @@ export function AdminClient({
     const q = search.trim().toLowerCase();
     return students.filter((s) => {
       if (classFilter && s.class_name !== classFilter) return false;
-      if (q && !s.name.toLowerCase().includes(q) && !(s.class_name ?? "").toLowerCase().includes(q)) return false;
+      if (q && !s.name.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [students, classFilter, search]);
 
-  // Realtime 구독
+  const selectedStudent = useMemo(
+    () => (selectedId ? students.find((s) => s.id === selectedId) ?? null : null),
+    [students, selectedId],
+  );
+
+  // 필터/검색으로 선택된 학생이 화면에서 사라지면 선택 해제
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!visible.some((s) => s.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [visible, selectedId]);
+
+  const panelLevel: ClassLevel = useMemo(() => {
+    if (selectedStudent) return detectClassLevel(selectedStudent.class_name);
+    if (classFilter) return detectClassLevel(classFilter);
+    return "elementary";
+  }, [selectedStudent, classFilter]);
+
+  // Realtime
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
     if (!sb) return;
@@ -163,12 +187,9 @@ export function AdminClient({
             return;
           }
           const next = payload.new as GardenStudent;
-          // 단계 상승 감지 (Admin 에서도 모달 띄우기)
           const prev = prevStageRef.current[next.id] ?? next.current_stage;
           if (next.current_stage > prev) {
-            const info = getStageInfo(
-              next.current_stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
-            );
+            const info = getStageInfo(next.current_stage as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8);
             const isHarvest = next.current_stage === 8;
             setStageUp({
               id: `${next.id}-${next.current_stage}-${Date.now()}`,
@@ -228,6 +249,22 @@ export function AdminClient({
     setTimeout(() => setToast(null), 1800);
   };
 
+  const submitPoints = (studentId: string, delta: number, reason: string) => {
+    setFlashId(studentId);
+    setTimeout(() => setFlashId((cur) => (cur === studentId ? null : cur)), 600);
+    triggerHaptic(delta > 0 ? "tap" : "warning");
+
+    startTransition(async () => {
+      const res = await addPointsAction({ studentId, delta, reason });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      const name = students.find((s) => s.id === studentId)?.name ?? "";
+      showToast(`${name} ${delta > 0 ? "+" : ""}${delta}pt · ${reason}`);
+    });
+  };
+
   const submitHarvest = (student: GardenStudent) => {
     triggerHaptic("strong");
     startTransition(async () => {
@@ -241,51 +278,8 @@ export function AdminClient({
     });
   };
 
-  const submitPoints = (studentId: string, delta: number, reason?: string) => {
-    // 카드 플래시 (낙관적 - 서버 응답 기다리지 않고 시각적 피드백)
-    setFlashId(studentId);
-    setTimeout(() => setFlashId((cur) => (cur === studentId ? null : cur)), FLASH_MS);
-    // 모바일 햅틱 피드백 (지원하는 브라우저만)
-    triggerHaptic(delta > 0 ? "tap" : "warning");
-
-    startTransition(async () => {
-      const res = await addPointsAction({
-        studentId,
-        delta,
-        reason: reason ?? null,
-      });
-      if (!res.ok) {
-        showToast(res.message);
-        return;
-      }
-      const name = students.find((s) => s.id === studentId)?.name ?? "";
-      showToast(`${name} ${delta > 0 ? "+" : ""}${delta}pt 적립`);
-    });
-  };
-
-  const submitBulk = (delta: number, reason?: string) => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
-    triggerHaptic(delta > 0 ? "tap" : "warning");
-    startTransition(async () => {
-      const res = await addPointsBulkAction({
-        studentIds: ids,
-        delta,
-        reason: reason ?? null,
-      });
-      if (!res.ok) {
-        showToast(res.message);
-        return;
-      }
-      showToast(`${res.count}명 ${delta > 0 ? "+" : ""}${delta}pt 적립`);
-      setSelectedIds(new Set());
-      setSelectMode(false);
-    });
-  };
-
   const submitCancelPending = (pendingId: string) => {
     triggerHaptic("warning");
-    // 낙관적: 즉시 로컬 제거 (Realtime DELETE 도 도착하면 멱등하게 처리됨)
     setPendingPoints((prev) => prev.filter((p) => p.id !== pendingId));
     startTransition(async () => {
       const res = await cancelPendingAction({ pendingId });
@@ -308,7 +302,6 @@ export function AdminClient({
     startTransition(async () => {
       const res = await undoLogAction({ logId });
       if (!res.ok) {
-        // 실패 시 원복
         setUndoneIds((prev) => {
           const next = new Set(prev);
           next.delete(logId);
@@ -317,252 +310,131 @@ export function AdminClient({
         showToast(res.message);
         return;
       }
-      showToast(`되돌리기 완료 (${res.revertedPoints > 0 ? "−" : "+"}${Math.abs(res.revertedPoints)}pt)`);
+      showToast(
+        `되돌리기 완료 (${res.revertedPoints > 0 ? "−" : "+"}${Math.abs(res.revertedPoints)}pt)`,
+      );
     });
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAllVisible = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const s of visible) next.add(s.id);
-      return next;
-    });
-  };
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
   };
 
   return (
-    <div className="max-w-2xl mx-auto pb-20">
-      {/* sticky 헤더: 검색 + 반 필터 (스크롤 시에도 항상 보임) */}
-      <div className="sticky top-0 z-20 -mx-0 px-4 pt-3 pb-2 bg-gradient-to-b from-[var(--bg-warm-start)] via-[var(--bg-warm-start)]/95 to-[var(--bg-warm-start)]/0 backdrop-blur-sm">
-        {/* 한 줄: 타이틀 알약 + 검색창 + 선택 토글 */}
-        <div className="flex items-center gap-2 mb-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card shrink-0">
-            <span className="text-lg">🌳</span>
-            <span className="text-sm font-extrabold text-[var(--ink)] hidden sm:inline">
-              사과정원
+    <div className="max-w-5xl mx-auto px-4 pt-3 pb-44">
+      {/* 상단 필터 바 */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <ClassPill active={classFilter === null} onClick={() => setClassFilter(null)}>
+          전체 <span className="text-gray-400">({students.length})</span>
+        </ClassPill>
+        {classes.map((c) => (
+          <ClassPill
+            key={c}
+            active={classFilter === c}
+            onClick={() => setClassFilter(c)}
+          >
+            {c}{" "}
+            <span className="text-gray-400">
+              ({students.filter((s) => s.class_name === c).length})
             </span>
-          </div>
-          <div className="relative flex-1 min-w-0">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="학생 이름 / 반 검색"
-              className="w-full px-4 py-2.5 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] text-sm font-bold placeholder:text-[var(--ink-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-success)] shadow-card"
-              type="search"
-              inputMode="search"
-              enterKeyHint="search"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute top-1/2 -translate-y-1/2 right-2 w-7 h-7 rounded-full bg-[var(--ink)]/10 text-[var(--ink)] font-extrabold text-sm flex items-center justify-center"
-                aria-label="검색어 지우기"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectMode((m) => {
-                if (m) setSelectedIds(new Set());
-                return !m;
-              });
-            }}
-            aria-pressed={selectMode}
-            className={[
-              "shrink-0 px-3 py-2 rounded-full font-extrabold text-sm border-[2.5px] border-[var(--ink)] shadow-card",
-              selectMode
-                ? "bg-[var(--accent-success)] text-white"
-                : "bg-white text-[var(--ink)]",
-            ].join(" ")}
-          >
-            {selectMode ? "선택 종료" : "선택"}
-          </button>
-        </div>
-
-        {/* 반 필터 (가로 스크롤) */}
-        <div className="flex items-center gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
-          <FilterChip
-            active={classFilter === null}
-            onClick={() => setClassFilter(null)}
-          >
-            전체 ({students.length})
-          </FilterChip>
-          {classes.map((c) => (
-            <FilterChip
-              key={c}
-              active={classFilter === c}
-              onClick={() => setClassFilter(c)}
-            >
-              {c} ({students.filter((s) => s.class_name === c).length})
-            </FilterChip>
-          ))}
-        </div>
-
-        {/* 검색 결과 개수 (필터 활성 시에만) */}
-        {(search || classFilter) && (
-          <div className="mt-1.5 text-xs font-bold text-[var(--ink-soft)] px-1">
-            {visible.length}명 표시
-            {search && <span> · "{search}"</span>}
-          </div>
-        )}
-
-        {/* 묵은 미수령 알림 (3일 이상이 1개 이상) */}
-        {stalePendingCount > 0 && !selectMode && (
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            className="mt-1.5 w-full text-left px-3 py-2 rounded-xl bg-[#fef2f0] border-[1.5px] border-[var(--apple-deep)] text-xs font-extrabold text-[var(--apple-deep)] flex items-center gap-2"
-          >
-            <span>⚠️</span>
-            <span className="flex-1 truncate">
-              3일 넘게 안 받은 포인트 {stalePendingCount}개 — 시트에서 확인
-            </span>
-            <span aria-hidden>→</span>
-          </button>
-        )}
-
-        {/* 선택 모드 안내 + 전체 선택 / 해제 */}
-        {selectMode && (
-          <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
-            <div className="text-xs font-bold text-[var(--ink)]">
-              {selectedIds.size}명 선택됨
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={selectAllVisible}
-                disabled={visible.length === 0}
-                className="text-xs font-extrabold text-[var(--ink)] underline disabled:opacity-40"
-              >
-                보이는 {visible.length}명 전체 선택
-              </button>
-              {selectedIds.size > 0 && (
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="text-xs font-extrabold text-[var(--ink-soft)] underline"
-                >
-                  해제
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 본문 영역 */}
-      <div className="px-4 pt-2 space-y-3">
-
-      {/* 학생 목록 */}
-      <div className="space-y-2.5">
-        {visible.length === 0 && (
-          <div className="text-center text-[var(--ink-soft)] py-12">
-            표시할 학생이 없어요.
-          </div>
-        )}
-        {visible.map((s) => (
-          <StudentRow
-            key={s.id}
-            student={s}
-            disabled={pending}
-            isFlash={flashId === s.id}
-            selectMode={selectMode}
-            selected={selectedIds.has(s.id)}
-            onToggleSelect={() => toggleSelect(s.id)}
-            onQuick={(delta) => submitPoints(s.id, delta)}
-            onLongPress={(delta) => setReasonModal({ studentId: s.id, delta })}
-            onHarvest={() => setHarvestTarget(s)}
-          />
+          </ClassPill>
         ))}
+        <div className="ml-auto relative">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="이름 검색..."
+            type="search"
+            className="w-44 sm:w-56 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition"
+          />
+        </div>
       </div>
 
-      {/* 하단 고정: 선택 모드면 일괄 적립 바, 아니면 오늘 기록 시트 토글 */}
-      {selectMode && selectedIds.size > 0 ? (
-        <BulkActionBar
-          count={selectedIds.size}
-          disabled={pending}
-          onQuick={(n) => submitBulk(n)}
-          onLongPress={(n) => setBulkReasonDelta(n)}
-        />
-      ) : (
+      {(search || classFilter) && (
+        <div className="mb-2 text-xs text-gray-400">
+          {visible.length}명 표시
+          {search && <span> · &quot;{search}&quot;</span>}
+        </div>
+      )}
+
+      {stalePendingCount > 0 && (
         <button
+          type="button"
           onClick={() => setSheetOpen(true)}
-          className="fixed bottom-4 right-4 z-30 px-4 py-3 rounded-full bg-[var(--ink)] text-white border-[2.5px] border-[var(--ink)] shadow-card-pop font-bold text-sm flex items-center gap-2"
+          className="mb-3 w-full text-left px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 hover:bg-red-100 transition flex items-center gap-2"
         >
-          <span>오늘 기록 / 되돌리기</span>
-          {pendingPoints.length > 0 && (
-            <span
-              className={[
-                "inline-block min-w-[20px] px-1.5 py-0.5 rounded-full text-white text-[11px] font-extrabold tabular-nums",
-                stalePendingCount > 0
-                  ? "bg-[var(--apple-deep)]"
-                  : "bg-[var(--accent-success)]",
-              ].join(" ")}
-            >
-              {pendingPoints.length}
-            </span>
-          )}
+          <span className="font-medium">3일 넘게 안 받은 포인트 {stalePendingCount}개</span>
+          <span className="text-red-400">— 기록 시트에서 확인</span>
+          <span className="ml-auto text-red-400">→</span>
         </button>
       )}
+
+      {/* 학생 그리드 */}
+      {visible.length === 0 ? (
+        <div className="text-center text-gray-400 py-16 bg-white rounded-xl border border-gray-100">
+          표시할 학생이 없어요.
+        </div>
+      ) : (
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))" }}
+        >
+          {visible.map((s) => (
+            <StudentCard
+              key={s.id}
+              student={s}
+              selected={selectedId === s.id}
+              flash={flashId === s.id}
+              onClick={() => setSelectedId((cur) => (cur === s.id ? null : s.id))}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* 하단 우측 플로팅: 오늘 기록 / 되돌리기 */}
+      <button
+        onClick={() => setSheetOpen(true)}
+        className="fixed bottom-4 right-4 z-30 px-4 py-2.5 rounded-full bg-white border border-gray-200 shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition flex items-center gap-2"
+      >
+        오늘 기록
+        {pendingPoints.length > 0 && (
+          <span
+            className={[
+              "inline-block min-w-[20px] px-1.5 py-0.5 rounded-full text-white text-[11px] font-semibold tabular-nums",
+              stalePendingCount > 0 ? "bg-red-500" : "bg-emerald-500",
+            ].join(" ")}
+          >
+            {pendingPoints.length}
+          </span>
+        )}
+      </button>
+
+      {/* 하단 포인트 패널 */}
+      <AnimatePresence>
+        {selectedStudent && (
+          <PointPanel
+            key={selectedStudent.id}
+            student={selectedStudent}
+            level={panelLevel}
+            disabled={pending}
+            onClose={() => setSelectedId(null)}
+            onApply={(delta, reason) => submitPoints(selectedStudent.id, delta, reason)}
+            onHarvest={() => setHarvestTarget(selectedStudent)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 토스트 */}
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-[var(--ink)] text-white text-sm font-bold shadow-card-pop border-[2px] border-[var(--ink)]"
+            exit={{ opacity: 0, y: 8 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium shadow-lg"
           >
             {toast}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 사유 입력 모달 (단일) */}
-      {reasonModal && (
-        <ReasonModal
-          delta={reasonModal.delta}
-          title={`${reasonModal.delta > 0 ? `+${reasonModal.delta}` : reasonModal.delta}pt 적립 사유`}
-          onCancel={() => setReasonModal(null)}
-          onConfirm={(reason) => {
-            submitPoints(reasonModal.studentId, reasonModal.delta, reason);
-            setReasonModal(null);
-          }}
-        />
-      )}
-
-      {/* 사유 입력 모달 (일괄) */}
-      {bulkReasonDelta !== null && (
-        <ReasonModal
-          delta={bulkReasonDelta}
-          title={`${selectedIds.size}명에게 ${bulkReasonDelta > 0 ? `+${bulkReasonDelta}` : bulkReasonDelta}pt 적립 사유`}
-          onCancel={() => setBulkReasonDelta(null)}
-          onConfirm={(reason) => {
-            const d = bulkReasonDelta;
-            setBulkReasonDelta(null);
-            submitBulk(d, reason);
-          }}
-        />
-      )}
-
-      {/* 오늘 기록 / 대기 중 시트 */}
+      {/* 오늘 기록 시트 */}
       {sheetOpen && (
         <RecentLogsSheet
           logs={logs}
@@ -576,17 +448,12 @@ export function AdminClient({
         />
       )}
 
-      {/* 단계 상승 모달 */}
+      {/* 단계 상승 */}
       <AnimatePresence>
-        {stageUp && (
-          <StageUpModal
-            stageUp={stageUp}
-            onClose={() => setStageUp(null)}
-          />
-        )}
+        {stageUp && <StageUpModal stageUp={stageUp} onClose={() => setStageUp(null)} />}
       </AnimatePresence>
 
-      {/* 수확 확인 모달 */}
+      {/* 수확 확인 */}
       <AnimatePresence>
         {harvestTarget && (
           <HarvestConfirmModal
@@ -601,12 +468,13 @@ export function AdminClient({
           />
         )}
       </AnimatePresence>
-      </div>
     </div>
   );
 }
 
-function FilterChip({
+/* ============== 상단 필터 pill ============== */
+
+function ClassPill({
   active,
   onClick,
   children,
@@ -617,12 +485,13 @@ function FilterChip({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={[
-        "shrink-0 px-3.5 py-2 rounded-full text-sm font-extrabold transition border-[2px] border-[var(--ink)]",
+        "px-3 py-1.5 rounded-full text-sm font-medium border transition",
         active
-          ? "bg-[var(--ink)] text-white shadow-card"
-          : "bg-white text-[var(--ink)] shadow-card",
+          ? "bg-amber-100 text-amber-900 border-amber-200"
+          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50",
       ].join(" ")}
     >
       {children}
@@ -630,391 +499,262 @@ function FilterChip({
   );
 }
 
-function StudentRow({
+/* ============== 학생 카드 (컴팩트 그리드) ============== */
+
+function StudentCard({
   student,
-  disabled,
-  isFlash,
-  selectMode,
   selected,
-  onToggleSelect,
-  onQuick,
-  onLongPress,
+  flash,
+  onClick,
+}: {
+  student: GardenStudent;
+  selected: boolean;
+  flash: boolean;
+  onClick: () => void;
+}) {
+  const stage = calculateStage(student.total_points);
+  const progress = stageProgress(student.total_points);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={[
+        "bg-white rounded-xl p-2 text-center cursor-pointer transition border",
+        selected
+          ? "ring-2 ring-amber-400 bg-amber-50 border-amber-200"
+          : "border-gray-100 hover:border-gray-200 hover:shadow-sm",
+        flash ? "!bg-emerald-50 !border-emerald-200" : "",
+      ].join(" ")}
+    >
+      <div className="text-2xl leading-none mb-1" aria-hidden>
+        {stageEmoji(stage)}
+      </div>
+      <div className="text-xs font-medium text-gray-900 truncate">{student.name}</div>
+      <div className="text-[9px] text-gray-400 tabular-nums truncate">
+        {student.total_points}pt · {stage}단계
+      </div>
+      <div className="mt-1 h-[3px] rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className={selected ? "h-full bg-amber-400" : "h-full bg-emerald-400"}
+          style={{ width: `${Math.max(2, progress * 100)}%` }}
+        />
+      </div>
+    </button>
+  );
+}
+
+/* ============== 하단 포인트 패널 ============== */
+
+function PointPanel({
+  student,
+  level,
+  disabled,
+  onClose,
+  onApply,
   onHarvest,
 }: {
   student: GardenStudent;
+  level: ClassLevel;
   disabled: boolean;
-  isFlash: boolean;
-  selectMode: boolean;
-  selected: boolean;
-  onToggleSelect: () => void;
-  onQuick: (delta: number) => void;
-  onLongPress: (delta: number) => void;
+  onClose: () => void;
+  onApply: (delta: number, reason: string) => void;
   onHarvest: () => void;
 }) {
   const stage = calculateStage(student.total_points);
   const info = getStageInfo(stage);
-  const progress = stageProgress(student.total_points);
   const isHarvest = stage === 8;
 
-  const cardBody = (
-    <>
-      <div className="flex items-center gap-3">
-        {selectMode && (
-          <div
-            aria-hidden
-            className={[
-              "shrink-0 w-7 h-7 rounded-full border-[2.5px] border-[var(--ink)] flex items-center justify-center text-sm font-extrabold",
-              selected
-                ? "bg-[var(--accent-success)] text-white"
-                : "bg-white text-transparent",
-            ].join(" ")}
-          >
-            ✓
-          </div>
-        )}
-        <AppleTree stage={stage} size="small" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
-            <div className="text-lg font-extrabold truncate text-[var(--ink)]">
-              {student.name}
-            </div>
-            <div className="text-xs font-semibold text-[var(--ink-soft)] truncate">
-              {student.class_name ?? ""}
-            </div>
-          </div>
-          <div className="text-sm font-bold text-[var(--ink-soft)] flex items-center gap-2">
-            <CountUpNumber value={student.total_points} />
-            <span className="text-[var(--ink-soft)]">pt</span>
-            <span className="text-xs">·</span>
-            <span>{stage}단계 {info.name}</span>
-          </div>
-          {/* 작은 progress 바 */}
-          {!isHarvest && (
-            <div className="mt-1.5 h-2 rounded-full bg-[#e8dfcf] border border-[var(--ink)]/30 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full"
-                style={{
-                  background: stage === 6 ? "var(--accent-purple)" : "var(--leaf-base)",
-                }}
-                initial={false}
-                animate={{ width: `${Math.max(4, progress * 100)}%` }}
-                transition={{ duration: 0.5 }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
+  // 점수 선택 상태 (학생 바뀌면 자동 리셋 - key prop 으로 컴포넌트 재마운트)
+  const [dailySel, setDailySel] = useState<number | null>(null);
+  const [weeklySel, setWeeklySel] = useState<number | null>(null);
+  const [monthlySel, setMonthlySel] = useState<number | null>(null);
 
-  if (selectMode) {
-    return (
-      <button
-        type="button"
-        onClick={onToggleSelect}
-        aria-pressed={selected}
-        className={[
-          "w-full text-left relative rounded-[18px] p-3 border-[2.5px] transition-colors duration-300",
-          selected
-            ? "border-[var(--accent-success)] bg-[#dff5d0]"
-            : "border-[var(--ink)] bg-white",
-          "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
-        ].join(" ")}
-      >
-        {cardBody}
-      </button>
-    );
-  }
+  const fixedBtn =
+    "min-h-[36px] px-3 rounded-lg text-sm font-medium border transition disabled:opacity-50 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100";
+  const goldBtn =
+    "min-h-[36px] px-3 rounded-lg text-sm font-medium border transition disabled:opacity-50 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100";
+  const dangerBtn =
+    "min-h-[36px] px-3 rounded-lg text-sm font-medium border transition disabled:opacity-50 text-red-400 border-red-200 hover:bg-red-50";
 
   return (
-    <div
-      className={[
-        "relative rounded-[18px] p-3 border-[2.5px] border-[var(--ink)] transition-colors duration-300",
-        isHarvest
-          ? "bg-[var(--card-bg-hero)]"
-          : "bg-white",
-        isFlash ? "!bg-[#dff5d0]" : "",
-        "shadow-[0_2px_6px_rgba(61,40,24,0.15)]",
-      ].join(" ")}
+    <motion.div
+      initial={{ y: 80, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 80, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 320, damping: 30 }}
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.05)]"
     >
-      {cardBody}
-
-      {/* 수확 가능 학생 (8단계) 전용 버튼 */}
-      {isHarvest && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onHarvest}
-          className="mt-3 w-full min-h-[48px] py-3 rounded-[14px] border-[2.5px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.97] transition-transform shadow-card animate-soft-bounce"
-        >
-          🍎 수확하기 (사과 6개 → 바구니로)
-        </button>
-      )}
-
-      {/* 1행: 일반 적립 +1 ~ +5 */}
-      <div className="mt-3 grid grid-cols-5 gap-2">
-        {QUICK_BUTTONS.map((n) => (
-          <LongPressButton
-            key={n}
-            disabled={disabled}
-            onClick={() => onQuick(n)}
-            onLongPress={() => onLongPress(n)}
-            className={[
-              "min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] font-extrabold text-base",
-              "active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation",
-              quickClass(n),
-            ].join(" ")}
-          >
-            +{n}
-          </LongPressButton>
-        ))}
-      </div>
-
-      {/* 2행: 단원평가 만점 (+10) / 차감 (-1) */}
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <LongPressButton
-          disabled={disabled}
-          onClick={() => onQuick(10)}
-          onLongPress={() => onLongPress(10)}
-          className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
-        >
-          🏆 단원평가 만점 +10
-        </LongPressButton>
-        <button
-          disabled={disabled}
-          onClick={() => onQuick(-1)}
-          className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[#ffe4dc] text-[var(--apple-deep)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
-        >
-          −1
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function BulkActionBar({
-  count,
-  disabled,
-  onQuick,
-  onLongPress,
-}: {
-  count: number;
-  disabled: boolean;
-  onQuick: (delta: number) => void;
-  onLongPress: (delta: number) => void;
-}) {
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 px-3 pb-3 pt-2 bg-gradient-to-t from-[var(--bg-warm-start)] via-[var(--bg-warm-start)]/95 to-[var(--bg-warm-start)]/0">
-      <div className="max-w-2xl mx-auto bg-white rounded-[20px] border-[2.5px] border-[var(--ink)] shadow-card-pop p-3">
-        <div className="text-xs font-extrabold text-[var(--ink)] mb-2 px-1">
-          {count}명에게 일괄 적립 (길게 누르면 사유 입력)
-        </div>
-        <div className="grid grid-cols-5 gap-2">
-          {QUICK_BUTTONS.map((n) => (
-            <LongPressButton
-              key={n}
-              disabled={disabled}
-              onClick={() => onQuick(n)}
-              onLongPress={() => onLongPress(n)}
-              className={[
-                "min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] font-extrabold text-base",
-                "active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation",
-                quickClass(n),
-              ].join(" ")}
-            >
-              +{n}
-            </LongPressButton>
-          ))}
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <LongPressButton
-            disabled={disabled}
-            onClick={() => onQuick(10)}
-            onLongPress={() => onLongPress(10)}
-            className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[var(--accent-gold)] text-[var(--ink)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
-          >
-            🏆 +10
-          </LongPressButton>
+      <div className="max-w-5xl mx-auto px-4 py-3">
+        {/* 상단 정보 행 */}
+        <div className="flex items-center gap-3 mb-3">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-medium text-gray-900 truncate">{student.name}</span>
+              <span className="text-xs text-gray-400 truncate">
+                {student.class_name ?? "—"} · {student.total_points}pt · {stage}단계 {info.name}
+              </span>
+            </div>
+          </div>
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onQuick(-1)}
-            className="min-h-[44px] py-2.5 rounded-[14px] border-[2px] border-[var(--ink)] bg-[#ffe4dc] text-[var(--apple-deep)] font-extrabold text-base active:scale-[0.92] transition-transform duration-100 select-none touch-manipulation"
+            onClick={() => onApply(-1, "취소 -1")}
+            className={dangerBtn}
           >
-            −1
+            -1 취소
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 text-sm px-2 py-1.5 rounded-lg hover:bg-gray-50 transition"
+            aria-label="닫기"
+          >
+            ✕
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
 
-function quickClass(n: number): string {
-  // 단계별 컬러 (밝게 → 진하게)
-  switch (n) {
-    case 1:
-      return "bg-[#e8f5d8] text-[var(--ink)]";
-    case 2:
-      return "bg-[#d4ebc0] text-[var(--ink)]";
-    case 3:
-      return "bg-[#c8e598] text-[var(--ink)]";
-    case 4:
-      return "bg-[#a8d870] text-[var(--ink)]";
-    case 5:
-      return "bg-[var(--accent-success)] text-white";
-    default:
-      return "bg-[#e8f5d8] text-[var(--ink)]";
-  }
-}
+        {/* 수확 가능 (8단계) */}
+        {isHarvest && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onHarvest}
+            className="mb-3 w-full min-h-[40px] rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-sm font-medium hover:bg-amber-200 transition disabled:opacity-50"
+          >
+            🍎 수확하기 — 사과 6개 → 바구니
+          </button>
+        )}
 
-function CountUpNumber({ value }: { value: number }) {
-  const [shown, setShown] = useState(value);
-  const prevRef = useRef(value);
-
-  useEffect(() => {
-    const start = prevRef.current;
-    const end = value;
-    if (start === end) return;
-    const startTime = performance.now();
-    const duration = 400;
-    let raf = 0;
-    const tick = (t: number) => {
-      const k = Math.min(1, (t - startTime) / duration);
-      const eased = 1 - Math.pow(1 - k, 3);
-      const current = Math.round(start + (end - start) * eased);
-      setShown(current);
-      if (k < 1) raf = requestAnimationFrame(tick);
-      else prevRef.current = end;
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-
-  return (
-    <span className="text-base font-extrabold tabular-nums text-[var(--ink)]">
-      {shown}
-    </span>
-  );
-}
-
-function LongPressButton({
-  onClick,
-  onLongPress,
-  disabled,
-  className,
-  children,
-}: {
-  onClick: () => void;
-  onLongPress: () => void;
-  disabled?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const timer = useRef<number | null>(null);
-  const longPressed = useRef(false);
-
-  const start = () => {
-    longPressed.current = false;
-    timer.current = window.setTimeout(() => {
-      longPressed.current = true;
-      onLongPress();
-    }, LONG_PRESS_MS);
-  };
-  const end = (fire: boolean) => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    if (fire && !longPressed.current) onClick();
-  };
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onMouseDown={start}
-      onMouseUp={() => end(true)}
-      onMouseLeave={() => end(false)}
-      onTouchStart={start}
-      onTouchEnd={(e) => {
-        e.preventDefault();
-        end(true);
-      }}
-      className={className}
-    >
-      {children}
-    </button>
-  );
-}
-
-// 더몬스터학원 사과정원 적립 사유 프리셋 (양희쌤 기준)
-// - 실제 적립 포인트는 +1/+2/+3/+5 버튼 또는 사유 입력 후 직접 선택
-const REASON_PRESETS = [
-  "출석",
-  "숙제",
-  "일일테스트",
-  "단원평가 만점",
-  "주간 테스트",
-  "월말 테스트",
-];
-
-function ReasonModal({
-  delta,
-  title,
-  onCancel,
-  onConfirm,
-}: {
-  delta: number;
-  title?: string;
-  onCancel: () => void;
-  onConfirm: (reason: string) => void;
-}) {
-  const [text, setText] = useState("");
-  return (
-    <div className="fixed inset-0 z-50 bg-[var(--ink)]/40 flex items-end sm:items-center justify-center p-4 backdrop-blur-[1px]">
-      <div className="w-full max-w-sm bg-white rounded-[24px] border-[2.5px] border-[var(--ink)] shadow-card-pop p-5">
-        <div className="text-lg font-extrabold mb-1 text-[var(--ink)]">
-          {title ?? `${delta > 0 ? `+${delta}` : delta}pt 적립 사유`}
+        {/* 고정 포인트 */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-xs text-gray-400 w-20 shrink-0">고정 포인트</span>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onApply(1, "출석")}
+            className={fixedBtn}
+          >
+            출석 +1
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onApply(1, "숙제")}
+            className={fixedBtn}
+          >
+            숙제 +1
+          </button>
+          {level === "elementary" && (
+            <>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onApply(10, "단원테스트")}
+                className={goldBtn}
+              >
+                단원테스트 +10
+              </button>
+            </>
+          )}
         </div>
-        <p className="text-sm text-[var(--ink-soft)] mb-3">
-          자주 쓰는 사유를 누르거나 직접 입력해주세요.
-        </p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {REASON_PRESETS.map((r) => (
-            <button
-              key={r}
-              onClick={() => setText(r)}
-              className="px-3 py-1.5 rounded-full bg-[#fff5d6] border-[1.5px] border-[var(--ink)]/50 text-[var(--ink)] text-sm font-bold"
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-        <input
-          autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="예: 단어시험 만점"
-          className="w-full px-3 py-2.5 rounded-xl border-[2px] border-[var(--ink)]/40 focus:outline-none focus:border-[var(--accent-success)] font-medium"
+
+        {/* 일일/주간 테스트 */}
+        {level === "elementary" ? (
+          <ScoreRow
+            label="일일테스트"
+            range={4}
+            selected={dailySel}
+            onSelect={setDailySel}
+            disabled={disabled}
+            onApply={() => {
+              if (dailySel == null) return;
+              onApply(dailySel, `일일테스트 ${dailySel}점`);
+              setDailySel(null);
+            }}
+          />
+        ) : (
+          <ScoreRow
+            label="주간테스트"
+            range={10}
+            selected={weeklySel}
+            onSelect={setWeeklySel}
+            disabled={disabled}
+            onApply={() => {
+              if (weeklySel == null) return;
+              onApply(weeklySel, `주간테스트 ${weeklySel}점`);
+              setWeeklySel(null);
+            }}
+          />
+        )}
+
+        {/* 월말테스트 (공통) */}
+        <ScoreRow
+          label="월말테스트"
+          range={10}
+          selected={monthlySel}
+          onSelect={setMonthlySel}
+          disabled={disabled}
+          onApply={() => {
+            if (monthlySel == null) return;
+            onApply(monthlySel, `월말테스트 ${monthlySel}점`);
+            setMonthlySel(null);
+          }}
         />
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            onClick={onCancel}
-            className="py-3 rounded-xl bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold"
-          >
-            취소
-          </button>
-          <button
-            onClick={() => onConfirm(text)}
-            className="py-3 rounded-xl bg-[var(--accent-success)] border-[2px] border-[var(--ink)] text-white font-extrabold"
-          >
-            적립
-          </button>
-        </div>
       </div>
+    </motion.div>
+  );
+}
+
+function ScoreRow({
+  label,
+  range,
+  selected,
+  onSelect,
+  onApply,
+  disabled,
+}: {
+  label: string;
+  range: number;
+  selected: number | null;
+  onSelect: (n: number) => void;
+  onApply: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+      <span className="text-xs text-gray-400 w-20 shrink-0">{label}</span>
+      {Array.from({ length: range }, (_, i) => i + 1).map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={disabled}
+          onClick={() => onSelect(n)}
+          className={[
+            "min-h-[36px] min-w-[36px] px-2 rounded-lg text-sm font-medium border transition disabled:opacity-50",
+            selected === n
+              ? "bg-emerald-600 text-white border-emerald-600"
+              : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50",
+          ].join(" ")}
+        >
+          {n}
+        </button>
+      ))}
+      <button
+        type="button"
+        disabled={disabled || selected == null}
+        onClick={onApply}
+        className="ml-1 min-h-[36px] px-3 rounded-lg text-sm font-medium border border-gray-900 bg-gray-900 text-white hover:bg-gray-800 transition disabled:opacity-30 disabled:bg-gray-200 disabled:text-gray-400 disabled:border-gray-200"
+      >
+        적용
+      </button>
     </div>
   );
 }
+
+/* ============== 오늘 기록 / 되돌리기 시트 ============== */
 
 function RecentLogsSheet({
   logs,
@@ -1035,7 +775,6 @@ function RecentLogsSheet({
   onUndoLog: (logId: string) => void;
   onClose: () => void;
 }) {
-  // 시트 자체에서 1분마다 시계 갱신 (묵음 표시 실시간)
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
@@ -1047,16 +786,12 @@ function RecentLogsSheet({
     t.setHours(0, 0, 0, 0);
     return t.getTime();
   }, []);
-  const todayLogs = logs.filter(
-    (l) => new Date(l.logged_at).getTime() >= todayStart,
-  );
+  const todayLogs = logs.filter((l) => new Date(l.logged_at).getTime() >= todayStart);
 
-  // pending 정렬: 묵은 순 (오래된 것 위로) — 묵음 알림이 잘 보이게
   const sortedPending = useMemo(
     () =>
       [...pendingPoints].sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       ),
     [pendingPoints],
   );
@@ -1070,88 +805,75 @@ function RecentLogsSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[var(--ink)]/40 flex items-end justify-center backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 bg-gray-900/30 flex items-end justify-center backdrop-blur-[1px]"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-white rounded-t-[24px] border-t-[2.5px] border-[var(--ink)] p-5 max-h-[80vh] overflow-y-auto"
+        className="w-full max-w-2xl bg-white rounded-t-2xl border-t border-gray-100 p-5 max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-extrabold text-[var(--ink)]">
-            오늘 기록 / 되돌리기
-          </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-900">오늘 기록 / 되돌리기</h2>
           <button
             onClick={onClose}
-            className="text-[var(--ink-soft)] text-sm font-bold"
+            className="text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
           >
             닫기
           </button>
         </div>
 
-        {/* 대기 중 (아직 학생이 받기 안 누름) */}
-        <section className="mb-4">
-          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2 flex-wrap">
-            <span>🎁 대기 중</span>
-            <span className="text-xs font-bold text-[var(--ink-soft)]">
-              ({sortedPending.length})
-            </span>
+        <section className="mb-5">
+          <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2 flex-wrap">
+            <span>대기 중</span>
+            <span className="text-xs text-gray-400">({sortedPending.length})</span>
             {staleCount > 0 && (
-              <span className="text-xs font-extrabold text-[var(--apple-deep)] bg-[#fef2f0] border border-[var(--apple-deep)] rounded-full px-2 py-0.5">
-                ⚠️ 3일+ {staleCount}개
+              <span className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                3일+ {staleCount}개
               </span>
             )}
             {warmCount > 0 && (
-              <span className="text-xs font-extrabold text-[var(--accent-warning)] bg-[var(--accent-warning-bg)] border border-[var(--accent-warning)] rounded-full px-2 py-0.5">
+              <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                 12h+ {warmCount}개
               </span>
             )}
           </div>
           {sortedPending.length === 0 ? (
-            <p className="text-center text-[var(--ink-soft)] py-4 text-sm">
-              대기 중인 포인트가 없어요.
-            </p>
+            <p className="text-center text-gray-400 py-4 text-sm">대기 중인 포인트가 없어요.</p>
           ) : (
-            <ul className="divide-y divide-[var(--ink)]/10">
+            <ul className="divide-y divide-gray-100">
               {sortedPending.map((p) => {
                 const m = studentMap[p.student_id];
                 const age = pendingAge(p.created_at, now);
                 const ageColor =
                   age.severity === "stale"
-                    ? "text-[var(--apple-deep)]"
+                    ? "text-red-500"
                     : age.severity === "warm"
-                      ? "text-[var(--accent-warning)]"
-                      : "text-[var(--ink-soft)]";
+                      ? "text-amber-600"
+                      : "text-gray-400";
                 const rowBg =
                   age.severity === "stale"
-                    ? "bg-[#fef2f0]"
+                    ? "bg-red-50"
                     : age.severity === "warm"
-                      ? "bg-[var(--accent-warning-bg)]"
+                      ? "bg-amber-50"
                       : "";
                 return (
                   <li
                     key={p.id}
                     className={`py-2 px-2 -mx-2 rounded-lg flex items-center gap-3 ${rowBg}`}
                   >
-                    <div
-                      className={`text-xs font-extrabold tabular-nums w-16 text-right ${ageColor}`}
-                    >
+                    <div className={`text-xs font-medium tabular-nums w-14 text-right ${ageColor}`}>
                       {age.label}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-extrabold truncate text-[var(--ink)]">
+                      <div className="font-medium text-gray-900 truncate text-sm">
                         {m?.name ?? "(삭제된 학생)"}
                       </div>
-                      <div className="text-xs text-[var(--ink-soft)] truncate">
-                        {p.reason ?? "—"}
-                      </div>
+                      <div className="text-xs text-gray-400 truncate">{p.reason ?? "—"}</div>
                     </div>
                     <div
                       className={[
-                        "font-extrabold tabular-nums",
-                        p.points >= 0
-                          ? "text-[var(--accent-success)]"
-                          : "text-[var(--apple-deep)]",
+                        "font-medium tabular-nums text-sm",
+                        p.points >= 0 ? "text-emerald-600" : "text-red-500",
                       ].join(" ")}
                     >
                       {p.points > 0 ? "+" : ""}
@@ -1161,7 +883,7 @@ function RecentLogsSheet({
                       type="button"
                       disabled={disabled}
                       onClick={() => onCancelPending(p.id)}
-                      className="shrink-0 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold disabled:opacity-50"
+                      className="shrink-0 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition disabled:opacity-50"
                     >
                       취소
                     </button>
@@ -1172,20 +894,17 @@ function RecentLogsSheet({
           )}
         </section>
 
-        {/* 오늘 적용된 로그 */}
         <section>
-          <div className="text-sm font-extrabold text-[var(--ink)] mb-2 flex items-center gap-2">
-            <span>📋 오늘 적용됨</span>
-            <span className="text-xs font-bold text-[var(--ink-soft)]">
-              ({todayLogs.length})
-            </span>
+          <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <span>오늘 적용됨</span>
+            <span className="text-xs text-gray-400">({todayLogs.length})</span>
           </div>
           {todayLogs.length === 0 ? (
-            <p className="text-center text-[var(--ink-soft)] py-4 text-sm">
+            <p className="text-center text-gray-400 py-4 text-sm">
               아직 오늘 적용된 기록이 없어요.
             </p>
           ) : (
-            <ul className="divide-y divide-[var(--ink)]/10">
+            <ul className="divide-y divide-gray-100">
               {todayLogs.map((l) => {
                 const m = studentMap[l.student_id];
                 const t = new Date(l.logged_at);
@@ -1195,40 +914,34 @@ function RecentLogsSheet({
                 const isCompensation = (l.reason ?? "").startsWith("되돌리기:");
                 return (
                   <li key={l.id} className="py-2 flex items-center gap-3">
-                    <div className="text-xs font-bold text-[var(--ink-soft)] tabular-nums w-12">
+                    <div className="text-xs font-medium text-gray-400 tabular-nums w-12">
                       {hh}:{mm}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-extrabold truncate text-[var(--ink)]">
+                      <div className="font-medium text-gray-900 truncate text-sm">
                         {m?.name ?? "(삭제된 학생)"}
                       </div>
-                      <div className="text-xs text-[var(--ink-soft)] truncate">
-                        {l.reason ?? "—"}
-                      </div>
+                      <div className="text-xs text-gray-400 truncate">{l.reason ?? "—"}</div>
                     </div>
                     <div
                       className={[
-                        "font-extrabold tabular-nums",
-                        l.points >= 0
-                          ? "text-[var(--accent-success)]"
-                          : "text-[var(--apple-deep)]",
+                        "font-medium tabular-nums text-sm",
+                        l.points >= 0 ? "text-emerald-600" : "text-red-500",
                       ].join(" ")}
                     >
                       {l.points > 0 ? "+" : ""}
                       {l.points}pt
                     </div>
-                    {/* 보상 로그 자체는 되돌리기 버튼 숨김 (무한 루프 방지) */}
                     {!isCompensation && (
                       <button
                         type="button"
                         disabled={disabled || isUndone}
                         onClick={() => onUndoLog(l.id)}
                         className={[
-                          "shrink-0 px-2.5 py-1.5 rounded-full text-xs font-extrabold border-[1.5px] border-[var(--ink)]",
+                          "shrink-0 text-xs font-medium border rounded-lg px-2.5 py-1 transition disabled:opacity-50",
                           isUndone
-                            ? "bg-[var(--ink)]/10 text-[var(--ink-soft)]"
-                            : "bg-white text-[var(--ink)]",
-                          "disabled:opacity-50",
+                            ? "text-gray-400 border-gray-100 bg-gray-50"
+                            : "text-gray-500 border-gray-200 hover:bg-gray-50",
                         ].join(" ")}
                       >
                         {isUndone ? "되돌림" : "되돌리기"}
@@ -1245,20 +958,12 @@ function RecentLogsSheet({
   );
 }
 
-function StageUpModal({
-  stageUp,
-  onClose,
-}: {
-  stageUp: StageUp;
-  onClose: () => void;
-}) {
-  // 자동 닫기
+/* ============== 단계 상승 / 수확 모달 ============== */
+
+function StageUpModal({ stageUp, onClose }: { stageUp: StageUp; onClose: () => void }) {
   useEffect(() => {
-    const timeoutId = setTimeout(
-      onClose,
-      stageUp.isHarvest ? 8_000 : 4_000,
-    );
-    return () => clearTimeout(timeoutId);
+    const id = setTimeout(onClose, stageUp.isHarvest ? 8_000 : 4_000);
+    return () => clearTimeout(id);
   }, [stageUp, onClose]);
 
   return (
@@ -1266,48 +971,22 @@ function StageUpModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-[var(--ink)]/40 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-gray-900/40 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.6, y: 50, opacity: 0 }}
+        initial={{ scale: 0.7, y: 30, opacity: 0 }}
         animate={{ scale: 1, y: 0, opacity: 1 }}
         exit={{ scale: 0.85, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 240, damping: 18 }}
-        className={[
-          "relative rounded-[28px] border-[3px] border-[var(--ink)] px-8 py-7 text-center shadow-card-pop",
-          stageUp.isHarvest
-            ? "bg-gradient-to-br from-[#fff5d6] via-[var(--accent-gold)] to-[#f0a020]"
-            : "bg-gradient-to-br from-white via-[#fff5d6] to-[var(--accent-gold)]",
-        ].join(" ")}
+        transition={{ type: "spring", stiffness: 250, damping: 20 }}
+        className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white px-6 py-6 text-center shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-6xl mb-1 animate-soft-bounce">
-          {stageUp.isHarvest ? "🎉" : "🌳"}
-        </div>
-        <div className="text-lg font-extrabold text-[var(--ink)]">
-          축하합니다!
-        </div>
-        <div className="mt-1 text-3xl font-black text-[var(--ink)] tracking-tight">
-          {stageUp.name}
-        </div>
-        <div className="mt-2 text-xl font-extrabold text-[var(--ink)]">
-          {stageUp.isHarvest ? (
-            <>
-              사과를{" "}
-              <span className="underline decoration-wavy decoration-[var(--apple-base)]">
-                수확
-              </span>
-              !
-            </>
-          ) : (
-            <>
-              <span className="underline decoration-wavy decoration-[var(--apple-base)]">
-                {stageUp.stageName}
-              </span>{" "}
-              단계로 성장!
-            </>
-          )}
+        <div className="text-5xl mb-2">{stageUp.isHarvest ? "🎉" : stageEmoji(stageUp.stage)}</div>
+        <div className="text-sm font-medium text-gray-500">축하합니다</div>
+        <div className="mt-1 text-2xl font-semibold text-gray-900">{stageUp.name}</div>
+        <div className="mt-2 text-base font-medium text-gray-700">
+          {stageUp.isHarvest ? <>사과를 수확할 수 있어요</> : <>{stageUp.stageName} 단계로 성장</>}
         </div>
       </motion.div>
     </motion.div>
@@ -1330,27 +1009,24 @@ function HarvestConfirmModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[55] flex items-center justify-center p-6 bg-[var(--ink)]/40 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[55] flex items-center justify-center p-6 bg-gray-900/40 backdrop-blur-[2px]"
       onClick={onCancel}
     >
       <motion.div
-        initial={{ scale: 0.7, y: 30, opacity: 0 }}
+        initial={{ scale: 0.85, y: 20, opacity: 0 }}
         animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ scale: 0.85, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 250, damping: 20 }}
-        className="relative w-full max-w-sm rounded-[24px] border-[3px] border-[var(--ink)] bg-white px-6 py-6 text-center shadow-card-pop"
+        exit={{ scale: 0.9, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 280, damping: 22 }}
+        className="relative w-full max-w-sm rounded-2xl border border-gray-100 bg-white px-6 py-6 text-center shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-5xl mb-2">🍎</div>
-        <div className="text-xl font-extrabold text-[var(--ink)]">수확하시겠어요?</div>
-        <div className="mt-3 text-base font-bold text-[var(--ink)]">
-          {student.name}
-        </div>
-        <p className="mt-2 text-sm text-[var(--ink-soft)] leading-relaxed">
-          사과 <b className="text-[var(--apple-deep)]">6개</b>가 바구니로
-          모이고,
+        <div className="text-4xl mb-2">🍎</div>
+        <div className="text-lg font-semibold text-gray-900">수확하시겠어요?</div>
+        <div className="mt-3 text-sm font-medium text-gray-900">{student.name}</div>
+        <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+          사과 <b className="text-red-500">6개</b>가 바구니로 모이고,
           <br />
-          나무는 <b>큰나무 (5단계)</b>로 돌아가
+          나무는 <b>큰나무(5단계)</b>로 돌아가
           <br />
           다시 꽃 → 열매 → 수확 사이클을 시작해요.
         </p>
@@ -1358,16 +1034,16 @@ function HarvestConfirmModal({
           <button
             disabled={disabled}
             onClick={onCancel}
-            className="py-3 rounded-xl bg-white border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold disabled:opacity-50"
+            className="py-2.5 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
           >
             취소
           </button>
           <button
             disabled={disabled}
             onClick={onConfirm}
-            className="py-3 rounded-xl bg-[var(--accent-gold)] border-[2px] border-[var(--ink)] text-[var(--ink)] font-extrabold disabled:opacity-50"
+            className="py-2.5 rounded-lg bg-amber-100 border border-amber-300 text-sm font-medium text-amber-900 hover:bg-amber-200 transition disabled:opacity-50"
           >
-            🍎 수확하기
+            수확하기
           </button>
         </div>
       </motion.div>
@@ -1375,8 +1051,8 @@ function HarvestConfirmModal({
   );
 }
 
-// 모바일 햅틱(진동) 피드백 - navigator.vibrate 가 있는 환경(Android Chrome 등)에서만 동작
-// iOS Safari 는 미지원 → noop
+/* ============== util ============== */
+
 function triggerHaptic(kind: "tap" | "warning" | "strong") {
   if (typeof navigator === "undefined") return;
   const nav = navigator as Navigator & {
@@ -1388,7 +1064,7 @@ function triggerHaptic(kind: "tap" | "warning" | "strong") {
     else if (kind === "warning") nav.vibrate([10, 40, 10]);
     else if (kind === "strong") nav.vibrate([25, 30, 25, 30, 50]);
   } catch {
-    // 일부 환경에서 권한 없을 수 있음
+    // 권한 미허용
   }
 }
 
@@ -1397,29 +1073,12 @@ function fireConfetti(harvest: boolean) {
   if (harvest) {
     const end = Date.now() + 2_500;
     const tick = () => {
-      confetti({
-        particleCount: 4,
-        angle: 60,
-        spread: 65,
-        origin: { x: 0, y: 0.7 },
-        colors,
-      });
-      confetti({
-        particleCount: 4,
-        angle: 120,
-        spread: 65,
-        origin: { x: 1, y: 0.7 },
-        colors,
-      });
+      confetti({ particleCount: 4, angle: 60, spread: 65, origin: { x: 0, y: 0.7 }, colors });
+      confetti({ particleCount: 4, angle: 120, spread: 65, origin: { x: 1, y: 0.7 }, colors });
       if (Date.now() < end) requestAnimationFrame(tick);
     };
     tick();
   } else {
-    confetti({
-      particleCount: 60,
-      spread: 65,
-      origin: { y: 0.5 },
-      colors,
-    });
+    confetti({ particleCount: 60, spread: 65, origin: { y: 0.5 }, colors });
   }
 }
