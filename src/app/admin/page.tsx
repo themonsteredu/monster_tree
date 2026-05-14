@@ -36,11 +36,10 @@ export default async function AdminPage({
   // 환경변수 미설정 안내
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return (
-      <main className="min-h-screen p-6">
-        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-card p-6 text-center">
-          <div className="text-4xl mb-2">🪴</div>
-          <p className="text-ink-strong leading-relaxed">
-            Supabase 환경변수가 비어 있어요. 프로젝트 루트의 <code>.env.local</code> 을 채워주세요.
+      <main className="min-h-screen p-6 bg-gray-50">
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center">
+          <p className="text-gray-900 leading-relaxed">
+            Supabase 환경변수가 비어 있어요. 프로젝트 루트의 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">.env.local</code> 을 채워주세요.
           </p>
         </div>
       </main>
@@ -99,52 +98,64 @@ export default async function AdminPage({
   for (const s of (students ?? []) as GardenStudent[]) studentMap.set(s.id, s);
 
   return (
-    <main className="min-h-screen pb-32">
-      <header className="sticky top-0 z-30 bg-cream/90 backdrop-blur border-b border-pot/10">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <a
-              href={monsterUrl}
-              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card"
-              aria-label="monster-site 지점 관리자 페이지로"
-            >
-              ← 본사
-            </a>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold truncate leading-tight">사과정원 관리</h1>
-              {branchName && (
-                <div className="text-xs text-ink-soft truncate">{branchName}</div>
-              )}
-            </div>
+    <main className="min-h-screen pb-32 bg-gray-50">
+      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-4 pt-3 pb-2 flex items-center gap-3">
+          <a
+            href={monsterUrl}
+            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
+            aria-label="monster-site 지점 관리자 페이지로"
+          >
+            ← 본사
+          </a>
+          <div className="min-w-0 flex items-baseline gap-2">
+            <h1 className="text-lg font-semibold text-gray-900 truncate leading-tight">사과정원 관리</h1>
+            {branchName && (
+              <span className="text-xs text-gray-400 truncate">{branchName}</span>
+            )}
           </div>
-          <nav className="flex gap-3 text-sm flex-wrap items-center">
-            <Link href="/admin/students" className="text-ink-soft hover:text-apple">
-              학생 관리
+        </div>
+        <div className="max-w-5xl mx-auto px-4 pb-2 flex items-center justify-between gap-2">
+          <nav className="flex flex-wrap items-center gap-1">
+            <Link
+              href="/admin/students"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              학생관리
             </Link>
-            <Link href="/admin/reports" className="text-ink-soft hover:text-apple">
+            <Link
+              href="/admin/reports"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
               리포트
             </Link>
-            <Link href="/admin/gallery" className="text-ink-soft hover:text-apple">
-              아바타 갤러리
+            <Link
+              href="/admin/gallery"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              아바타갤러리
             </Link>
-            <Link href="/admin/reset" className="text-ink-soft hover:text-apple">
-              학기 리셋
+            <Link
+              href="/admin/reset"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              학기리셋
             </Link>
             <Link
               href={`/?branch=${encodeURIComponent(branchId!)}`}
               target="_blank"
-              className="text-ink-soft hover:text-apple"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >
-              TV 화면 ↗
-            </Link>
-            <Link
-              href="/admin/select-branch"
-              className="text-xs text-ink-soft hover:text-apple underline"
-              title={`지점: ${branchName ?? branchId}`}
-            >
-              지점 변경
+              TV화면 ↗
             </Link>
           </nav>
+          <Link
+            href="/admin/select-branch"
+            className="text-xs text-gray-400 hover:text-gray-700 rounded-lg px-2 py-1 transition shrink-0"
+            title={`지점: ${branchName ?? branchId}`}
+          >
+            지점 변경
+          </Link>
         </div>
       </header>
 
