@@ -429,6 +429,8 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
+                  // 모바일에서 트리+아바타 나란히 둘 때 좌우 간격
+                  gap: isMobile ? 6 : 0,
                   minHeight: 200,
                 }}
               >
@@ -437,7 +439,8 @@ export function MeTreeClient({
                   <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                     <AppleTree
                       stage={stage}
-                      size="xl"
+                      // 모바일에서는 트리를 medium 으로 줄여 아바타와 나란히 들어가게 한다.
+                      size={isMobile ? "medium" : "xl"}
                       mood={treeMood}
                       wilted={isNegative}
                       growthBoost={progress}
@@ -452,12 +455,9 @@ export function MeTreeClient({
                   style={
                     isMobile
                       ? {
-                          // 모바일: 트리 박스 정중앙 + 영역의 약 65% 폭 차지 (AvatarFigure 가 max-width 로 동작)
-                          position: "absolute",
-                          left: "50%",
-                          bottom: 0,
-                          transform: "translateX(-50%)",
-                          width: "65%",
+                          // 모바일: flex 자식으로 트리 옆에 나란히 (겹침 없음)
+                          position: "relative",
+                          alignSelf: "flex-end",
                           pointerEvents: "none",
                         }
                       : {
@@ -469,7 +469,7 @@ export function MeTreeClient({
                         }
                   }
                 >
-                  <AvatarFigure config={currentAvatar} size={isMobile ? 240 : 160} />
+                  <AvatarFigure config={currentAvatar} size={isMobile ? 120 : 160} />
                 </div>
               </div>
             </div>

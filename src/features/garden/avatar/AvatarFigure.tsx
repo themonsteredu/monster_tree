@@ -1031,12 +1031,10 @@ function GalleryAvatar({
       className={className}
       style={{
         position: "relative",
-        // size 는 fixed 가 아닌 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
-        // 그 이상이면 size 까지만 자란다. aspect-ratio 로 정사각형 비율 유지.
-        width: "100%",
-        maxWidth: size,
-        aspectRatio: "1 / 1",
-        marginInline: "auto",
+        // size 픽셀 그대로 — 옷/머리/얼굴 슬롯의 % 좌표가 inner 박스 기준이므로 외곽/inner 모두
+        // 명시적 px 로 두어야 비율 일관성 보장. 호출자는 부모 폭 ≥ size 가 되도록 size 를 적절히 결정.
+        width: size,
+        height: size,
         display: "block",
         overflow: "hidden",
       }}
@@ -1047,9 +1045,8 @@ function GalleryAvatar({
             position: "absolute",
             left: "50%",
             top: "50%",
-            // 외곽 박스가 줄어도 비율 유지하도록 inner 도 % 기반으로 변환.
-            width: `${(innerWidth / size) * 100}%`,
-            height: `${(innerHeight / size) * 100}%`,
+            width: innerWidth,
+            height: innerHeight,
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -1112,16 +1109,12 @@ export function AvatarFigure({
         height={(size * 170) / 120}
         className={className}
         style={{
-          // size 는 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
-          // 그 이상이면 size 까지만 자람. aspect-ratio 로 12:17 비율 유지.
-          width: "100%",
-          maxWidth: size,
-          height: "auto",
-          aspectRatio: "120 / 170",
+          // size 픽셀 그대로 (호출자가 부모 폭 ≥ size 보장)
+          width: size,
+          height: (size * 170) / 120,
           objectFit: "contain",
           objectPosition: "center bottom",
           display: "block",
-          marginInline: "auto",
         }}
       />
     );
@@ -1165,16 +1158,7 @@ export function AvatarFigure({
       height={(size * 170) / 120}
       className={className}
       aria-hidden
-      // size 는 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
-      // 그 이상이면 size 까지만 자람. height:auto + aspect-ratio 로 12:17 비율 유지.
-      style={{
-        display: "block",
-        width: "100%",
-        maxWidth: size,
-        height: "auto",
-        aspectRatio: "120 / 170",
-        marginInline: "auto",
-      }}
+      style={{ display: "block" }}
     >
       {inner}
       {glassesV && <Glasses variant={glassesV} />}
