@@ -84,21 +84,21 @@ export default async function ReportsPage({
       : [{ data: [] }, { data: [] }];
 
   return (
-    <main className="min-h-screen pb-20">
-      <header className="sticky top-0 z-30 bg-[var(--bg-warm-start)]/90 backdrop-blur border-b border-[var(--ink)]/10">
+    <main className="min-h-screen pb-20 bg-gray-50">
+      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Link
               href="/admin"
-              className="text-sm font-bold text-[var(--ink-soft)] underline shrink-0"
+              className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
             >
               ← 관리
             </Link>
-            <h1 className="text-xl font-bold text-[var(--ink)] truncate">리포트</h1>
+            <h1 className="text-lg font-semibold text-gray-900 truncate">리포트</h1>
           </div>
           <a
             href={monsterUrl}
-            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white border-[1.5px] border-[var(--ink)] text-[var(--ink)] text-xs font-extrabold shadow-card"
+            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
             aria-label="monster-site 지점 관리자 페이지로"
           >
             ← 본사

@@ -156,7 +156,7 @@ export function ReportsClient({
   }, [filteredLogs, periodStart]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-4 space-y-5">
+    <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
       {/* 기간 탭 */}
       <div className="flex items-center gap-2">
         <RangeChip active={range === "week"} onClick={() => setRange("week")}>
@@ -165,7 +165,7 @@ export function ReportsClient({
         <RangeChip active={range === "month"} onClick={() => setRange("month")}>
           이번 달
         </RangeChip>
-        <span className="ml-auto text-xs font-bold text-[var(--ink-soft)]">
+        <span className="ml-auto text-xs text-gray-400">
           {formatDate(periodStart)} ~ 오늘
         </span>
       </div>
@@ -193,43 +193,37 @@ export function ReportsClient({
         />
       </section>
 
-      {/* 일별 미니 막대 (최대 31일) */}
-      <section className="bg-white rounded-2xl border-[2px] border-[var(--ink)] p-4">
-        <div className="text-sm font-extrabold text-[var(--ink)] mb-3">
-          일별 활동
-        </div>
+      {/* 일별 미니 막대 */}
+      <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <div className="text-sm font-semibold text-gray-900 mb-3">일별 활동</div>
         <DailyBars data={dailySeries} />
       </section>
 
       {/* 학생별 순위 (Top 20) */}
-      <section className="bg-white rounded-2xl border-[2px] border-[var(--ink)] p-4">
+      <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-extrabold text-[var(--ink)]">학생별 순 적립 순위</div>
-          <div className="text-xs font-bold text-[var(--ink-soft)]">
-            {byStudent.length}명 활동
-          </div>
+          <div className="text-sm font-semibold text-gray-900">학생별 순 적립 순위</div>
+          <div className="text-xs text-gray-400">{byStudent.length}명 활동</div>
         </div>
         {byStudent.length === 0 ? (
-          <p className="text-center text-sm text-[var(--ink-soft)] py-4">
-            기간 내 활동이 없어요.
-          </p>
+          <p className="text-center text-sm text-gray-400 py-4">기간 내 활동이 없어요.</p>
         ) : (
-          <ul className="divide-y divide-[var(--ink)]/10">
+          <ul className="divide-y divide-gray-100">
             {byStudent.slice(0, 20).map((row, i) => (
               <li key={row.id} className="py-2 flex items-center gap-3">
-                <div className="w-6 text-center text-xs font-extrabold tabular-nums text-[var(--ink-soft)]">
+                <div className="w-6 text-center text-xs font-medium tabular-nums text-gray-400">
                   {i + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-extrabold truncate text-[var(--ink)]">{row.name}</div>
-                  <div className="text-xs text-[var(--ink-soft)] truncate">
+                  <div className="font-medium text-gray-900 truncate text-sm">{row.name}</div>
+                  <div className="text-xs text-gray-400 truncate">
                     {row.className} · {row.count}회
                   </div>
                 </div>
                 <div
                   className={[
-                    "text-sm font-extrabold tabular-nums",
-                    row.net >= 0 ? "text-[var(--accent-success)]" : "text-[var(--apple-deep)]",
+                    "text-sm font-medium tabular-nums",
+                    row.net >= 0 ? "text-emerald-600" : "text-red-500",
                   ].join(" ")}
                 >
                   {row.net > 0 ? "+" : ""}
@@ -243,21 +237,19 @@ export function ReportsClient({
 
       {/* 수확 사과 순위 */}
       {harvestByStudent.length > 0 && (
-        <section className="bg-white rounded-2xl border-[2px] border-[var(--ink)] p-4">
-          <div className="text-sm font-extrabold text-[var(--ink)] mb-3">
-            🍎 수확 사과 순위
-          </div>
-          <ul className="divide-y divide-[var(--ink)]/10">
+        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div className="text-sm font-semibold text-gray-900 mb-3">수확 사과 순위</div>
+          <ul className="divide-y divide-gray-100">
             {harvestByStudent.map((row, i) => (
               <li key={row.id} className="py-2 flex items-center gap-3">
-                <div className="w-6 text-center text-xs font-extrabold tabular-nums text-[var(--ink-soft)]">
+                <div className="w-6 text-center text-xs font-medium tabular-nums text-gray-400">
                   {i + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-extrabold truncate text-[var(--ink)]">{row.name}</div>
-                  <div className="text-xs text-[var(--ink-soft)] truncate">{row.className}</div>
+                  <div className="font-medium text-gray-900 truncate text-sm">{row.name}</div>
+                  <div className="text-xs text-gray-400 truncate">{row.className}</div>
                 </div>
-                <div className="text-sm font-extrabold tabular-nums text-[var(--apple-deep)]">
+                <div className="text-sm font-medium tabular-nums text-red-500">
                   🍎 {row.apples}개
                 </div>
               </li>
@@ -268,21 +260,21 @@ export function ReportsClient({
 
       {/* 반별 합계 */}
       {byClass.length > 0 && (
-        <section className="bg-white rounded-2xl border-[2px] border-[var(--ink)] p-4">
-          <div className="text-sm font-extrabold text-[var(--ink)] mb-3">반별 순 적립</div>
-          <ul className="divide-y divide-[var(--ink)]/10">
+        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div className="text-sm font-semibold text-gray-900 mb-3">반별 순 적립</div>
+          <ul className="divide-y divide-gray-100">
             {byClass.map((row) => (
               <li key={row.className} className="py-2 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="font-extrabold truncate text-[var(--ink)]">{row.className}</div>
-                  <div className="text-xs text-[var(--ink-soft)]">
+                  <div className="font-medium text-gray-900 truncate text-sm">{row.className}</div>
+                  <div className="text-xs text-gray-400">
                     {row.students}명 활동 · {row.count}건
                   </div>
                 </div>
                 <div
                   className={[
-                    "text-sm font-extrabold tabular-nums",
-                    row.net >= 0 ? "text-[var(--accent-success)]" : "text-[var(--apple-deep)]",
+                    "text-sm font-medium tabular-nums",
+                    row.net >= 0 ? "text-emerald-600" : "text-red-500",
                   ].join(" ")}
                 >
                   {row.net > 0 ? "+" : ""}
@@ -312,10 +304,10 @@ function RangeChip({
       onClick={onClick}
       aria-pressed={active}
       className={[
-        "px-3.5 py-2 rounded-full text-sm font-extrabold border-[2px] border-[var(--ink)]",
+        "px-3 py-1.5 rounded-full text-sm font-medium border transition",
         active
-          ? "bg-[var(--ink)] text-white"
-          : "bg-white text-[var(--ink)]",
+          ? "bg-amber-100 text-amber-900 border-amber-200"
+          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50",
       ].join(" ")}
     >
       {children}
@@ -334,27 +326,18 @@ function KpiCard({
   unit: string;
   tone: "primary" | "positive" | "negative";
 }) {
-  const palette =
+  const toneClass =
     tone === "positive"
-      ? { bg: "#f0fae6", border: "#a8e070", color: "var(--accent-success)" }
+      ? "text-emerald-600"
       : tone === "negative"
-        ? { bg: "#fef2f0", border: "#f5cdc4", color: "var(--apple-deep)" }
-        : { bg: "#fff5d6", border: "#f0c050", color: "var(--ink)" };
+        ? "text-red-500"
+        : "text-amber-700";
   return (
-    <div
-      className="rounded-xl p-3"
-      style={{
-        background: palette.bg,
-        border: `2px solid ${palette.border}`,
-      }}
-    >
-      <div className="text-[11px] font-bold text-[var(--ink-soft)]">{label}</div>
-      <div
-        className="text-xl font-black mt-1 tabular-nums"
-        style={{ color: palette.color }}
-      >
+    <div className="rounded-xl p-3 bg-white border border-gray-100 shadow-sm">
+      <div className="text-xs text-gray-400">{label}</div>
+      <div className={`text-xl font-semibold mt-1 tabular-nums ${toneClass}`}>
         {value}
-        <span className="text-xs font-bold ml-0.5 opacity-70">{unit}</span>
+        <span className="text-xs font-normal ml-0.5 text-gray-400">{unit}</span>
       </div>
     </div>
   );
@@ -366,16 +349,9 @@ function DailyBars({
   data: { date: string; pos: number; neg: number }[];
 }) {
   if (data.length === 0) {
-    return (
-      <p className="text-center text-sm text-[var(--ink-soft)] py-4">
-        기간 내 활동이 없어요.
-      </p>
-    );
+    return <p className="text-center text-sm text-gray-400 py-4">기간 내 활동이 없어요.</p>;
   }
-  const max = Math.max(
-    1,
-    ...data.map((d) => Math.max(d.pos, Math.abs(d.neg))),
-  );
+  const max = Math.max(1, ...data.map((d) => Math.max(d.pos, Math.abs(d.neg))));
   return (
     <div className="flex items-end gap-[3px] h-32">
       {data.map((d) => {
@@ -390,21 +366,16 @@ function DailyBars({
           >
             <div className="w-full flex flex-col justify-end items-stretch h-24">
               {d.pos > 0 && (
-                <div
-                  className="bg-[var(--accent-success)] rounded-sm"
-                  style={{ height: `${posH}%` }}
-                />
+                <div className="bg-emerald-400 rounded-sm" style={{ height: `${posH}%` }} />
               )}
               {d.neg < 0 && (
                 <div
-                  className="bg-[var(--apple-deep)] rounded-sm mt-0.5"
-                  style={{ height: `${negH * 0.4}%`, opacity: 0.7 }}
+                  className="bg-red-300 rounded-sm mt-0.5"
+                  style={{ height: `${negH * 0.4}%` }}
                 />
               )}
             </div>
-            <div className="text-[9px] font-bold text-[var(--ink-soft)] tabular-nums">
-              {day}
-            </div>
+            <div className="text-[9px] font-medium text-gray-400 tabular-nums">{day}</div>
           </div>
         );
       })}
