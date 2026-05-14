@@ -269,30 +269,30 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-4 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
       {error && (
-        <div className="bg-[#fde8e4] text-[#a83020] px-3 py-2 rounded text-sm">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
           {error}
         </div>
       )}
-      <p className="text-sm text-ink-soft">
+      <p className="text-sm text-gray-500">
         학생들이 아바타 꾸미기에서 카테고리마다 1개씩 골라 합성한 아바타를 사용합니다. 같은 비율의
         정사각형 PNG (투명 배경) 가 가장 잘 어울려요.
       </p>
-      <div className="bg-cream/60 border-[1.5px] border-pot/30 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs text-ink-soft flex-1 min-w-[180px]">
-          자동 크롭 도입 이전에 올린 이미지는 PNG 투명 여백이 남아 슬롯 비율이 어긋날 수 있어요.
-          한 번에 모든 항목을 다시 크롭할 수 있습니다.
+      <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-gray-500 flex-1 min-w-[180px]">
+          자동 크롭 도입 이전에 올린 이미지는 PNG 투명 여백이 남아 슬롯 비율이 어긋날 수 있어요. 한
+          번에 모든 항목을 다시 크롭할 수 있습니다.
         </div>
         <button
           type="button"
           onClick={handleRecleanAll}
           disabled={pending || items.length === 0}
-          className="px-3 py-2 rounded bg-pot text-white font-extrabold text-sm disabled:opacity-50 whitespace-nowrap"
+          className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50 whitespace-nowrap"
         >
           {bulkProgress
-            ? `🧹 ${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
-            : `🧹 전체 항목 다시 크롭 (${items.length})`}
+            ? `${bulkProgress.done}/${bulkProgress.total} 처리 중${bulkProgress.failed > 0 ? ` (실패 ${bulkProgress.failed})` : ""}…`
+            : `전체 항목 다시 크롭 (${items.length})`}
         </button>
       </div>
       {CATEGORIES.map((c) => (
@@ -339,19 +339,19 @@ function CategorySection({
   };
 
   return (
-    <section className="bg-white border-[1.5px] border-pot/30 rounded-xl p-4">
+    <section className="bg-white border border-gray-100 shadow-sm rounded-xl p-4">
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="font-extrabold text-ink">{label}</h2>
-        <span className="text-xs text-ink-soft">{items.length}개</span>
+        <h2 className="font-semibold text-gray-900">{label}</h2>
+        <span className="text-xs text-gray-400">{items.length}개</span>
       </div>
-      <p className="text-xs text-ink-soft mb-3">{hint}</p>
+      <p className="text-xs text-gray-500 mb-3">{hint}</p>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <input
           type="text"
           placeholder="라벨 (선택)"
           value={draftLabel}
           onChange={(e) => setDraftLabel(e.target.value)}
-          className="px-3 py-2 border-[1.5px] border-pot/30 rounded text-sm flex-1 min-w-[120px]"
+          className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition flex-1 min-w-[120px]"
         />
         <input
           ref={fileRef}
@@ -364,13 +364,13 @@ function CategorySection({
           type="button"
           onClick={onPick}
           disabled={pending}
-          className="px-3 py-2 rounded bg-apple text-white font-extrabold text-sm disabled:opacity-50"
+          className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50"
         >
-          {pending ? "업로드 중..." : "📷 이미지 추가"}
+          {pending ? "업로드 중..." : "이미지 추가"}
         </button>
       </div>
       {items.length === 0 ? (
-        <div className="text-xs text-ink-soft py-6 text-center bg-cream/50 rounded">
+        <div className="text-xs text-gray-400 py-6 text-center bg-gray-50 rounded-lg">
           업로드된 항목이 없어요.
         </div>
       ) : (
@@ -378,36 +378,36 @@ function CategorySection({
           {items.map((it) => (
             <div
               key={it.id}
-              className={`relative border-[1.5px] rounded-lg overflow-hidden bg-cream/30 ${
-                it.active ? "border-pot/40" : "border-pot/20 opacity-50"
+              className={`relative border rounded-lg overflow-hidden bg-white ${
+                it.active ? "border-gray-200" : "border-gray-100 opacity-50"
               }`}
             >
-              <div className="aspect-square w-full">
+              <div className="aspect-square w-full bg-gray-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={it.image_url}
                   alt={it.label ?? ""}
-                  className="w-full h-full object-contain bg-white"
+                  className="w-full h-full object-contain"
                 />
               </div>
-              <div className="px-1.5 py-1 text-[11px] text-ink truncate">
+              <div className="px-1.5 py-1 text-[11px] text-gray-700 truncate">
                 {it.label ?? "(라벨 없음)"}
               </div>
-              <div className="flex border-t border-pot/20">
+              <div className="flex border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => onReclean(it)}
                   disabled={pending}
-                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  className="flex-1 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 border-r border-gray-100 transition disabled:opacity-50"
                   title="가장자리 색을 다시 분석해 baked-in 배경을 투명 처리"
                 >
-                  🧹 배경
+                  배경
                 </button>
                 <button
                   type="button"
                   onClick={() => onToggle(it.id, !it.active)}
                   disabled={pending}
-                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  className="flex-1 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 border-r border-gray-100 transition disabled:opacity-50"
                 >
                   {it.active ? "비활성" : "활성화"}
                 </button>
@@ -415,7 +415,7 @@ function CategorySection({
                   type="button"
                   onClick={() => onDelete(it.id)}
                   disabled={pending}
-                  className="flex-1 py-1 text-[11px] font-bold text-[#a83020]"
+                  className="flex-1 py-1 text-[11px] font-medium text-red-500 hover:bg-red-50 transition disabled:opacity-50"
                 >
                   삭제
                 </button>

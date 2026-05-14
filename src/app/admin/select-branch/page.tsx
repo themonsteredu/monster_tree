@@ -72,29 +72,27 @@ export default async function SelectBranchPage({
   const summaries = error ? [] : summarize((data ?? []) as Row[]);
 
   return (
-    <main className="min-h-screen px-4 py-8">
+    <main className="min-h-screen px-4 py-8 bg-gray-50">
       <div className="max-w-md mx-auto">
-        <div className="text-center mb-6">
-          <div className="text-4xl mb-2">🍎</div>
-          <h1 className="text-2xl font-extrabold text-[var(--ink)]">지점 선택</h1>
-          <p className="mt-2 text-sm text-[var(--ink-soft)] leading-relaxed">
-            관리할 지점을 골라주세요. 이후 admin 페이지가 이 지점의 학생만
-            보여줍니다. (브라우저 쿠키에 30일간 저장)
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-gray-900">지점 선택</h1>
+          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+            관리할 지점을 골라주세요. 이후 admin 페이지가 이 지점의 학생만 보여줍니다. (브라우저
+            쿠키에 30일간 저장)
           </p>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-xl bg-[#fde8e4] text-[#a83020] text-sm p-3">
+          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm p-3">
             지점 목록을 불러오지 못했어요: {error.message}
           </div>
         )}
 
         {summaries.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-card p-6 text-center">
-            <div className="text-3xl mb-2">🪴</div>
-            <p className="text-sm text-[var(--ink-soft)] leading-relaxed">
-              아직 등록된 학생이 없어요. monster-site 에서 학생 계정을 먼저
-              발급하면 여기서 지점이 보입니다.
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 text-center">
+            <p className="text-sm text-gray-500 leading-relaxed">
+              아직 등록된 학생이 없어요. monster-site 에서 학생 계정을 먼저 발급하면 여기서 지점이
+              보입니다.
             </p>
           </div>
         ) : (
@@ -107,17 +105,15 @@ export default async function SelectBranchPage({
                     <input type="hidden" name="branchId" value={b.branchId} />
                     <button
                       type="submit"
-                      className="w-full text-left bg-white rounded-2xl shadow-card p-4 hover:bg-cream/60 active:scale-[0.99] transition flex items-center justify-between gap-3"
+                      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-amber-300 hover:bg-amber-50/40 transition flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
-                        <div className="font-mono text-sm text-[var(--ink)] truncate">
-                          {b.branchId}
-                        </div>
-                        <div className="text-xs text-[var(--ink-soft)] mt-1">
+                        <div className="font-mono text-sm text-gray-900 truncate">{b.branchId}</div>
+                        <div className="text-xs text-gray-400 mt-1">
                           학생 {b.studentCount}명{hint ? ` · ${hint}` : ""}
                         </div>
                       </div>
-                      <span className="shrink-0 text-[var(--apple)] font-bold">선택 →</span>
+                      <span className="shrink-0 text-amber-700 font-medium text-sm">선택 →</span>
                     </button>
                   </form>
                 </li>
