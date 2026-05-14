@@ -429,8 +429,7 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
-                  // 모바일에서 트리+아바타 나란히 둘 때 좌우 간격
-                  gap: isMobile ? 6 : 0,
+                  gap: isMobile ? 4 : 0,
                   minHeight: 200,
                 }}
               >
@@ -439,8 +438,9 @@ export function MeTreeClient({
                   <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                     <AppleTree
                       stage={stage}
-                      // 모바일에서는 트리를 medium 으로 줄여 아바타와 나란히 들어가게 한다.
-                      size={isMobile ? "medium" : "xl"}
+                      // 모바일에서는 트리를 small 로 줄여 아바타와 폭 안에 들어가게 한다.
+                      // (AppleTree 는 픽셀 고정 SVG 라 직접 반응형 처리 불가 — size prop 으로 분기.)
+                      size={isMobile ? "small" : "xl"}
                       mood={treeMood}
                       wilted={isNegative}
                       growthBoost={progress}
@@ -455,9 +455,11 @@ export function MeTreeClient({
                   style={
                     isMobile
                       ? {
-                          // 모바일: flex 자식으로 트리 옆에 나란히 (겹침 없음)
+                          // 모바일: flex 자식. width 명시로 AvatarFigure 외곽 박스에 폭 전달
+                          // (AvatarFigure 가 width:100% maxWidth:size 반응형이라 부모 폭으로 결정).
                           position: "relative",
                           alignSelf: "flex-end",
+                          width: "min(160px, 48%)",
                           pointerEvents: "none",
                         }
                       : {
@@ -469,7 +471,9 @@ export function MeTreeClient({
                         }
                   }
                 >
-                  <AvatarFigure config={currentAvatar} size={isMobile ? 120 : 160} />
+                  {/* size 는 PC/모바일 모두 동일한 160. AvatarFigure 가 부모 폭에 맞춰 자동 축소
+                      (viewBox 고정 + 외곽 width:100% maxWidth:size). 옷·머리·얼굴 비율 그대로. */}
+                  <AvatarFigure config={currentAvatar} size={160} />
                 </div>
               </div>
             </div>

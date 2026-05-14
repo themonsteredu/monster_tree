@@ -13,19 +13,6 @@ import type {
 import { AvatarFigure } from "./AvatarFigure";
 import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
 
-// 모바일 분기용 매체쿼리 훅 — SSR 시 false (PC 가정), 마운트 후 갱신.
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    setMatch(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setMatch(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [query]);
-  return match;
-}
-
 const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
   base: "베이스",
   outfit: "상의",
@@ -66,9 +53,6 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
   const [pending, startTransition] = useTransition();
   const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
   const [galleryLoaded, setGalleryLoaded] = useState(false);
-  // 모바일에서 미리보기 영역(폭 ~340) 의 약 65% 차지. PC 영역(~488) 도 약 65%.
-  const isMobile = useMediaQuery("(max-width: 639px)");
-  const previewSize = isMobile ? 220 : 320;
 
   useEffect(() => {
     if (!open) return;
@@ -180,9 +164,12 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
             zIndex: 1,
           }}
         >
-          {/* AvatarFigure 가 size 픽셀 그대로 그리므로 부모 폭이 size 보다 충분히 크게 유지되도록
-              모바일/PC 분기로 size 를 결정. 옷 슬롯 % 좌표 비율 보존. */}
-          <AvatarFigure config={draft} size={previewSize} />
+          {/* AvatarFigure 가 외곽 width:100% maxWidth:size 반응형이므로 부모 폭에 맞춰 자동 축소.
+              모바일/PC 분기 불필요 — 같은 비율로 자연스럽게 줄어듦. inner % + viewBox 고정으로
+              옷·머리·얼굴 비율 보존. */}
+          <div style={{ width: "min(320px, 70%)" }}>
+            <AvatarFigure config={draft} size={320} />
+          </div>
         </div>
 
         {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}

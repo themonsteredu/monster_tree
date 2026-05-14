@@ -1026,15 +1026,22 @@ function GalleryAvatar({
   ];
   const hasAny = layers.some((l) => l.url);
 
+  // inner % 비율 (외곽 박스 size×size 기준의 inner 박스 크기 비율)
+  // 외곽 박스가 모바일에서 줄어들면 inner 도 같은 % 로 자동 축소 → 옷 슬롯 % 좌표가
+  // inner 기준이므로 비율 그대로 유지.
+  const innerWidthPct = (innerWidth / size) * 100;
+  const innerHeightPct = (innerHeight / size) * 100;
+
   return (
     <div
       className={className}
       style={{
         position: "relative",
-        // size 픽셀 그대로 — 옷/머리/얼굴 슬롯의 % 좌표가 inner 박스 기준이므로 외곽/inner 모두
-        // 명시적 px 로 두어야 비율 일관성 보장. 호출자는 부모 폭 ≥ size 가 되도록 size 를 적절히 결정.
-        width: size,
-        height: size,
+        // size 는 max-width. 부모 폭이 좁으면 부모에 맞춰 축소.
+        // aspectRatio 1/1 + maxWidth size → 항상 정사각형 + size 상한.
+        width: "100%",
+        maxWidth: size,
+        aspectRatio: "1 / 1",
         display: "block",
         overflow: "hidden",
       }}
@@ -1045,8 +1052,9 @@ function GalleryAvatar({
             position: "absolute",
             left: "50%",
             top: "50%",
-            width: innerWidth,
-            height: innerHeight,
+            // inner 도 % — 외곽 박스가 줄어도 비례 유지. 옷 슬롯 % 좌표 보존.
+            width: `${innerWidthPct}%`,
+            height: `${innerHeightPct}%`,
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -1109,9 +1117,12 @@ export function AvatarFigure({
         height={(size * 170) / 120}
         className={className}
         style={{
-          // size 픽셀 그대로 (호출자가 부모 폭 ≥ size 보장)
-          width: size,
-          height: (size * 170) / 120,
+          // size 는 max-width. 부모 폭이 좁으면 부모에 맞춰 줄어들고 그 이상이면 size 까지만.
+          // height auto + aspectRatio 로 12:17 비율 자동 유지.
+          width: "100%",
+          maxWidth: size,
+          height: "auto",
+          aspectRatio: "120 / 170",
           objectFit: "contain",
           objectPosition: "center bottom",
           display: "block",
@@ -1158,7 +1169,16 @@ export function AvatarFigure({
       height={(size * 170) / 120}
       className={className}
       aria-hidden
-      style={{ display: "block" }}
+      // viewBox 고정. style 로 width:100% maxWidth:size 반응형:
+      // 부모 폭이 좁으면 SVG 도 비율 유지하며 함께 축소 (viewBox 가 좌표계만 결정하므로
+      // 안에 그려진 모든 부위가 정확히 같은 비율로 스케일됨 — 옷/머리/얼굴 비율 보존).
+      style={{
+        display: "block",
+        width: "100%",
+        maxWidth: size,
+        height: "auto",
+        aspectRatio: "120 / 170",
+      }}
     >
       {inner}
       {glassesV && <Glasses variant={glassesV} />}
