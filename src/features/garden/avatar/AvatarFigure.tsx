@@ -1031,8 +1031,11 @@ function GalleryAvatar({
       className={className}
       style={{
         position: "relative",
+        // 부모가 size 보다 좁으면 width 만 줄어들고 height(size)가 그대로 남아 정사각형 박스 비율이 깨짐.
+        // aspect-ratio 와 maxWidth 100% 로 폭에 맞춰 1:1 비율 유지하며 축소되게 한다.
         width: size,
-        height: size,
+        maxWidth: "100%",
+        aspectRatio: "1 / 1",
         display: "block",
         overflow: "hidden",
       }}
@@ -1043,8 +1046,9 @@ function GalleryAvatar({
             position: "absolute",
             left: "50%",
             top: "50%",
-            width: innerWidth,
-            height: innerHeight,
+            // 외곽 박스가 줄어도 비율 유지하도록 inner 도 % 기반으로 변환.
+            width: `${(innerWidth / size) * 100}%`,
+            height: `${(innerHeight / size) * 100}%`,
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -1107,8 +1111,11 @@ export function AvatarFigure({
         height={(size * 170) / 120}
         className={className}
         style={{
+          // 부모가 size 보다 좁아도 종횡비 유지하며 축소 (Tailwind preflight 의 img max-w 와 명시적으로 호환)
           width: size,
-          height: (size * 170) / 120,
+          maxWidth: "100%",
+          height: "auto",
+          aspectRatio: "120 / 170",
           objectFit: "contain",
           objectPosition: "center bottom",
           display: "block",
@@ -1155,6 +1162,9 @@ export function AvatarFigure({
       height={(size * 170) / 120}
       className={className}
       aria-hidden
+      // 부모 가로폭이 size 보다 좁아질 때(모바일 카드 등) width 만 줄고 height 가 그대로 남아
+      // SVG 종횡비가 깨지는 걸 방지. height: auto 로 폭에 맞춰 같이 줄어들게 한다.
+      style={{ display: "block", maxWidth: "100%", height: "auto", aspectRatio: "120 / 170" }}
     >
       {inner}
       {glassesV && <Glasses variant={glassesV} />}
