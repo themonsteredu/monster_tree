@@ -1031,11 +1031,12 @@ function GalleryAvatar({
       className={className}
       style={{
         position: "relative",
-        // 부모가 size 보다 좁으면 width 만 줄어들고 height(size)가 그대로 남아 정사각형 박스 비율이 깨짐.
-        // aspect-ratio 와 maxWidth 100% 로 폭에 맞춰 1:1 비율 유지하며 축소되게 한다.
-        width: size,
-        maxWidth: "100%",
+        // size 는 fixed 가 아닌 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
+        // 그 이상이면 size 까지만 자란다. aspect-ratio 로 정사각형 비율 유지.
+        width: "100%",
+        maxWidth: size,
         aspectRatio: "1 / 1",
+        marginInline: "auto",
         display: "block",
         overflow: "hidden",
       }}
@@ -1111,14 +1112,16 @@ export function AvatarFigure({
         height={(size * 170) / 120}
         className={className}
         style={{
-          // 부모가 size 보다 좁아도 종횡비 유지하며 축소 (Tailwind preflight 의 img max-w 와 명시적으로 호환)
-          width: size,
-          maxWidth: "100%",
+          // size 는 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
+          // 그 이상이면 size 까지만 자람. aspect-ratio 로 12:17 비율 유지.
+          width: "100%",
+          maxWidth: size,
           height: "auto",
           aspectRatio: "120 / 170",
           objectFit: "contain",
           objectPosition: "center bottom",
           display: "block",
+          marginInline: "auto",
         }}
       />
     );
@@ -1162,9 +1165,16 @@ export function AvatarFigure({
       height={(size * 170) / 120}
       className={className}
       aria-hidden
-      // 부모 가로폭이 size 보다 좁아질 때(모바일 카드 등) width 만 줄고 height 가 그대로 남아
-      // SVG 종횡비가 깨지는 걸 방지. height: auto 로 폭에 맞춰 같이 줄어들게 한다.
-      style={{ display: "block", maxWidth: "100%", height: "auto", aspectRatio: "120 / 170" }}
+      // size 는 max-width 로 동작: 부모 폭이 size 보다 좁으면 부모에 맞춰 축소,
+      // 그 이상이면 size 까지만 자람. height:auto + aspect-ratio 로 12:17 비율 유지.
+      style={{
+        display: "block",
+        width: "100%",
+        maxWidth: size,
+        height: "auto",
+        aspectRatio: "120 / 170",
+        marginInline: "auto",
+      }}
     >
       {inner}
       {glassesV && <Glasses variant={glassesV} />}

@@ -5,6 +5,20 @@
 // 이후 useStudentRealtime 훅으로 점수/단계/사과/대기열 변화를 반영한다.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+
+// 모바일 분기용 매체쿼리 훅 — SSR 시 false 반환 (PC 가정), 클라이언트 마운트 후 갱신.
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    setMatch(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setMatch(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [query]);
+  return match;
+}
+
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
@@ -147,6 +161,8 @@ export function MeTreeClient({
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
+  // 모바일(<640) 에서 아바타를 정중앙 + 더 크게. PC 에선 기존 우측 배치 유지.
+  const isMobile = useMediaQuery("(max-width: 639px)");
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
@@ -433,14 +449,27 @@ export function MeTreeClient({
                   )}
                 </div>
                 <div
-                  style={{
-                    position: "absolute",
-                    right: 12,
-                    bottom: 0,
-                    pointerEvents: "none",
-                  }}
+                  style={
+                    isMobile
+                      ? {
+                          // 모바일: 트리 박스 정중앙 + 영역의 약 65% 폭 차지 (AvatarFigure 가 max-width 로 동작)
+                          position: "absolute",
+                          left: "50%",
+                          bottom: 0,
+                          transform: "translateX(-50%)",
+                          width: "65%",
+                          pointerEvents: "none",
+                        }
+                      : {
+                          // PC: 기존 우측 배치 유지 (회귀 없음)
+                          position: "absolute",
+                          right: 12,
+                          bottom: 0,
+                          pointerEvents: "none",
+                        }
+                  }
                 >
-                  <AvatarFigure config={currentAvatar} size={160} />
+                  <AvatarFigure config={currentAvatar} size={isMobile ? 240 : 160} />
                 </div>
               </div>
             </div>

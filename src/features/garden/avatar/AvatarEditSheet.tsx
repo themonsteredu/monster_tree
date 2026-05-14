@@ -154,16 +154,21 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
             top: 0,
             display: "flex",
             justifyContent: "center",
+            alignItems: "center",
             background: "linear-gradient(180deg, #fff5d6 0%, #ffe9b0 100%)",
             borderRadius: 14,
-            padding: "16px 0 10px",
+            padding: "20px 12px",
             marginBottom: 14,
             border: "1.5px solid #f0c050",
             boxShadow: "0 2px 6px rgba(61,40,24,0.08)",
             zIndex: 1,
           }}
         >
-          <AvatarFigure config={draft} size={180} />
+          {/* 영역 폭의 약 65% 를 차지하는 inner 컨테이너. AvatarFigure 가 max-width 로 동작하므로
+              부모 폭에 맞춰 자연스럽게 비율 유지하며 축소/확대된다. PC/모바일 모두 통일된 비율. */}
+          <div style={{ width: "65%", maxWidth: 320, marginInline: "auto" }}>
+            <AvatarFigure config={draft} size={320} />
+          </div>
         </div>
 
         {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
