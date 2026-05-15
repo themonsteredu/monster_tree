@@ -517,7 +517,7 @@ export function MeTreeClient({
                       <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                     )}
                   </div>
-                  <div style={{ flex: "0 0 auto", marginBottom: -4 }}>
+                  <div style={{ flex: "0 0 auto", marginLeft: -36, marginBottom: -4 }}>
                     <AvatarFigure config={currentAvatar} size={170} galleryPositions={galleryPositions} />
                   </div>
                 </div>
