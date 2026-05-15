@@ -168,8 +168,9 @@ export function MeTreeClient({
   const isPhone = useMediaQuery("(max-width: 480px)");
   const treeSize = isPhone ? "large" : "xl";
   const avatarSize = isPhone ? 110 : 160;
-  const sceneGap = isPhone ? 12 : 24;
-  const avatarDropY = isPhone ? 36 : 50;
+  const sceneGap = isPhone ? 0 : 12;
+  const avatarPullX = isPhone ? -24 : -16;
+  const avatarDropY = isPhone ? 18 : 36;
 
   useEffect(() => {
     setNow(new Date());
@@ -457,6 +458,7 @@ export function MeTreeClient({
                   style={{
                     pointerEvents: "none",
                     flexShrink: 0,
+                    marginLeft: avatarPullX,
                     transform: `translateY(${avatarDropY}px)`,
                   }}
                 >
