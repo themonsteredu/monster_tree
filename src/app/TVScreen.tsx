@@ -418,7 +418,7 @@ const Spotlight = forwardRef<
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: -10 }}
               transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
-              className={["relative flex items-end justify-center gap-3", isShaking ? "tree-shake" : ""].join(" ")}
+              className={["relative flex items-end justify-center", isShaking ? "tree-shake" : ""].join(" ")}
             >
               <AppleTree
                 stage={stage}
@@ -427,7 +427,14 @@ const Spotlight = forwardRef<
                 wilted={isNegative}
                 growthBoost={progress}
               />
-              <div className="pb-3 shrink-0" aria-hidden>
+              <div
+                className="shrink-0"
+                style={{
+                  marginLeft: compact ? -40 : -52,
+                  transform: `translateY(${compact ? 18 : 36}px)`,
+                }}
+                aria-hidden
+              >
                 <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
               </div>
               {isPositive && (
