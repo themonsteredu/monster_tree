@@ -171,6 +171,7 @@ export function MeTreeClient({
   const sceneGap = isPhone ? 0 : 12;
   const avatarPullX = isPhone ? -70 : -44;
   const avatarDropY = isPhone ? 18 : 36;
+  const sceneScale = isPhone ? 1.15 : 1.1;
 
   useEffect(() => {
     setNow(new Date());
@@ -436,6 +437,8 @@ export function MeTreeClient({
                   alignItems: "flex-end",
                   gap: sceneGap,
                   minHeight: 200,
+                  transform: `scale(${sceneScale})`,
+                  transformOrigin: "bottom center",
                 }}
               >
                 <div style={{ position: "relative", display: "inline-block" }}>
