@@ -248,7 +248,7 @@ function StageEditor({
           <div className="absolute inset-0 flex items-end justify-center pt-12 pb-2">
             <div className="relative flex items-end justify-center gap-0">
               <AppleTree stage={stage} size="xl" imageConfig={previewConfig} />
-              <div style={{ marginLeft: -12, marginBottom: -4 }}>
+              <div style={{ marginLeft: -70, marginBottom: 4 }}>
                 <AvatarFigure
                   config={DEFAULT_AVATAR}
                   size={170}

@@ -445,7 +445,7 @@ const Spotlight = forwardRef<
                 growthBoost={progress}
                 imageConfig={treeStages?.[stage] ?? null}
               />
-              <div className="pb-3 shrink-0" style={{ marginLeft: compact ? -48 : -90 }} aria-hidden>
+              <div className="shrink-0" style={{ marginLeft: compact ? -48 : -90, marginBottom: 4 }} aria-hidden>
                 <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
               </div>
               {isPositive && (
