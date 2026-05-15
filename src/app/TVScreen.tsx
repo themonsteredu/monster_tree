@@ -608,6 +608,8 @@ function CompactCard({
       ? "surprised"
       : "happy";
 
+  const hasMood = !!student.mood_text && student.mood_text.trim().length > 0;
+
   return (
     <motion.div
       ref={cardRef}
@@ -615,7 +617,7 @@ function CompactCard({
         scale: isSpotlight ? 1.06 : 1,
       }}
       transition={{ type: "spring", stiffness: 240, damping: 22 }}
-      style={{ zIndex: isSpotlight ? 5 : 1 }}
+      style={{ zIndex: isSpotlight ? 5 : 1, paddingBottom: hasMood ? 20 : undefined }}
       className={[
         "relative rounded-[18px] bg-white p-2 flex flex-col items-center justify-between gap-1",
         "border-[2px] border-[var(--ink)]/85",

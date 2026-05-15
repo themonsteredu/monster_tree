@@ -485,7 +485,7 @@ export function MeTreeClient({
                   display: "flex",
                   alignItems: "flex-end",
                   justifyContent: "center",
-                  paddingBottom: 12,
+                  paddingBottom: row.mood_text && row.mood_text.trim().length > 0 ? 32 : 12,
                   paddingTop: 60,
                   zIndex: 2,
                 }}
