@@ -11,6 +11,9 @@ import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
+import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
+import { MoodTicker } from "@/features/garden/mood/MoodTicker";
+import { useTreeStages } from "@/features/garden/tree/useTreeStages";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
@@ -38,6 +41,7 @@ type Row = {
   grade: string | null;
   avatar?: AvatarConfig | null;
   background?: BackgroundConfig | null;
+  mood_text?: string | null;
 };
 
 type PointLog = { id: string; points: number; reason: string | null; logged_at: string };
@@ -147,11 +151,13 @@ export function MeTreeClient({
   const [shakeKey, setShakeKey] = useState(0);
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
+  const [moodSheetOpen, setMoodSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
   const galleryPositions = useGalleryPositions();
+  const treeStages = useTreeStages();
 
   useEffect(() => {
     setNow(new Date());
@@ -177,6 +183,9 @@ export function MeTreeClient({
         current_stage: newStage,
         apples_harvested: next.apples_harvested ?? prev?.apples_harvested ?? 0,
         grade: next.grade ?? prev?.grade ?? null,
+        avatar: prev?.avatar ?? null,
+        background: prev?.background ?? null,
+        mood_text: next.mood_text !== undefined ? next.mood_text : (prev?.mood_text ?? ""),
       }));
     },
     onPointLog: (log) => {
@@ -311,7 +320,7 @@ export function MeTreeClient({
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
-        padding: 20,
+        padding: 16,
         fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         transition: "background 600ms ease",
       }}
@@ -320,175 +329,206 @@ export function MeTreeClient({
         style={{
           background: isHarvestStage ? "#fff5d6" : "#fff",
           borderRadius: 24,
-          padding: "32px 24px",
+          padding: 14,
           width: "100%",
-          maxWidth: 480,
+          maxWidth: 460,
           boxShadow: isHarvestStage
             ? "0 0 0 4px rgba(240,192,80,0.45), 0 10px 40px rgba(61,40,24,0.12)"
             : "0 10px 40px rgba(61,40,24,0.08)",
           border: `2px solid ${isHarvestStage ? "#e8a020" : "#f1e8d8"}`,
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>나의 사과정원</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginTop: 4 }}>
-            {studentName}
-          </div>
-          {row?.grade && (
-            <div style={{ fontSize: 13, color: "#9a8b6c", marginTop: 2, fontWeight: 600 }}>
-              {row.grade}
-            </div>
-          )}
-        </div>
-
         {!row ? (
-          <div
-            style={{
-              padding: 20,
-              borderRadius: 14,
-              background: "#fef9ed",
-              color: "#7a6233",
-              fontSize: 14,
-              lineHeight: 1.6,
-              textAlign: "center",
-            }}
-          >
-            아직 나무가 심어지지 않았어요.
-            <br />
-            원장님께 문의해주세요.
-          </div>
+          <>
+            <div style={{ textAlign: "center", marginBottom: 16, paddingTop: 8 }}>
+              <div style={{ fontSize: 12, color: "#9a8b6c", fontWeight: 600 }}>나의 사과정원</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginTop: 4 }}>
+                {studentName}
+              </div>
+            </div>
+            <div
+              style={{
+                padding: 20,
+                borderRadius: 14,
+                background: "#fef9ed",
+                color: "#7a6233",
+                fontSize: 14,
+                lineHeight: 1.6,
+                textAlign: "center",
+              }}
+            >
+              아직 나무가 심어지지 않았어요.
+              <br />
+              원장님께 문의해주세요.
+            </div>
+          </>
         ) : (
           <>
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 14px",
-                  borderRadius: 999,
-                  background: accent.meBadgeBg,
-                  color: accent.meBadgeText,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  border: `2px solid #3d2818`,
-                  boxShadow: "0 2px 6px rgba(61,40,24,0.10)",
-                }}
-              >
-                <span>{accent.emoji}</span>
-                <span>{stage}단계 · {info.name}</span>
-              </span>
-              {isHarvestStage && (
-                <span
-                  className="harvest-pulse"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "6px 14px",
-                    borderRadius: 999,
-                    background: "#f0c050",
-                    color: "#3d2818",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    border: "2px solid #3d2818",
-                  }}
-                >
-                  ★ 수확 가능!
-                </span>
-              )}
-            </div>
-
+            {/* === 씬 영역 (상단 70%) === */}
             <div
               style={{
                 position: "relative",
                 borderRadius: 20,
                 overflow: "hidden",
-                margin: "8px 0 12px",
-                padding: "12px 8px",
+                aspectRatio: "3 / 4",
+                marginBottom: 12,
+                background: "#e8d8b8",
               }}
             >
               <BackgroundCanvas config={currentBackground} rounded={20} />
+
+              {/* 이름 오버레이 (좌상단) */}
               <div
                 style={{
-                  position: "relative",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "flex-end",
-                  minHeight: 200,
+                  position: "absolute",
+                  top: 14,
+                  left: 14,
+                  zIndex: 5,
+                  pointerEvents: "none",
                 }}
               >
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
-                  <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
-                    <AppleTree
-                      stage={stage}
-                      size="xl"
-                      mood={treeMood}
-                      wilted={isNegative}
-                      growthBoost={progress}
-                    />
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: "#fff",
+                    textShadow: "0 1px 3px rgba(0,0,0,0.45)",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {studentName}
+                </div>
+                {row.grade && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.65)",
+                      marginTop: 2,
+                      fontWeight: 600,
+                      textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    {row.grade}
                   </div>
-                  {isPositive && <SprayWaterMe />}
-                  {isFresh && highlight && (
-                    <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
-                  )}
+                )}
+              </div>
+
+              {/* 포인트 오버레이 (우상단) */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  zIndex: 5,
+                  padding: "6px 12px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.18)",
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  textAlign: "center",
+                  minWidth: 58,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "#fff",
+                    fontVariantNumeric: "tabular-nums",
+                    lineHeight: 1,
+                    textShadow: "0 1px 2px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  {points}
                 </div>
                 <div
                   style={{
-                    position: "absolute",
-                    right: 12,
-                    bottom: 0,
-                    pointerEvents: "none",
+                    fontSize: 7,
+                    color: "rgba(255,255,255,0.55)",
+                    letterSpacing: "0.14em",
+                    fontWeight: 700,
+                    marginTop: 3,
                   }}
                 >
-                  <AvatarFigure config={currentAvatar} size={160} galleryPositions={galleryPositions} />
+                  POINT
                 </div>
               </div>
-            </div>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setAvatarSheetOpen(true)}
+              {/* 수확 가능 배지 */}
+              {isHarvestStage && (
+                <div
+                  className="harvest-pulse"
+                  style={{
+                    position: "absolute",
+                    top: 70,
+                    right: 12,
+                    zIndex: 5,
+                    padding: "4px 12px",
+                    borderRadius: 999,
+                    background: "#f0c050",
+                    color: "#3d2818",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    border: "2px solid #3d2818",
+                  }}
+                >
+                  ★ 수확 가능!
+                </div>
+              )}
+
+              {/* 나무 + 아바타 */}
+              <div
                 style={{
-                  border: "1.5px solid #d6c2a0",
-                  background: "#fff",
-                  color: "#3d2818",
-                  padding: "8px 16px",
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                  paddingBottom: row.mood_text && row.mood_text.trim().length > 0 ? 32 : 12,
+                  paddingTop: 60,
+                  zIndex: 2,
                 }}
               >
-                ✨ 아바타 꾸미기
-              </button>
-              <button
-                type="button"
-                onClick={() => setBgSheetOpen(true)}
-                style={{
-                  border: "1.5px solid #d6c2a0",
-                  background: "#fff",
-                  color: "#3d2818",
-                  padding: "8px 16px",
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                🎨 배경 바꾸기
-              </button>
+                <div
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ position: "relative", flex: "0 0 auto" }}>
+                    {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
+                    <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
+                      <AppleTree
+                        stage={stage}
+                        size="xl"
+                        mood={treeMood}
+                        wilted={isNegative}
+                        growthBoost={progress}
+                        imageConfig={treeStages[stage] ?? null}
+                      />
+                    </div>
+                    {isPositive && <SprayWaterMe />}
+                    {isFresh && highlight && (
+                      <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
+                    )}
+                  </div>
+                  <div style={{ flex: "0 0 auto", marginBottom: -4 }}>
+                    <AvatarFigure config={currentAvatar} size={170} galleryPositions={galleryPositions} />
+                  </div>
+                </div>
+              </div>
+
+              {/* 하단 기분 전광판 */}
+              <MoodTicker text={row.mood_text ?? ""} />
             </div>
 
+            {/* === 하단 정보 영역 === */}
+
+            {/* 받을 포인트 (액션 아이템 - 항상 표시) */}
             {pending.length > 0 && (
               <PendingClaimSection
                 pending={pending}
@@ -498,105 +538,185 @@ export function MeTreeClient({
               />
             )}
 
-            {encouragement && <EncouragementCard text={encouragement.text} tone={encouragement.tone} />}
-
-            <div style={{ textAlign: "center", marginBottom: 14 }}>
-              <div style={{ fontSize: 12, color: "#9a8b6c" }}>
-                {STAGE_TABLE.length}단계 중 {stage}단계
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-              <AnimatedStat label="누적 포인트" value={points} unit="P" />
-              <Stat label="수확한 사과" value={`${applesHarvested}개`} tone="primary" />
-              <Stat
-                label="이번 주 적립"
-                value={now === null ? "—" : `${stats.weekTotal >= 0 ? "+" : ""}${stats.weekTotal} P`}
-                tone={stats.weekTotal >= 0 ? "positive" : "negative"}
-              />
-              <Stat
-                label="이번 달 적립"
-                value={now === null ? "—" : `${stats.monthTotal >= 0 ? "+" : ""}${stats.monthTotal} P`}
-                tone={stats.monthTotal >= 0 ? "positive" : "negative"}
-              />
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
+            {/* 단계 + 프로그레스 바 */}
+            <div
+              style={{
+                background: "#F5F0E6",
+                borderRadius: 14,
+                padding: "12px 14px",
+                marginBottom: 10,
+              }}
+            >
               <div
                 style={{
-                  height: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: 999,
+                      background: accent.meBarFill,
+                      flexShrink: 0,
+                      boxShadow: `0 0 0 3px ${accent.meBarFill}26`,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#3d2818",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {stage}단계 · {info.name}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#8a6f52",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {info.nextThreshold === null ? "🎉 최고 단계" : `다음까지 ${remain}P`}
+                </div>
+              </div>
+              <div
+                style={{
+                  height: 6,
                   borderRadius: 999,
-                  background: "#f0e6d4",
+                  background: "#e5dccb",
                   overflow: "hidden",
-                  border: "1.5px solid #d6c2a0",
                 }}
               >
                 <div
                   style={{
                     width: `${Math.round(progress * 100)}%`,
                     height: "100%",
-                    background: accent.meBarFill,
+                    background: `linear-gradient(90deg, ${accent.meBarFill}, ${accent.meBarFill})`,
                     transition: "width 600ms ease",
+                    borderRadius: 999,
                   }}
                 />
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#9a8b6c",
-                  marginTop: 6,
-                  textAlign: "center",
-                  fontWeight: 600,
-                }}
-              >
-                {info.nextThreshold === null ? "🎉 최고 단계 도달!" : `다음 단계까지 ${remain} P`}
-              </div>
             </div>
 
-            {nextStage && nextInfo && nextAccent && (
-              <NextStagePreview
-                stage={nextStage}
-                name={nextInfo.name}
-                threshold={nextInfo.threshold}
-                emoji={nextAccent.emoji}
-                badgeBg={nextAccent.meBadgeBg}
-                badgeText={nextAccent.meBadgeText}
+            {/* 액션 버튼 3개 */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              <ActionButton
+                emoji="🎨"
+                label="아바타 꾸미기"
+                tint="#f59e0b"
+                onClick={() => setAvatarSheetOpen(true)}
               />
-            )}
+              <ActionButton
+                emoji="🖼️"
+                label="배경 바꾸기"
+                tint="#10b981"
+                onClick={() => setBgSheetOpen(true)}
+              />
+              <ActionButton
+                emoji="💬"
+                label="한마디"
+                tint="#ec4899"
+                onClick={() => setMoodSheetOpen(true)}
+              />
+            </div>
 
-            <Section title="🏆 마일스톤">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {milestones.map(({ key, ...rest }) => (
-                  <MilestoneBadge key={key} {...rest} />
-                ))}
-              </div>
-            </Section>
-
-            <Section title="📋 최근 활동">
-              {initialPointLogs.length === 0 ? (
-                <Empty text="이번 달 활동 기록이 없어요" />
-              ) : (
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {initialPointLogs.slice(0, 10).map((log) => (
-                    <LogRow key={log.id} log={log} now={now} />
-                  ))}
-                </ul>
+            {/* 활동 기록 · 마일스톤 (접기/펼치기) */}
+            <DetailsCollapse title="활동 기록 · 마일스톤">
+              {encouragement && (
+                <EncouragementCard text={encouragement.text} tone={encouragement.tone} />
               )}
-            </Section>
 
-            {initialHarvests.length > 0 && (
-              <Section title="🍎 수확 히스토리">
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {initialHarvests.slice(0, 5).map((h) => (
-                    <HarvestRow key={h.id} harvest={h} now={now} />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                <AnimatedStat label="누적 포인트" value={points} unit="P" />
+                <Stat label="수확한 사과" value={`${applesHarvested}개`} tone="primary" />
+                <Stat
+                  label="이번 주 적립"
+                  value={now === null ? "—" : `${stats.weekTotal >= 0 ? "+" : ""}${stats.weekTotal} P`}
+                  tone={stats.weekTotal >= 0 ? "positive" : "negative"}
+                />
+                <Stat
+                  label="이번 달 적립"
+                  value={now === null ? "—" : `${stats.monthTotal >= 0 ? "+" : ""}${stats.monthTotal} P`}
+                  tone={stats.monthTotal >= 0 ? "positive" : "negative"}
+                />
+              </div>
+
+              {nextStage && nextInfo && nextAccent && (
+                <NextStagePreview
+                  stage={nextStage}
+                  name={nextInfo.name}
+                  threshold={nextInfo.threshold}
+                  emoji={nextAccent.emoji}
+                  badgeBg={nextAccent.meBadgeBg}
+                  badgeText={nextAccent.meBadgeText}
+                />
+              )}
+
+              <Section title="🏆 마일스톤">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  {milestones.map(({ key, ...rest }) => (
+                    <MilestoneBadge key={key} {...rest} />
                   ))}
-                </ul>
+                </div>
               </Section>
-            )}
+
+              <Section title="📋 최근 활동">
+                {initialPointLogs.length === 0 ? (
+                  <Empty text="이번 달 활동 기록이 없어요" />
+                ) : (
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {initialPointLogs.slice(0, 10).map((log) => (
+                      <LogRow key={log.id} log={log} now={now} />
+                    ))}
+                  </ul>
+                )}
+              </Section>
+
+              {initialHarvests.length > 0 && (
+                <Section title="🍎 수확 히스토리">
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {initialHarvests.slice(0, 5).map((h) => (
+                      <HarvestRow key={h.id} harvest={h} now={now} />
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              <div style={{ marginTop: 10, fontSize: 11, color: "#b09a7c", textAlign: "center" }}>
+                {STAGE_TABLE.length}단계 중 {stage}단계
+              </div>
+            </DetailsCollapse>
           </>
         )}
 
-        <div style={{ marginTop: 20, textAlign: "center" }}>
+        <div style={{ marginTop: 14, textAlign: "center" }}>
           <a
             href="https://www.themonster.kr/student"
             style={{ fontSize: 13, color: "#F26522", textDecoration: "none", fontWeight: 700 }}
@@ -655,6 +775,13 @@ export function MeTreeClient({
         initial={currentBackground}
         onClose={() => setBgSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, background: next } : prev))}
+      />
+
+      <MoodEditSheet
+        open={moodSheetOpen}
+        initial={row?.mood_text ?? ""}
+        onClose={() => setMoodSheetOpen(false)}
+        onSaved={(next) => setRow((prev) => (prev ? { ...prev, mood_text: next } : prev))}
       />
     </main>
   );
@@ -1442,5 +1569,130 @@ function HarvestRow({ harvest, now }: { harvest: Harvest; now: Date | null }) {
         {now ? formatRelative(harvest.harvested_at, now) : ""}
       </div>
     </li>
+  );
+}
+
+function ActionButton({
+  emoji,
+  label,
+  tint,
+  onClick,
+}: {
+  emoji: string;
+  label: string;
+  tint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 4,
+        padding: "10px 6px",
+        background: "#fff",
+        border: "1px solid #f1f1f1",
+        borderRadius: 12,
+        cursor: "pointer",
+        boxShadow: "0 1px 2px rgba(61,40,24,0.04)",
+        transition: "transform 120ms ease, box-shadow 120ms ease",
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = "scale(0.97)";
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform = "scale(1)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "scale(1)";
+      }}
+    >
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          background: `${tint}1a`,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 15,
+        }}
+      >
+        {emoji}
+      </span>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "#3d2818",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function DetailsCollapse({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      style={{
+        background: "#fafafa",
+        border: "1px solid #f1ebe0",
+        borderRadius: 12,
+        overflow: "hidden",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 14px",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#8a6f52",
+          letterSpacing: "0.02em",
+        }}
+      >
+        <span>{title}</span>
+        <span
+          style={{
+            fontSize: 10,
+            color: "#b09a7c",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            transition: "transform 200ms ease",
+            display: "inline-block",
+          }}
+        >
+          ▼
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 14px" }}>
+          {children}
+        </div>
+      )}
+    </div>
   );
 }

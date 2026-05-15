@@ -19,6 +19,8 @@ export type StudentUpdatePayload = {
   total_points?: number;
   apples_harvested?: number;
   grade?: string | null;
+  mood_text?: string | null;
+  mood_updated_at?: string | null;
 };
 
 export type StudentPointLog = {

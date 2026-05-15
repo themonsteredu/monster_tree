@@ -173,6 +173,18 @@ body {
 }
 .ring-pulse { animation: ring-pulse 1100ms ease-out forwards; }
 
+/* 기분 전광판 — 오른쪽 밖에서 시작해 왼쪽 밖으로 흐른다 (시네마 자막). */
+@keyframes mood-ticker-slide {
+  0% { left: 100%; }
+  100% { left: -100%; }
+}
+.mood-ticker-text {
+  left: 100%;
+  animation-name: mood-ticker-slide;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
 /* ================================================================
    접근성: 사용자가 OS 에서 "동작 줄이기" 를 켰으면 모든 애니메이션과
    트랜지션을 거의 즉시로 단축. 시각 효과는 보존하되 움직임만 제거.

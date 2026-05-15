@@ -540,6 +540,14 @@ function StudentCard({
           style={{ width: `${Math.max(2, progress * 100)}%` }}
         />
       </div>
+      {student.mood_text && student.mood_text.trim().length > 0 && (
+        <div
+          className="mt-1.5 text-[9px] text-pink-700 bg-pink-50 border border-pink-100 rounded px-1 py-0.5 truncate"
+          title={student.mood_text}
+        >
+          💬 {student.mood_text}
+        </div>
+      )}
     </button>
   );
 }
