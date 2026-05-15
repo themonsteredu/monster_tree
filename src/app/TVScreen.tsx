@@ -79,15 +79,17 @@ export function TVScreen({
   initialStudents,
   initialTodayHarvest = 0,
   branchId,
+  initialTreeStages,
 }: {
   initialStudents: GardenStudent[];
   initialTodayHarvest?: number;
   branchId: string;
+  initialTreeStages?: import("@/lib/types").GardenTreeStage[];
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [focusedIdx, setFocusedIdx] = useState(0);
   const galleryPositions = useGalleryPositions();
-  const treeStages = useTreeStages();
+  const treeStages = useTreeStages(initialTreeStages);
   const [highlights, setHighlights] = useState<Record<string, Highlight>>({});
   const [banners, setBanners] = useState<Banner[]>([]);
   const [todayApples, setTodayApples] = useState<number>(initialTodayHarvest);

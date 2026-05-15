@@ -132,12 +132,14 @@ export function MeTreeClient({
   initialPointLogs,
   initialHarvests,
   initialPending,
+  initialTreeStages,
 }: {
   initialRow: Row | null;
   studentName: string;
   initialPointLogs: PointLog[];
   initialHarvests: Harvest[];
   initialPending: PendingClaim[];
+  initialTreeStages?: import("@/lib/types").GardenTreeStage[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -157,7 +159,7 @@ export function MeTreeClient({
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
   const galleryPositions = useGalleryPositions();
-  const treeStages = useTreeStages();
+  const treeStages = useTreeStages(initialTreeStages);
 
   useEffect(() => {
     setNow(new Date());

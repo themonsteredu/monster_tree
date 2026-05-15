@@ -30,6 +30,12 @@ export default async function MyTreePage() {
     .eq('external_student_id', payload!.studentLocalId)
     .maybeSingle();
 
+  // 나무 단계별 이미지 — SSR 으로 미리 가져와 client 첫 렌더부터 적용 (SVG flash 방지)
+  const { data: treeStages } = await sb
+    .from('garden_tree_stages')
+    .select('stage, image_url, scale, offset_x, offset_y, updated_at')
+    .order('stage', { ascending: true });
+
   let pointLogs: Array<{ id: string; points: number; reason: string | null; logged_at: string }> = [];
   let harvests: Array<{ id: string; apples_count: number; harvested_at: string }> = [];
   let pendingPoints: Array<{ id: string; points: number; reason: string | null; created_at: string }> = [];
@@ -72,6 +78,7 @@ export default async function MyTreePage() {
       initialPointLogs={pointLogs}
       initialHarvests={harvests}
       initialPending={pendingPoints}
+      initialTreeStages={treeStages ?? []}
     />
   );
 }
