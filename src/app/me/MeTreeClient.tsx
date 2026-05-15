@@ -169,7 +169,7 @@ export function MeTreeClient({
   const treeSize = isPhone ? "large" : "xl";
   const avatarSize = isPhone ? 110 : 160;
   const sceneGap = isPhone ? 0 : 12;
-  const avatarPullX = isPhone ? -24 : -16;
+  const avatarPullX = isPhone ? -56 : -36;
   const avatarDropY = isPhone ? 18 : 36;
 
   useEffect(() => {
