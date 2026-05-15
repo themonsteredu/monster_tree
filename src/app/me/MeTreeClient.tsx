@@ -5,6 +5,19 @@
 // 이후 useStudentRealtime 훅으로 점수/단계/사과/대기열 변화를 반영한다.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+
+function useMediaQuery(query: string): boolean {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(query);
+    setMatch(m.matches);
+    const handler = (e: MediaQueryListEvent) => setMatch(e.matches);
+    m.addEventListener("change", handler);
+    return () => m.removeEventListener("change", handler);
+  }, [query]);
+  return match;
+}
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
@@ -152,6 +165,11 @@ export function MeTreeClient({
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
   const galleryPositions = useGalleryPositions();
+  const isPhone = useMediaQuery("(max-width: 480px)");
+  const treeSize = isPhone ? "large" : "xl";
+  const avatarSize = isPhone ? 110 : 160;
+  const sceneGap = isPhone ? 12 : 24;
+  const avatarDropY = isPhone ? 36 : 50;
 
   useEffect(() => {
     setNow(new Date());
@@ -415,7 +433,7 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
-                  gap: 40,
+                  gap: sceneGap,
                   minHeight: 200,
                 }}
               >
@@ -424,7 +442,7 @@ export function MeTreeClient({
                   <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                     <AppleTree
                       stage={stage}
-                      size="xl"
+                      size={treeSize}
                       mood={treeMood}
                       wilted={isNegative}
                       growthBoost={progress}
@@ -439,10 +457,10 @@ export function MeTreeClient({
                   style={{
                     pointerEvents: "none",
                     flexShrink: 0,
-                    transform: "translateY(60px)",
+                    transform: `translateY(${avatarDropY}px)`,
                   }}
                 >
-                  <AvatarFigure config={currentAvatar} size={160} galleryPositions={galleryPositions} />
+                  <AvatarFigure config={currentAvatar} size={avatarSize} galleryPositions={galleryPositions} />
                 </div>
               </div>
             </div>
