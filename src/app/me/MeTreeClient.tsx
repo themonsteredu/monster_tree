@@ -388,9 +388,10 @@ export function MeTreeClient({
                 }}
               >
                 <div
+                  className="font-galmuri"
                   style={{
-                    fontSize: 18,
-                    fontWeight: 500,
+                    fontSize: 20,
+                    fontWeight: 400,
                     color: "#fff",
                     textShadow: "0 1px 3px rgba(0,0,0,0.45)",
                     lineHeight: 1.2,
@@ -400,11 +401,12 @@ export function MeTreeClient({
                 </div>
                 {row.grade && (
                   <div
+                    className="font-pretendard"
                     style={{
                       fontSize: 11,
                       color: "rgba(255,255,255,0.65)",
                       marginTop: 2,
-                      fontWeight: 500,
+                      fontWeight: 400,
                       textShadow: "0 1px 3px rgba(0,0,0,0.4)",
                     }}
                   >
@@ -431,9 +433,10 @@ export function MeTreeClient({
                 }}
               >
                 <div
+                  className="font-galmuri"
                   style={{
-                    fontSize: 24,
-                    fontWeight: 500,
+                    fontSize: 20,
+                    fontWeight: 400,
                     color: "#fff",
                     fontVariantNumeric: "tabular-nums",
                     lineHeight: 1,
@@ -443,11 +446,12 @@ export function MeTreeClient({
                   {points}
                 </div>
                 <div
+                  className="font-pretendard"
                   style={{
-                    fontSize: 7,
+                    fontSize: 8,
                     color: "rgba(255,255,255,0.55)",
                     letterSpacing: "0.14em",
-                    fontWeight: 700,
+                    fontWeight: 400,
                     marginTop: 3,
                   }}
                 >
@@ -552,12 +556,18 @@ export function MeTreeClient({
                       flexShrink: 0,
                     }}
                   />
-                  <span className="text-xs font-medium text-gray-900 truncate">
+                  <span
+                    className="font-galmuri text-gray-900 truncate"
+                    style={{ fontSize: 13, fontWeight: 400 }}
+                  >
                     {stage}단계 · {info.name}
                   </span>
                 </div>
-                <div className="text-[11px] font-medium text-gray-500 flex-shrink-0">
-                  {info.nextThreshold === null ? "최고 단계" : `다음까지 ${remain}P`}
+                <div
+                  className="font-pretendard text-gray-500 flex-shrink-0"
+                  style={{ fontSize: 11, fontWeight: 400 }}
+                >
+                  {info.nextThreshold === null ? "최고 단계" : `다음 단계까지 ${remain}P`}
                 </div>
               </div>
               <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
@@ -573,26 +583,29 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 액션 버튼 3개 (텍스트만) */}
+            {/* 액션 버튼 3개 (텍스트만, Pretendard 13px/500) */}
             <div className="grid grid-cols-3 gap-2 mb-3">
               <button
                 type="button"
                 onClick={() => setAvatarSheetOpen(true)}
-                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
+                style={{ fontSize: 13, fontWeight: 500 }}
               >
                 아바타 꾸미기
               </button>
               <button
                 type="button"
                 onClick={() => setBgSheetOpen(true)}
-                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
+                style={{ fontSize: 13, fontWeight: 500 }}
               >
                 배경 바꾸기
               </button>
               <button
                 type="button"
                 onClick={() => setMoodSheetOpen(true)}
-                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
+                style={{ fontSize: 13, fontWeight: 500 }}
               >
                 한마디
               </button>
@@ -645,17 +658,7 @@ export function MeTreeClient({
                 </div>
               </Section>
 
-              <Section title="📋 최근 활동">
-                {initialPointLogs.length === 0 ? (
-                  <Empty text="이번 달 활동 기록이 없어요" />
-                ) : (
-                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {initialPointLogs.slice(0, 10).map((log) => (
-                      <LogRow key={log.id} log={log} now={now} />
-                    ))}
-                  </ul>
-                )}
-              </Section>
+              <RecentActivity logs={initialPointLogs} now={now} />
 
               {initialHarvests.length > 0 && (
                 <Section title="🍎 수확 히스토리">
@@ -677,7 +680,8 @@ export function MeTreeClient({
         <div className="mt-4 text-center">
           <a
             href="https://www.themonster.kr/student"
-            className="text-sm font-medium text-amber-600 no-underline hover:text-amber-700"
+            className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
+            style={{ fontSize: 13, fontWeight: 500 }}
           >
             학생 홈으로
           </a>
@@ -1458,26 +1462,18 @@ function Empty({ text }: { text: string }) {
   );
 }
 
-function LogRow({ log, now }: { log: PointLog; now: Date | null }) {
+function LogRow({ log }: { log: PointLog }) {
   const isPositive = log.points >= 0;
   return (
     <li
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 12px",
-        borderRadius: 10,
-        background: "#fffaf2",
-        border: "1.5px solid #f1e8d8",
-      }}
+      className="flex items-center gap-3 py-1.5"
     >
       <div
+        className="font-galmuri text-right"
         style={{
           width: 36,
-          textAlign: "center",
-          fontSize: 14,
-          fontWeight: 800,
+          fontSize: 12,
+          fontWeight: 400,
           fontVariantNumeric: "tabular-nums",
           color: isPositive ? "#4a8030" : "#b04020",
         }}
@@ -1485,24 +1481,77 @@ function LogRow({ log, now }: { log: PointLog; now: Date | null }) {
         {isPositive ? "+" : ""}
         {log.points}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#1f2937",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {log.reason ?? (isPositive ? "포인트 적립" : "포인트 차감")}
-        </div>
-      </div>
-      <div style={{ fontSize: 11, color: "#9a8b6c", fontWeight: 600, flexShrink: 0 }}>
-        {now ? formatRelative(log.logged_at, now) : ""}
+      <div
+        className="font-pretendard text-gray-700 truncate flex-1"
+        style={{ fontSize: 12, fontWeight: 400 }}
+      >
+        {log.reason ?? (isPositive ? "포인트 적립" : "포인트 차감")}
       </div>
     </li>
+  );
+}
+
+function RecentActivity({ logs, now }: { logs: PointLog[]; now: Date | null }) {
+  if (!now) {
+    return null;
+  }
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+  const today: PointLog[] = [];
+  const yesterday: PointLog[] = [];
+  for (const log of logs) {
+    const t = new Date(log.logged_at).getTime();
+    if (t >= todayStart.getTime()) today.push(log);
+    else if (t >= yesterdayStart.getTime()) yesterday.push(log);
+  }
+
+  return (
+    <div className="mt-4">
+      <DayGroup label="오늘" logs={today} emptyText="오늘 활동이 없어요" />
+      {yesterday.length > 0 && (
+        <div className="mt-3">
+          <DayGroup label="어제" logs={yesterday} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DayGroup({
+  label,
+  logs,
+  emptyText,
+}: {
+  label: string;
+  logs: PointLog[];
+  emptyText?: string;
+}) {
+  return (
+    <div>
+      <div
+        className="font-pretendard text-gray-500 mb-1.5"
+        style={{ fontSize: 12, fontWeight: 500 }}
+      >
+        {label}
+      </div>
+      {logs.length === 0 && emptyText ? (
+        <div
+          className="font-pretendard text-gray-400 py-2"
+          style={{ fontSize: 12, fontWeight: 400 }}
+        >
+          {emptyText}
+        </div>
+      ) : (
+        <ul className="list-none p-0 m-0">
+          {logs.map((log) => (
+            <LogRow key={log.id} log={log} />
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1550,7 +1599,8 @@ function DetailsCollapse({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-center gap-1 py-2 bg-transparent border-none cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 transition"
+        className="font-pretendard w-full flex items-center justify-center gap-1 py-2 bg-transparent border-none cursor-pointer text-gray-400 hover:text-gray-600 transition"
+        style={{ fontSize: 11, fontWeight: 500 }}
       >
         <span>{title}</span>
         <span
