@@ -431,7 +431,7 @@ const Spotlight = forwardRef<
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: -10 }}
               transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
-              className={["relative flex items-end justify-center gap-3", isShaking ? "tree-shake" : ""].join(" ")}
+              className={["relative flex items-end justify-center gap-1.5", isShaking ? "tree-shake" : ""].join(" ")}
             >
               <AppleTree
                 stage={stage}

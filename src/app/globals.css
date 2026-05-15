@@ -185,6 +185,18 @@ body {
   animation-iteration-count: infinite;
 }
 
+/* /me 씬: 모바일에서 나무(xl)+아바타(170) 합이 화면보다 커서 잘리므로
+   wrapper 자체를 비례 축소. 컴포넌트 내부 비율은 건드리지 않음. */
+.me-tree-row {
+  transform-origin: bottom center;
+}
+@media (max-width: 480px) {
+  .me-tree-row { transform: scale(0.62); }
+}
+@media (max-width: 380px) {
+  .me-tree-row { transform: scale(0.55); }
+}
+
 /* ================================================================
    접근성: 사용자가 OS 에서 "동작 줄이기" 를 켰으면 모든 애니메이션과
    트랜지션을 거의 즉시로 단축. 시각 효과는 보존하되 움직임만 제거.
