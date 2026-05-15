@@ -158,10 +158,19 @@ function StageEditor({
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
-    const fd = new FormData();
-    fd.set("stage", String(stage));
-    fd.set("file", file);
     startTransition(async () => {
+      // 자동 누끼 — 모서리 색 기준 배경 제거 후 업로드.
+      let processed: File;
+      try {
+        const { removeBackground } = await import("@/lib/image/removeBackground");
+        processed = await removeBackground(file);
+      } catch (err) {
+        setError(`배경 제거 실패: ${(err as Error).message}`);
+        return;
+      }
+      const fd = new FormData();
+      fd.set("stage", String(stage));
+      fd.set("file", processed);
       const r = await uploadTreeStageImageAction(fd);
       if (!r.ok) {
         setError(r.message);
@@ -173,7 +182,7 @@ function StageEditor({
         image_url: r.imageUrl,
         updated_at: new Date().toISOString(),
       });
-      onToast(`${stage}단계 이미지 업로드 완료`);
+      onToast(`${stage}단계 이미지 업로드 완료 (배경 자동 제거)`);
       if (fileInputRef.current) fileInputRef.current.value = "";
     });
   };
@@ -270,11 +279,11 @@ function StageEditor({
               : "bg-emerald-500 text-white hover:bg-emerald-600",
           ].join(" ")}
         >
-          📤 이미지 업로드
+          {pending ? "처리 중…" : "📤 이미지 업로드 (자동 누끼)"}
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/webp"
+            accept="image/png,image/webp,image/jpeg"
             className="hidden"
             disabled={pending}
             onChange={onFile}
@@ -294,7 +303,7 @@ function StageEditor({
           🗑 이미지 삭제
         </button>
         <span className="text-[11px] text-gray-400 self-center">
-          ※ 투명 배경 PNG / WebP · 1MB 이하
+          ※ PNG · WebP · JPG · 1MB 이하 — 모서리 색 기준 자동 배경 제거
         </span>
       </div>
 
