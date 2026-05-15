@@ -50,6 +50,12 @@ export default async function Page({
   initialStudents = (students ?? []) as GardenStudent[];
   const branchStudentIds = initialStudents.map((s) => s.id);
 
+  // 나무 단계별 이미지 — SSR 으로 미리 가져와 첫 렌더부터 적용 (SVG flash 방지)
+  const { data: treeStages } = await sb
+    .from("garden_tree_stages")
+    .select("stage, image_url, scale, offset_x, offset_y, updated_at")
+    .order("stage", { ascending: true });
+
   // 2단계: 지점 학생의 오늘 수확
   if (branchStudentIds.length > 0) {
     const { data: harvests } = await sb
@@ -68,6 +74,7 @@ export default async function Page({
       initialStudents={initialStudents}
       initialTodayHarvest={initialTodayHarvest}
       branchId={branchId}
+      initialTreeStages={treeStages ?? []}
     />
   );
 }
