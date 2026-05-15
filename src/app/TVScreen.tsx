@@ -445,9 +445,11 @@ const Spotlight = forwardRef<
                 growthBoost={progress}
                 imageConfig={treeStages?.[stage] ?? null}
               />
-              <div className="shrink-0" style={{ marginLeft: compact ? -48 : -90, marginBottom: 4 }} aria-hidden>
-                <AvatarFigure config={student.avatar ?? null} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
-              </div>
+              {student.avatar && (
+                <div className="shrink-0" style={{ marginLeft: compact ? -48 : -90, marginBottom: 4 }} aria-hidden>
+                  <AvatarFigure config={student.avatar} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
+                </div>
+              )}
               {isPositive && (
                 <>
                   <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
