@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { AvatarConfig, AvatarAccessories, BackgroundConfig } from "@/lib/types";
+import { MOOD_TEXT_MAX } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -287,4 +288,37 @@ export async function updateBackgroundAction(args: { background: unknown }) {
   revalidatePath("/");
   revalidatePath("/admin");
   return { ok: true as const, background };
+}
+
+// 학생 본인의 "한마디" (mood_text) 갱신. 빈 문자열은 전광판 숨김.
+export async function updateMoodAction(args: { text: string }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  if (typeof args.text !== "string") {
+    return { ok: false as const, message: "잘못된 입력이에요." };
+  }
+  // 줄바꿈/탭 제거, 양끝 공백 trim, 길이 컷
+  const cleaned = args.text.replace(/[\r\n\t]+/g, " ").trim().slice(0, MOOD_TEXT_MAX);
+
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_students")
+    .update({
+      mood_text: cleaned,
+      mood_updated_at: cleaned.length > 0 ? new Date().toISOString() : null,
+    })
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId);
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const, moodText: cleaned };
 }

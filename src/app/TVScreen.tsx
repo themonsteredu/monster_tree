@@ -32,6 +32,7 @@ import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import type { AvatarGalleryItemPosition } from "@/lib/types";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
+import { MoodTicker } from "@/features/garden/mood/MoodTicker";
 
 // 화면 폭 매체 쿼리 훅 (TV 풀HD 가정의 데스크탑 vs 모바일)
 function useMediaQuery(query: string): boolean {
@@ -411,6 +412,12 @@ const Spotlight = forwardRef<
       <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3 relative">
         <div className="relative w-full h-full rounded-3xl overflow-hidden flex items-center justify-center">
           <BackgroundCanvas config={student.background ?? null} rounded={24} />
+          <MoodTicker
+            text={student.mood_text ?? ""}
+            height={compact ? 22 : 32}
+            fontSize={compact ? 11 : 15}
+            durationSec={18}
+          />
           <AnimatePresence mode="wait">
             <motion.div
               key={student.id}
@@ -658,6 +665,14 @@ function CompactCard({
           )}
         </div>
       </div>
+
+      <MoodTicker
+        text={student.mood_text ?? ""}
+        height={16}
+        fontSize={9}
+        durationSec={14}
+        borderRadius={16}
+      />
     </motion.div>
   );
 }

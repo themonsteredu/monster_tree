@@ -129,7 +129,11 @@ export type GardenStudent = {
   created_at: string;
   avatar?: AvatarConfig | null;
   background?: BackgroundConfig | null;
+  mood_text?: string | null;
+  mood_updated_at?: string | null;
 };
+
+export const MOOD_TEXT_MAX = 30;
 
 export type GardenPointLog = {
   id: string;

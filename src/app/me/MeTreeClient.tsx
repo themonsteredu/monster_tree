@@ -11,6 +11,8 @@ import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
+import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
+import { MoodTicker } from "@/features/garden/mood/MoodTicker";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
@@ -38,6 +40,7 @@ type Row = {
   grade: string | null;
   avatar?: AvatarConfig | null;
   background?: BackgroundConfig | null;
+  mood_text?: string | null;
 };
 
 type PointLog = { id: string; points: number; reason: string | null; logged_at: string };
@@ -147,6 +150,7 @@ export function MeTreeClient({
   const [shakeKey, setShakeKey] = useState(0);
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
+  const [moodSheetOpen, setMoodSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
@@ -177,6 +181,9 @@ export function MeTreeClient({
         current_stage: newStage,
         apples_harvested: next.apples_harvested ?? prev?.apples_harvested ?? 0,
         grade: next.grade ?? prev?.grade ?? null,
+        avatar: prev?.avatar ?? null,
+        background: prev?.background ?? null,
+        mood_text: next.mood_text !== undefined ? next.mood_text : (prev?.mood_text ?? ""),
       }));
     },
     onPointLog: (log) => {
@@ -511,6 +518,9 @@ export function MeTreeClient({
                   </div>
                 </div>
               </div>
+
+              {/* 하단 기분 전광판 */}
+              <MoodTicker text={row.mood_text ?? ""} />
             </div>
 
             {/* === 하단 정보 영역 === */}
@@ -623,7 +633,7 @@ export function MeTreeClient({
                 emoji="💬"
                 label="한마디"
                 tint="#ec4899"
-                onClick={() => {}}
+                onClick={() => setMoodSheetOpen(true)}
               />
             </div>
 
@@ -762,6 +772,13 @@ export function MeTreeClient({
         initial={currentBackground}
         onClose={() => setBgSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, background: next } : prev))}
+      />
+
+      <MoodEditSheet
+        open={moodSheetOpen}
+        initial={row?.mood_text ?? ""}
+        onClose={() => setMoodSheetOpen(false)}
+        onSaved={(next) => setRow((prev) => (prev ? { ...prev, mood_text: next } : prev))}
       />
     </main>
   );
