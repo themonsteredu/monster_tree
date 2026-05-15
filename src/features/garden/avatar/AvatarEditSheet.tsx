@@ -154,22 +154,16 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
             top: 0,
             display: "flex",
             justifyContent: "center",
-            alignItems: "center",
             background: "linear-gradient(180deg, #fff5d6 0%, #ffe9b0 100%)",
             borderRadius: 14,
-            padding: "20px 12px",
+            padding: "16px 0 10px",
             marginBottom: 14,
             border: "1.5px solid #f0c050",
             boxShadow: "0 2px 6px rgba(61,40,24,0.08)",
             zIndex: 1,
           }}
         >
-          {/* AvatarFigure 가 외곽 width:100% maxWidth:size 반응형이므로 부모 폭에 맞춰 자동 축소.
-              모바일/PC 분기 불필요 — 같은 비율로 자연스럽게 줄어듦. inner % + viewBox 고정으로
-              옷·머리·얼굴 비율 보존. */}
-          <div style={{ width: "min(320px, 70%)" }}>
-            <AvatarFigure config={draft} size={320} />
-          </div>
+          <AvatarFigure config={draft} size={180} />
         </div>
 
         {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
