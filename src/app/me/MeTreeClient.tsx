@@ -13,6 +13,7 @@ import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas"
 import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
 import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
 import { MoodTicker } from "@/features/garden/mood/MoodTicker";
+import { useTreeStages } from "@/features/garden/tree/useTreeStages";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
@@ -156,6 +157,7 @@ export function MeTreeClient({
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
   const galleryPositions = useGalleryPositions();
+  const treeStages = useTreeStages();
 
   useEffect(() => {
     setNow(new Date());
@@ -506,6 +508,7 @@ export function MeTreeClient({
                         mood={treeMood}
                         wilted={isNegative}
                         growthBoost={progress}
+                        imageConfig={treeStages[stage] ?? null}
                       />
                     </div>
                     {isPositive && <SprayWaterMe />}

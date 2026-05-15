@@ -1,4 +1,9 @@
+"use client";
+
 // 사과나무 SVG 컴포넌트 (8단계, 일러스트북 스타일)
+//
+// imageConfig 가 주어지면 관리자가 업로드한 PNG 를 SVG 위에 덮어씌운다.
+// 이미지가 없거나 로딩 중이면 기존 SVG 가 fallback 으로 보인다.
 //
 // 새 비주얼 가이드 (참고 이미지 톤):
 // - 얼굴은 화분에 (모든 단계 공통, 화분 자체가 캐릭터)
@@ -10,7 +15,8 @@
 //   x: -80 ~ 80 (중앙 0)
 //   y: -120 ~ 40 (화분 바닥이 +38, 캐노피는 음수 영역으로 자라남)
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import type { TreeStageImageConfig } from "@/lib/types";
 
 export type AppleTreeSize = "xs" | "small" | "medium" | "large" | "xl";
 export type AppleTreeMood = "happy" | "surprised" | "sad";
@@ -25,6 +31,8 @@ type Props = {
   growthBoost?: number;
   className?: string;
   title?: string;
+  /** 관리자가 업로드한 PNG 이미지 + 미세조정. null/undefined 면 SVG fallback. */
+  imageConfig?: TreeStageImageConfig | null;
 };
 
 const SIZE_PX: Record<AppleTreeSize, number> = {
@@ -43,6 +51,7 @@ export function AppleTree({
   growthBoost = 0,
   className,
   title,
+  imageConfig,
 }: Props) {
   const s = Math.min(8, Math.max(1, Math.floor(stage))) as
     | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
@@ -59,14 +68,35 @@ export function AppleTree({
   const reactId = React.useId().replace(/[^a-zA-Z0-9]/g, "");
   const id = `at${reactId}`;
 
-  return (
+  const hasImage = !!imageConfig?.url;
+  const [imgLoaded, setImgLoaded] = useState(false);
+  useEffect(() => {
+    setImgLoaded(false);
+  }, [imageConfig?.url]);
+
+  const ariaLabel = title ?? `사과나무 ${s}단계`;
+
+  const svgEl = (
     <svg
       viewBox="-80 -120 160 160"
       width={px}
       height={px}
-      role="img"
-      aria-label={title ?? `사과나무 ${s}단계`}
-      className={className}
+      role={hasImage ? undefined : "img"}
+      aria-label={hasImage ? undefined : ariaLabel}
+      aria-hidden={hasImage ? true : undefined}
+      className={hasImage ? undefined : className}
+      style={
+        hasImage
+          ? {
+              position: "absolute",
+              inset: 0,
+              display: "block",
+              opacity: imgLoaded ? 0 : 1,
+              transition: "opacity 200ms ease",
+              pointerEvents: "none",
+            }
+          : { display: "block" }
+      }
     >
       <defs>
         <linearGradient id={`pot-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
@@ -132,6 +162,50 @@ export function AppleTree({
         {s === 8 && <FruitfulTree id={id} sw={sw} />}
       </g>
     </svg>
+  );
+
+  if (!hasImage) return svgEl;
+
+  return (
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className={className}
+      style={{
+        position: "relative",
+        display: "inline-block",
+        width: px,
+        height: px,
+        lineHeight: 0,
+        verticalAlign: "bottom",
+      }}
+    >
+      {svgEl}
+      <img
+        key={imageConfig!.url}
+        src={imageConfig!.url}
+        alt=""
+        aria-hidden="true"
+        width={px}
+        height={px}
+        onLoad={() => setImgLoaded(true)}
+        onError={() => setImgLoaded(false)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: px,
+          height: px,
+          objectFit: "contain",
+          /* offset 은 xl(340px) 기준 px. 작은 사이즈에서는 비율 맞춰 축소.
+             scale 은 translate 뒤에 적용되어 화면상 이동량이 일정해진다. */
+          transform: `translate(${(imageConfig!.offsetX * px) / 340}px, ${(imageConfig!.offsetY * px) / 340}px) scale(${imageConfig!.scale})`,
+          transformOrigin: "center bottom",
+          opacity: imgLoaded ? 1 : 0,
+          transition: "opacity 200ms ease",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
   );
 }
 

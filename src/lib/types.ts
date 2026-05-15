@@ -149,3 +149,21 @@ export type GardenHarvest = {
   apples_count: number;
   harvested_at: string;
 };
+
+// 사과나무 단계별 이미지 + 미세조정 설정.
+// image_url 이 null 이면 AppleTree 는 기존 SVG fallback 으로 렌더된다.
+export type GardenTreeStage = {
+  stage: number;
+  image_url: string | null;
+  scale: number;
+  offset_x: number;
+  offset_y: number;
+  updated_at: string;
+};
+
+export type TreeStageImageConfig = {
+  url: string;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+};
