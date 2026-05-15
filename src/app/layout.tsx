@@ -5,6 +5,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "사과정원 · 더몬스터학원",
   description: "더몬스터학원 학생 보상 시스템 - 우리들의 사과나무를 키워보세요",
+  // iOS Safari 홈화면 추가 시 PWA 처럼 동작 + 학원 로고 사용
+  appleWebApp: {
+    capable: true,
+    title: "사과정원",
+    statusBarStyle: "default",
+  },
 };
 
 // 모바일 admin 화면을 위한 뷰포트 설정 (확대 가능, 한 손 조작 편의성)
