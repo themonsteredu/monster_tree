@@ -611,8 +611,12 @@ export function MeTreeClient({
               </button>
             </div>
 
-            {/* 활동 기록 · 마일스톤 (접기/펼치기) */}
-            <DetailsCollapse title="활동 기록 · 마일스톤">
+            {/* 최근 활동 (오늘·어제만) — 접기 외부에 항상 표시 */}
+            <RecentActivity logs={initialPointLogs} now={now} />
+
+            {/* 마일스톤·통계·수확 히스토리 (접기/펼치기) */}
+            <div className="mt-4">
+            <DetailsCollapse title="마일스톤 · 통계 · 수확 히스토리">
               {encouragement && (
                 <EncouragementCard text={encouragement.text} tone={encouragement.tone} />
               )}
@@ -658,8 +662,6 @@ export function MeTreeClient({
                 </div>
               </Section>
 
-              <RecentActivity logs={initialPointLogs} now={now} />
-
               {initialHarvests.length > 0 && (
                 <Section title="🍎 수확 히스토리">
                   <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -674,6 +676,7 @@ export function MeTreeClient({
                 {STAGE_TABLE.length}단계 중 {stage}단계
               </div>
             </DetailsCollapse>
+            </div>
           </>
         )}
 

@@ -378,6 +378,7 @@ const Spotlight = forwardRef<
     : isPositive
       ? "surprised"
       : "happy";
+  const hasMood = !!student.mood_text && student.mood_text.trim().length > 0;
 
   return (
     <div
@@ -416,7 +417,10 @@ const Spotlight = forwardRef<
       </div>
 
       <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3 relative">
-        <div className="relative w-full h-full rounded-3xl overflow-hidden flex items-center justify-center">
+        <div
+          className="relative w-full h-full rounded-3xl overflow-hidden flex items-center justify-center"
+          style={{ paddingBottom: hasMood ? (compact ? 22 : 32) : 0 }}
+        >
           <BackgroundCanvas config={student.background ?? null} rounded={24} />
           <MoodTicker
             text={student.mood_text ?? ""}
