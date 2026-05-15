@@ -13,7 +13,7 @@ type Props = {
 
 export function MoodTicker({
   text,
-  height = 24,
+  height = 22,
   fontSize = 11,
   durationSec = 15,
   borderRadius,
@@ -41,16 +41,15 @@ export function MoodTicker({
       }}
     >
       <div
-        className="mood-ticker-text"
+        className="mood-ticker-text font-galmuri"
         style={{
           position: "absolute",
           top: "50%",
           transform: "translateY(-50%)",
           whiteSpace: "nowrap",
-          color: "rgba(255,255,255,0.92)",
+          color: "rgba(255,255,255,0.9)",
           fontSize,
-          fontWeight: 600,
-          letterSpacing: "0.01em",
+          fontWeight: 400,
           textShadow: "0 1px 2px rgba(0,0,0,0.4)",
           animationDuration: `${durationSec}s`,
         }}

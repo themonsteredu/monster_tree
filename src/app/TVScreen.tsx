@@ -473,7 +473,7 @@ const Spotlight = forwardRef<
         >
           <div
             className={[
-              "font-black tracking-tight leading-none truncate",
+              "font-galmuri tracking-tight leading-none truncate",
               compact ? "text-3xl" : "text-5xl",
             ].join(" ")}
           >
@@ -482,9 +482,10 @@ const Spotlight = forwardRef<
           {student.class_name && (
             <div
               className={[
-                "font-semibold text-[var(--ink-soft)]",
+                "font-pretendard text-[var(--ink-soft)]",
                 compact ? "mt-1 text-sm" : "mt-2 text-base",
               ].join(" ")}
+              style={{ fontWeight: 500 }}
             >
               {student.class_name}
             </div>
@@ -492,13 +493,16 @@ const Spotlight = forwardRef<
           <div className={["flex items-baseline justify-center gap-1.5", compact ? "mt-2" : "mt-4"].join(" ")}>
             <span
               className={[
-                "font-black tabular-nums text-[var(--ink)]",
+                "font-galmuri tabular-nums text-[var(--ink)]",
                 compact ? "text-4xl" : "text-6xl",
               ].join(" ")}
             >
               {student.total_points}
             </span>
-            <span className={["font-bold text-[var(--ink-soft)]", compact ? "text-base" : "text-xl"].join(" ")}>pt</span>
+            <span
+              className={["font-pretendard text-[var(--ink-soft)]", compact ? "text-base" : "text-xl"].join(" ")}
+              style={{ fontWeight: 500 }}
+            >pt</span>
           </div>
           {student.apples_harvested > 0 && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--card-bg-hero)] border-[2px] border-[var(--ink)] text-[var(--ink)] text-sm font-extrabold tabular-nums">
@@ -667,10 +671,10 @@ function CompactCard({
       </div>
 
       <div className="text-center w-full">
-        <div className="text-[12px] font-extrabold truncate leading-tight">
+        <div className="font-galmuri text-[12px] truncate leading-tight">
           {student.name}
         </div>
-        <div className="text-[10px] font-bold tabular-nums text-[var(--ink-soft)] flex items-center justify-center gap-1">
+        <div className="font-galmuri text-[10px] tabular-nums text-[var(--ink-soft)] flex items-center justify-center gap-1">
           <span>{student.total_points}pt</span>
           {student.apples_harvested > 0 && (
             <>
