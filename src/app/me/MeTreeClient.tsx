@@ -390,7 +390,7 @@ export function MeTreeClient({
                 <div
                   style={{
                     fontSize: 18,
-                    fontWeight: 600,
+                    fontWeight: 500,
                     color: "#fff",
                     textShadow: "0 1px 3px rgba(0,0,0,0.45)",
                     lineHeight: 1.2,
@@ -404,7 +404,7 @@ export function MeTreeClient({
                       fontSize: 11,
                       color: "rgba(255,255,255,0.65)",
                       marginTop: 2,
-                      fontWeight: 600,
+                      fontWeight: 500,
                       textShadow: "0 1px 3px rgba(0,0,0,0.4)",
                     }}
                   >
@@ -420,20 +420,20 @@ export function MeTreeClient({
                   top: 12,
                   right: 12,
                   zIndex: 5,
-                  padding: "6px 12px",
+                  padding: "8px 14px",
                   borderRadius: 14,
                   background: "rgba(255,255,255,0.18)",
                   backdropFilter: "blur(8px)",
                   WebkitBackdropFilter: "blur(8px)",
                   border: "1px solid rgba(255,255,255,0.22)",
                   textAlign: "center",
-                  minWidth: 58,
+                  minWidth: 66,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 18,
-                    fontWeight: 700,
+                    fontSize: 24,
+                    fontWeight: 500,
                     color: "#fff",
                     fontVariantNumeric: "tabular-nums",
                     lineHeight: 1,
@@ -491,12 +491,13 @@ export function MeTreeClient({
                 }}
               >
                 <div
+                  className="me-tree-row"
                   style={{
                     position: "relative",
                     display: "flex",
                     alignItems: "flex-end",
                     justifyContent: "center",
-                    gap: 4,
+                    gap: 2,
                   }}
                 >
                   <div style={{ position: "relative", flex: "0 0 auto" }}>
@@ -523,7 +524,7 @@ export function MeTreeClient({
               </div>
 
               {/* 하단 기분 전광판 */}
-              <MoodTicker text={row.mood_text ?? ""} />
+              <MoodTicker text={row.mood_text ?? ""} borderRadius={20} />
             </div>
 
             {/* === 하단 정보 영역 === */}
@@ -539,71 +540,32 @@ export function MeTreeClient({
             )}
 
             {/* 단계 + 프로그레스 바 */}
-            <div
-              style={{
-                background: "#F5F0E6",
-                borderRadius: 14,
-                padding: "12px 14px",
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 8,
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <div className="bg-[#F5F0E6] rounded-2xl px-3.5 py-3 mb-2.5">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span
                     style={{
-                      width: 9,
-                      height: 9,
+                      width: 8,
+                      height: 8,
                       borderRadius: 999,
                       background: accent.meBarFill,
                       flexShrink: 0,
-                      boxShadow: `0 0 0 3px ${accent.meBarFill}26`,
                     }}
                   />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#3d2818",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <span className="text-xs font-medium text-gray-900 truncate">
                     {stage}단계 · {info.name}
                   </span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#8a6f52",
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {info.nextThreshold === null ? "🎉 최고 단계" : `다음까지 ${remain}P`}
+                <div className="text-[11px] font-medium text-gray-500 flex-shrink-0">
+                  {info.nextThreshold === null ? "최고 단계" : `다음까지 ${remain}P`}
                 </div>
               </div>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 999,
-                  background: "#e5dccb",
-                  overflow: "hidden",
-                }}
-              >
+              <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
                 <div
                   style={{
                     width: `${Math.round(progress * 100)}%`,
                     height: "100%",
-                    background: `linear-gradient(90deg, ${accent.meBarFill}, ${accent.meBarFill})`,
+                    background: accent.meBarFill,
                     transition: "width 600ms ease",
                     borderRadius: 999,
                   }}
@@ -611,33 +573,29 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 액션 버튼 3개 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 8,
-                marginBottom: 12,
-              }}
-            >
-              <ActionButton
-                emoji="🎨"
-                label="아바타 꾸미기"
-                tint="#f59e0b"
+            {/* 액션 버튼 3개 (텍스트만) */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <button
+                type="button"
                 onClick={() => setAvatarSheetOpen(true)}
-              />
-              <ActionButton
-                emoji="🖼️"
-                label="배경 바꾸기"
-                tint="#10b981"
+                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                아바타 꾸미기
+              </button>
+              <button
+                type="button"
                 onClick={() => setBgSheetOpen(true)}
-              />
-              <ActionButton
-                emoji="💬"
-                label="한마디"
-                tint="#ec4899"
+                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                배경 바꾸기
+              </button>
+              <button
+                type="button"
                 onClick={() => setMoodSheetOpen(true)}
-              />
+                className="bg-white border border-gray-200 rounded-xl py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                한마디
+              </button>
             </div>
 
             {/* 활동 기록 · 마일스톤 (접기/펼치기) */}
@@ -716,12 +674,12 @@ export function MeTreeClient({
           </>
         )}
 
-        <div style={{ marginTop: 14, textAlign: "center" }}>
+        <div className="mt-4 text-center">
           <a
             href="https://www.themonster.kr/student"
-            style={{ fontSize: 13, color: "#F26522", textDecoration: "none", fontWeight: 700 }}
+            className="text-sm font-medium text-amber-600 no-underline hover:text-amber-700"
           >
-            ← 학생 홈으로
+            학생 홈으로
           </a>
         </div>
       </div>
@@ -1572,73 +1530,6 @@ function HarvestRow({ harvest, now }: { harvest: Harvest; now: Date | null }) {
   );
 }
 
-function ActionButton({
-  emoji,
-  label,
-  tint,
-  onClick,
-}: {
-  emoji: string;
-  label: string;
-  tint: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        padding: "10px 6px",
-        background: "#fff",
-        border: "1px solid #f1f1f1",
-        borderRadius: 12,
-        cursor: "pointer",
-        boxShadow: "0 1px 2px rgba(61,40,24,0.04)",
-        transition: "transform 120ms ease, box-shadow 120ms ease",
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.transform = "scale(0.97)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
-      }}
-    >
-      <span
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 999,
-          background: `${tint}1a`,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 15,
-        }}
-      >
-        {emoji}
-      </span>
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: "#3d2818",
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 function DetailsCollapse({
   title,
   children,
@@ -1650,8 +1541,7 @@ function DetailsCollapse({
   return (
     <div
       style={{
-        background: "#fafafa",
-        border: "1px solid #f1ebe0",
+        background: "transparent",
         borderRadius: 12,
         overflow: "hidden",
       }}
@@ -1660,30 +1550,17 @@ function DetailsCollapse({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 14px",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#8a6f52",
-          letterSpacing: "0.02em",
-        }}
+        className="w-full flex items-center justify-center gap-1 py-2 bg-transparent border-none cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 transition"
       >
         <span>{title}</span>
         <span
           style={{
-            fontSize: 10,
-            color: "#b09a7c",
+            fontSize: 9,
             transform: open ? "rotate(0deg)" : "rotate(-90deg)",
             transition: "transform 200ms ease",
             display: "inline-block",
           }}
+          aria-hidden
         >
           ▼
         </span>
