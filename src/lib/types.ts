@@ -52,11 +52,44 @@ export type AvatarGalleryCategory =
   | "hat"
   | "accessory";
 
+// 갤러리 아이템이 합성 아바타 안에서 차지하는 위치/크기 — base bbox 기준.
+// x, y: 0~100 (% 위치, 중심점 기준 — translate(-50%, -50%) 와 결합).
+// scaleX, scaleY: 10~200 (% 크기, 100 = inner box 전체 너비/높이).
+export type AvatarGalleryItemPosition = {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+};
+
+// 카테고리별 기본 위치 — 관리자가 position 을 따로 지정하지 않은 항목에 적용.
+export const DEFAULT_GALLERY_POSITION_BY_CATEGORY: Record<
+  AvatarGalleryCategory,
+  AvatarGalleryItemPosition
+> = {
+  base:      { x: 50, y: 50, scaleX: 100, scaleY: 100 },
+  outfit:    { x: 50, y: 52, scaleX: 45,  scaleY: 45 },
+  bottom:    { x: 50, y: 70, scaleX: 40,  scaleY: 40 },
+  shoes:     { x: 50, y: 88, scaleX: 35,  scaleY: 35 },
+  hair:      { x: 50, y: 20, scaleX: 50,  scaleY: 50 },
+  face:      { x: 50, y: 33, scaleX: 35,  scaleY: 35 },
+  hat:       { x: 50, y: 15, scaleX: 45,  scaleY: 45 },
+  accessory: { x: 50, y: 33, scaleX: 35,  scaleY: 35 },
+};
+
+export function getGalleryItemPosition(item: {
+  category: AvatarGalleryCategory;
+  position?: AvatarGalleryItemPosition | null;
+}): AvatarGalleryItemPosition {
+  return item.position ?? DEFAULT_GALLERY_POSITION_BY_CATEGORY[item.category];
+}
+
 export type AvatarGalleryItem = {
   id: string;
   category: AvatarGalleryCategory;
   label: string | null;
   image_url: string;
+  position: AvatarGalleryItemPosition | null;
   sort_order: number;
   active: boolean;
   created_at: string;

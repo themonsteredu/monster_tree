@@ -320,11 +320,41 @@ export async function resetSemesterAction(args: { confirmText: string }) {
 
 /* ============== 아바타 갤러리 관리 (관리자 업로드) ============== */
 
-const GALLERY_CATEGORIES = ["base", "outfit", "bottom", "shoes", "hat", "accessory"] as const;
+const GALLERY_CATEGORIES = [
+  "base",
+  "outfit",
+  "bottom",
+  "shoes",
+  "hair",
+  "face",
+  "hat",
+  "accessory",
+] as const;
 type GalleryCategory = (typeof GALLERY_CATEGORIES)[number];
 
 function isGalleryCategory(v: unknown): v is GalleryCategory {
   return typeof v === "string" && (GALLERY_CATEGORIES as readonly string[]).includes(v);
+}
+
+// 카테고리별 갤러리 아이템 기본 위치/크기. types.ts 의 DEFAULT_GALLERY_POSITION_BY_CATEGORY
+// 와 일치 — 서버에서 import 하기보다 동일 값을 복제(서버 코드 경로 분리).
+const GALLERY_DEFAULT_POSITION: Record<GalleryCategory, { x: number; y: number; scaleX: number; scaleY: number }> = {
+  base:      { x: 50, y: 50, scaleX: 100, scaleY: 100 },
+  outfit:    { x: 50, y: 52, scaleX: 45,  scaleY: 45 },
+  bottom:    { x: 50, y: 70, scaleX: 40,  scaleY: 40 },
+  shoes:     { x: 50, y: 88, scaleX: 35,  scaleY: 35 },
+  hair:      { x: 50, y: 20, scaleX: 50,  scaleY: 50 },
+  face:      { x: 50, y: 33, scaleX: 35,  scaleY: 35 },
+  hat:       { x: 50, y: 15, scaleX: 45,  scaleY: 45 },
+  accessory: { x: 50, y: 33, scaleX: 35,  scaleY: 35 },
+};
+
+function isValidPosition(p: unknown): p is { x: number; y: number; scaleX: number; scaleY: number } {
+  if (!p || typeof p !== "object") return false;
+  const o = p as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number) =>
+    typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+  return num(o.x, 0, 100) && num(o.y, 0, 100) && num(o.scaleX, 10, 200) && num(o.scaleY, 10, 200);
 }
 
 // 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
@@ -378,6 +408,7 @@ export async function uploadGalleryItemAction(formData: FormData) {
     category,
     label: typeof label === "string" && label.length > 0 ? label.slice(0, 60) : null,
     image_url: url,
+    position: GALLERY_DEFAULT_POSITION[category],
     sort_order,
     active: true,
   });
@@ -442,11 +473,37 @@ export async function listAllGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, sort_order, active, created_at")
+    .select("id, category, label, image_url, position, sort_order, active, created_at")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {
     return { ok: false as const, message: `조회 실패: ${error.message}` };
   }
   return { ok: true as const, items: data ?? [] };
+}
+
+// 관리자: 갤러리 항목 위치/크기 (position) 업데이트.
+export async function updateGalleryItemPositionAction(args: {
+  id: string;
+  position: unknown;
+}) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  if (!isValidPosition(args.position)) {
+    return { ok: false as const, message: "잘못된 위치 값." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_avatar_gallery")
+    .update({ position: args.position })
+    .eq("id", args.id);
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  revalidatePath("/me");
+  revalidatePath("/");
+  return { ok: true as const, position: args.position };
 }

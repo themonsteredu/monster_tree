@@ -4,8 +4,8 @@
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
 import { useEffect, useState } from "react";
-import type { AvatarConfig } from "@/lib/types";
-import { DEFAULT_AVATAR } from "@/lib/types";
+import type { AvatarConfig, AvatarGalleryItemPosition } from "@/lib/types";
+import { DEFAULT_AVATAR, DEFAULT_GALLERY_POSITION_BY_CATEGORY } from "@/lib/types";
 
 // ============================================================
 // 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
@@ -100,43 +100,6 @@ function useFittedImage(url: string | undefined): FittedImage | undefined {
     };
   }, [url]);
   return fitted;
-}
-
-// 슬롯 프레임 안에서 auto-fit 된 이미지를 그리는 레이어 — 일반 <img object-fit:contain>.
-// frame 의 top/left/width/height 는 모두 inner 박스(=base bbox) 기준 %.
-function FittedLayer({
-  url,
-  top,
-  left,
-  width,
-  height,
-  zIndex,
-}: {
-  url: string;
-  top: string;
-  left: string;
-  width: string;
-  height: string;
-  zIndex: number;
-}) {
-  const fitted = useFittedImage(url);
-  return (
-    <img
-      src={fitted?.url ?? url}
-      alt=""
-      style={{
-        position: "absolute",
-        left,
-        top,
-        width,
-        height,
-        objectFit: "contain",
-        objectPosition: "center",
-        zIndex,
-        pointerEvents: "none",
-      }}
-    />
-  );
 }
 
 // ============================================================
@@ -963,69 +926,94 @@ function Hat({ variant }: { variant: string }) {
 // ============================================================
 // 갤러리 합성 아바타 — 8 슬롯을 base 캐릭터 위에 겹쳐 표시.
 //
-// 핵심: base PNG 의 실제 bbox 비율(h/w) 을 측정해서 그 비율의 inner 박스를
-// 만들고, 모든 슬롯을 inner 박스의 자식으로 배치한다. 그러면 어떤 base 이미지가
-// 올라와도 모자/안경/상의/하의/신발이 항상 몸의 같은 위치(머리/가슴/다리/발) 에
-// 정렬된다. 이전 구조는 슬롯이 정사각 컨테이너 % 였어서 base 가 letterbox 되면
-// 좌우/상하로 어긋났음.
+// 좌표계 동기화 (중요):
+//   에디터(/admin/gallery 위치조정) 미리보기와 실제 렌더(/me, /tv) 가 같은
+//   좌표/스케일/object-fit/auto-crop 로직을 쓰도록 AvatarLayer + AvatarComposite
+//   두 컴포넌트로 묶어 export. 둘 다 이 컴포넌트만 통해 렌더되므로 한 픽셀
+//   어긋남도 발생하지 않음.
 //
-// SLOT_FRAMES — inner 박스(=base bbox) 기준 인체 해부학 % (top/left/width/height).
-// 마인크래프트 캐릭터는 팔이 좌우로 벌어진 bbox 라, 몸통/머리/다리 같은 가운데
-// 부위는 bbox 의 40~55% 너비만 차지. 너비를 100% 로 두면 모자/안경/상의가
-// 캔버스 전체 너비에 contain 되며 너무 커지거나 위치가 어긋남. 그래서 각
-// 슬롯에 left/width 도 명시.
+// AvatarLayer: 단일 레이어. position {x,y,scaleX,scaleY} 를 CSS 로 그대로 적용.
+//   - 좌표 컨테이너(inner 박스) 의 100% × 100% 가 레이어 기본 박스.
+//   - left: x% / top: y% / translate(-50%, -50%) 로 중심점 위치.
+//   - scaleX/scaleY 로 100 기준 % 스케일.
+//   - 이미지는 width/height 100% + object-fit: contain + useFittedImage 로
+//     투명 여백 잘라낸 PNG 사용 (인트린식 비율 유지).
 //
-//   base    : 100% × 100%   (전체)
-//   hair    :  44% w, top  -1%, h 16%, 중앙
-//   hat     :  48% w, top  -4%, h 20%, 중앙
-//   face    :  36% w, top  10%, h 10%, 중앙 (눈코입)
-//   accessory: 42% w, top  11%, h  8%, 중앙 (안경)
-//   outfit  :  52% w, top  24%, h 26%, 중앙 (목 아래~허리)
-//   bottom  :  44% w, top  48%, h 32%, 중앙 (허리~발목)
-//   shoes   :  54% w, top  82%, h 16%, 중앙 (양발)
-// 레이어 순서(z): base → bottom → outfit → shoes → hair → face → accessory → hat
+// AvatarComposite: 외곽 size×size 컨테이너 + base bbox 비율로 만든 inner 박스.
+//   baseUrl 의 alpha bbox 비율(h/w) 을 측정해서 size×size 안에 들어가는
+//   최대 직사각형을 inner 박스로 만들고, 그 안에 layers 를 쌓음. 모든 좌표는
+//   inner 박스 % 기준.
+//
+// 레이어 순서(z): base → bottom → outfit → shoes → face → hair → accessory → hat
+// (hair 가 outfit/face 위에 와야 머리카락이 옷깃과 이마 위를 자연스럽게 덮음)
 // ============================================================
 type GallerySlot = "base" | "hair" | "hat" | "face" | "accessory" | "outfit" | "bottom" | "shoes";
-type SlotFrame = { top: string; left: string; width: string; height: string };
-const GALLERY_SLOT_FRAMES: Record<GallerySlot, SlotFrame> = {
-  base:      { top: "0%",   left: "0%",  width: "100%", height: "100%" },
-  hair:      { top: "-1%",  left: "28%", width: "44%",  height: "16%" },
-  hat:       { top: "-4%",  left: "26%", width: "48%",  height: "20%" },
-  face:      { top: "10%",  left: "32%", width: "36%",  height: "10%" },
-  accessory: { top: "11%",  left: "29%", width: "42%",  height: "8%" },
-  outfit:    { top: "24%",  left: "24%", width: "52%",  height: "26%" },
-  bottom:    { top: "48%",  left: "28%", width: "44%",  height: "32%" },
-  shoes:     { top: "82%",  left: "23%", width: "54%",  height: "16%" },
+
+export function AvatarLayer({
+  url,
+  position,
+  zIndex,
+  opacity,
+}: {
+  url: string;
+  position: AvatarGalleryItemPosition;
+  zIndex?: number;
+  opacity?: number;
+}) {
+  const fitted = useFittedImage(url);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${position.x}%`,
+        top: `${position.y}%`,
+        width: "100%",
+        height: "100%",
+        transform: `translate(-50%, -50%) scaleX(${position.scaleX / 100}) scaleY(${position.scaleY / 100})`,
+        transformOrigin: "center center",
+        zIndex,
+        opacity,
+        pointerEvents: "none",
+      }}
+    >
+      <img
+        src={fitted?.url ?? url}
+        alt=""
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          objectPosition: "center",
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
+
+export type AvatarCompositeLayer = {
+  key: string;
+  url: string;
+  position: AvatarGalleryItemPosition;
+  zIndex?: number;
+  opacity?: number;
 };
 
-function GalleryAvatar({
-  cfg,
+export function AvatarComposite({
   size,
+  baseUrl,
+  layers,
   className,
 }: {
-  cfg: Extract<AvatarConfig, { kind: "gallery" }>;
   size: number;
+  baseUrl: string | undefined;
+  layers: AvatarCompositeLayer[];
   className?: string;
 }) {
-  // base 가 있으면 그 bbox 비율을 그대로 사용 — 없으면 portrait 기본값 1.4.
-  // inner 박스는 외곽 size×size 안에 들어가는 최대 크기로 계산.
-  const baseFitted = useFittedImage(cfg.base);
+  const baseFitted = useFittedImage(baseUrl);
   const ratio = baseFitted?.ratio ?? 1.4; // height / width
   const innerHeight = ratio >= 1 ? size : size * ratio;
   const innerWidth = ratio >= 1 ? size / ratio : size;
-
-  const layers: Array<{ key: GallerySlot; url?: string; z: number }> = [
-    { key: "base", url: cfg.base, z: 1 },
-    { key: "bottom", url: cfg.bottom, z: 2 },
-    { key: "outfit", url: cfg.outfit, z: 3 },
-    { key: "shoes", url: cfg.shoes, z: 4 },
-    { key: "hair", url: cfg.hair, z: 5 },
-    { key: "face", url: cfg.face, z: 6 },
-    { key: "accessory", url: cfg.accessory, z: 7 },
-    { key: "hat", url: cfg.hat, z: 8 },
-  ];
-  const hasAny = layers.some((l) => l.url);
-
   return (
     <div
       className={className}
@@ -1037,34 +1025,74 @@ function GalleryAvatar({
         overflow: "hidden",
       }}
     >
-      {hasAny ? (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: innerWidth,
-            height: innerHeight,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {layers.map((l) => {
-            if (!l.url) return null;
-            const frame = GALLERY_SLOT_FRAMES[l.key];
-            return (
-              <FittedLayer
-                key={l.key}
-                url={l.url}
-                top={frame.top}
-                left={frame.left}
-                width={frame.width}
-                height={frame.height}
-                zIndex={l.z}
-              />
-            );
-          })}
-        </div>
-      ) : (
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: innerWidth,
+          height: innerHeight,
+          transform: "translate(-50%, -50%)",
+        }}
+      >
+        {layers.map((l) => (
+          <AvatarLayer
+            key={l.key}
+            url={l.url}
+            position={l.position}
+            zIndex={l.zIndex}
+            opacity={l.opacity}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GalleryAvatar({
+  cfg,
+  size,
+  className,
+  galleryPositions,
+}: {
+  cfg: Extract<AvatarConfig, { kind: "gallery" }>;
+  size: number;
+  className?: string;
+  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
+}) {
+  const ordered: Array<{ key: GallerySlot; url?: string; z: number }> = [
+    { key: "base", url: cfg.base, z: 1 },
+    { key: "bottom", url: cfg.bottom, z: 2 },
+    { key: "outfit", url: cfg.outfit, z: 3 },
+    { key: "shoes", url: cfg.shoes, z: 4 },
+    { key: "face", url: cfg.face, z: 5 },
+    { key: "hair", url: cfg.hair, z: 6 },
+    { key: "accessory", url: cfg.accessory, z: 7 },
+    { key: "hat", url: cfg.hat, z: 8 },
+  ];
+  const layers: AvatarCompositeLayer[] = ordered
+    .filter((l): l is { key: GallerySlot; url: string; z: number } => !!l.url)
+    .map((l) => ({
+      key: l.key,
+      url: l.url,
+      position:
+        (galleryPositions && galleryPositions[l.url]) ??
+        DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key],
+      zIndex: l.z,
+    }));
+
+  if (layers.length === 0) {
+    return (
+      <div
+        className={className}
+        style={{
+          position: "relative",
+          width: size,
+          height: size,
+          display: "block",
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
             position: "absolute",
@@ -1078,8 +1106,17 @@ function GalleryAvatar({
         >
           아이템을 골라주세요
         </div>
-      )}
-    </div>
+      </div>
+    );
+  }
+
+  return (
+    <AvatarComposite
+      size={size}
+      baseUrl={cfg.base}
+      layers={layers}
+      className={className}
+    />
   );
 }
 
@@ -1090,10 +1127,12 @@ export function AvatarFigure({
   config,
   size = 144,
   className,
+  galleryPositions,
 }: {
   config?: AvatarConfig | null;
   size?: number;
   className?: string;
+  galleryPositions?: Record<string, AvatarGalleryItemPosition>;
 }) {
   const cfg: AvatarConfig = config ?? DEFAULT_AVATAR;
 
@@ -1118,7 +1157,14 @@ export function AvatarFigure({
   }
 
   if (cfg.kind === "gallery") {
-    return <GalleryAvatar cfg={cfg} size={size} className={className} />;
+    return (
+      <GalleryAvatar
+        cfg={cfg}
+        size={size}
+        className={className}
+        galleryPositions={galleryPositions}
+      />
+    );
   }
 
   const skinPal = (cfg.kind === "human" ? SKIN[cfg.skin] : undefined) ?? SKIN.light;

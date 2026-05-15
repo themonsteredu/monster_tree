@@ -5,12 +5,22 @@
 // 업로드 시 클라이언트에서 자동 배경 제거 — 가장자리 픽셀에서 1~2 개 우세 색을 찾아
 // (체크무늬 baked-in 케이스 포함) 일치 픽셀을 투명 처리한 PNG 로 변환한 뒤 전송.
 
-import { useRef, useState, useTransition } from "react";
-import type { AvatarGalleryCategory, AvatarGalleryItem } from "@/lib/types";
+import { useMemo, useRef, useState, useTransition } from "react";
+import type {
+  AvatarGalleryCategory,
+  AvatarGalleryItem,
+  AvatarGalleryItemPosition,
+} from "@/lib/types";
+import { getGalleryItemPosition } from "@/lib/types";
+import {
+  AvatarComposite,
+  type AvatarCompositeLayer,
+} from "@/features/garden/avatar/AvatarFigure";
 import {
   uploadGalleryItemAction,
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
+  updateGalleryItemPositionAction,
 } from "../actions";
 
 // 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
@@ -139,8 +149,22 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [editingItem, setEditingItem] = useState<AvatarGalleryItem | null>(null);
 
   const byCategory = (cat: AvatarGalleryCategory) => items.filter((i) => i.category === cat);
+
+  const handleSavePosition = (id: string, position: AvatarGalleryItemPosition) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await updateGalleryItemPositionAction({ id, position });
+      if (!r.ok) {
+        setError(r.message);
+        return;
+      }
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, position } : i)));
+      setEditingItem(null);
+    });
+  };
 
   const refreshFromServer = async () => {
     // 간단히 page refresh — server action 후 revalidatePath 가 호출되긴 하나 클라이언트 state 도 갱신 필요
@@ -307,14 +331,24 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           onToggle={handleToggle}
           onDelete={handleDelete}
           onReclean={handleReclean}
+          onEditPosition={(it) => setEditingItem(it)}
         />
       ))}
+      {editingItem && (
+        <PositionEditor
+          item={editingItem}
+          allItems={items}
+          pending={pending}
+          onClose={() => setEditingItem(null)}
+          onSave={(position) => handleSavePosition(editingItem.id, position)}
+        />
+      )}
     </div>
   );
 }
 
 function CategorySection({
-  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean,
+  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean, onEditPosition,
 }: {
   category: AvatarGalleryCategory;
   label: string;
@@ -325,6 +359,7 @@ function CategorySection({
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
   onReclean: (it: AvatarGalleryItem) => void;
+  onEditPosition: (it: AvatarGalleryItem) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -396,6 +431,15 @@ function CategorySection({
               <div className="flex border-t border-gray-100">
                 <button
                   type="button"
+                  onClick={() => onEditPosition(it)}
+                  disabled={pending}
+                  className="flex-1 py-1 text-[11px] font-bold border-r border-pot/20"
+                  title="아바타 안에서 이 아이템의 위치/크기 조정"
+                >
+                  🎯 위치조정
+                </button>
+                <button
+                  type="button"
                   onClick={() => onReclean(it)}
                   disabled={pending}
                   className="flex-1 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 border-r border-gray-100 transition disabled:opacity-50"
@@ -425,5 +469,246 @@ function CategorySection({
         </div>
       )}
     </section>
+  );
+}
+
+// 카테고리별 합성 순서 (z-index) — GalleryAvatar 와 동일하게 유지.
+// hair 가 outfit/face 위에 와야 머리카락이 옷깃과 이마 위를 자연스럽게 덮음.
+const CATEGORY_Z: Record<AvatarGalleryCategory, number> = {
+  base: 1, bottom: 2, outfit: 3, shoes: 4, face: 5, hair: 6, accessory: 7, hat: 8,
+};
+const ALL_CATEGORIES: AvatarGalleryCategory[] = [
+  "base", "bottom", "outfit", "shoes", "face", "hair", "accessory", "hat",
+];
+
+// 위치/크기 조정 에디터 — 300×300 미리보기 + 슬라이더 4개.
+// 미리보기는 실 렌더(/me, /tv) 와 동일한 AvatarComposite 로 그림.
+// 배경 레이어: 편집 중 카테고리를 제외한 각 카테고리에서 첫 활성 아이템을 골라
+// DB 에 저장된 position(없으면 카테고리 기본값) 으로 opacity 0.4 합성 — 그래서
+// base 가 작게 저장되어 있으면 옷/모자도 그 작은 base 에 맞춰 조정 가능.
+function PositionEditor({
+  item,
+  allItems,
+  pending,
+  onClose,
+  onSave,
+}: {
+  item: AvatarGalleryItem;
+  allItems: AvatarGalleryItem[];
+  pending: boolean;
+  onClose: () => void;
+  onSave: (position: AvatarGalleryItemPosition) => void;
+}) {
+  const [pos, setPos] = useState<AvatarGalleryItemPosition>(() => getGalleryItemPosition(item));
+
+  // 카테고리별 대표 아이템 (활성 우선, 그 다음 sort_order 첫번째).
+  const representativeByCat = useMemo(() => {
+    const map: Partial<Record<AvatarGalleryCategory, AvatarGalleryItem>> = {};
+    for (const cat of ALL_CATEGORIES) {
+      const candidates = allItems.filter((i) => i.category === cat);
+      map[cat] =
+        candidates.find((i) => i.active && i.id !== item.id) ??
+        candidates.find((i) => i.id !== item.id);
+    }
+    return map;
+  }, [allItems, item.id]);
+
+  // inner-box 비율 결정용 base url — base 편집 중이면 자기 자신, 아니면 대표 base.
+  const innerBoxBaseUrl =
+    item.category === "base" ? item.image_url : representativeByCat.base?.image_url;
+
+  // 미리보기 레이어 구성: 편집 중 카테고리는 현재 슬라이더 값으로 풀 불투명도,
+  // 나머지 카테고리는 대표 아이템의 저장된 position 으로 opacity 0.4.
+  const previewLayers = useMemo<AvatarCompositeLayer[]>(() => {
+    const out: AvatarCompositeLayer[] = [];
+    for (const cat of ALL_CATEGORIES) {
+      if (cat === item.category) {
+        out.push({
+          key: `edit-${cat}`,
+          url: item.image_url,
+          position: pos,
+          zIndex: CATEGORY_Z[cat],
+        });
+        continue;
+      }
+      const rep = representativeByCat[cat];
+      if (!rep) continue;
+      out.push({
+        key: `bg-${cat}-${rep.id}`,
+        url: rep.image_url,
+        position: getGalleryItemPosition(rep),
+        opacity: 0.4,
+        zIndex: CATEGORY_Z[cat],
+      });
+    }
+    return out;
+  }, [item.category, item.image_url, pos, representativeByCat]);
+
+  const update = (patch: Partial<AvatarGalleryItemPosition>) =>
+    setPos((p) => ({ ...p, ...patch }));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="위치/크기 조정"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(61,40,24,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 380,
+          background: "#fffaf2",
+          borderRadius: 14,
+          padding: 16,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 16, color: "#3d2818", fontWeight: 800 }}>
+            위치 / 크기 — {item.category}
+            {item.label ? ` · ${item.label}` : ""}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            style={{ border: "none", background: "transparent", fontSize: 20, color: "#9a8b6c", cursor: "pointer", padding: 4 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* 미리보기 — AvatarComposite 로 실제 렌더와 100% 동일하게 그림.
+            base 카테고리 편집 시엔 자기 자신이 backdrop 이므로 별도 backdrop 레이어 없음. */}
+        <div
+          style={{
+            margin: "0 auto 14px",
+            width: 300,
+            background: "#fff5d6",
+            border: "1.5px solid #f0c050",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <AvatarComposite
+            size={300}
+            baseUrl={innerBoxBaseUrl}
+            layers={previewLayers}
+          />
+        </div>
+
+        {/* 슬라이더 4개 */}
+        <SliderRow label="X 위치" value={pos.x} min={0} max={100} onChange={(v) => update({ x: v })} suffix="%" />
+        <SliderRow label="Y 위치" value={pos.y} min={0} max={100} onChange={(v) => update({ y: v })} suffix="%" />
+        <SliderRow label="가로폭" value={pos.scaleX} min={10} max={200} onChange={(v) => update({ scaleX: v })} suffix="%" />
+        <SliderRow label="세로길이" value={pos.scaleY} min={10} max={200} onChange={(v) => update({ scaleY: v })} suffix="%" />
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button
+            type="button"
+            onClick={() => setPos(getGalleryItemPosition({ category: item.category, position: null }))}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#3d2818",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            기본값
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#3d2818",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(pos)}
+            disabled={pending}
+            style={{
+              flex: 2,
+              padding: "10px 0",
+              border: "none",
+              background: pending ? "#d6c2a0" : "#F26522",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: pending ? "default" : "pointer",
+            }}
+          >
+            {pending ? "저장 중..." : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  suffix?: string;
+}) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#3d2818", fontWeight: 700, marginBottom: 2 }}>
+        <span>{label}</span>
+        <span style={{ color: "#9a8b6c" }}>
+          {Math.round(value)}
+          {suffix ?? ""}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: "100%" }}
+      />
+    </div>
   );
 }
