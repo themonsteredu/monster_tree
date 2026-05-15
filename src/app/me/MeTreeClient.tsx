@@ -5,20 +5,6 @@
 // 이후 useStudentRealtime 훅으로 점수/단계/사과/대기열 변화를 반영한다.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-
-// 모바일 분기용 매체쿼리 훅 — SSR 시 false 반환 (PC 가정), 클라이언트 마운트 후 갱신.
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    setMatch(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setMatch(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [query]);
-  return match;
-}
-
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
@@ -161,8 +147,6 @@ export function MeTreeClient({
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
-  // 모바일(<640) 에서 아바타를 정중앙 + 더 크게. PC 에선 기존 우측 배치 유지.
-  const isMobile = useMediaQuery("(max-width: 639px)");
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
@@ -429,7 +413,6 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
-                  gap: isMobile ? 4 : 0,
                   minHeight: 200,
                 }}
               >
@@ -438,9 +421,7 @@ export function MeTreeClient({
                   <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                     <AppleTree
                       stage={stage}
-                      // 모바일에서는 트리를 small 로 줄여 아바타와 폭 안에 들어가게 한다.
-                      // (AppleTree 는 픽셀 고정 SVG 라 직접 반응형 처리 불가 — size prop 으로 분기.)
-                      size={isMobile ? "small" : "xl"}
+                      size="xl"
                       mood={treeMood}
                       wilted={isNegative}
                       growthBoost={progress}
@@ -452,27 +433,13 @@ export function MeTreeClient({
                   )}
                 </div>
                 <div
-                  style={
-                    isMobile
-                      ? {
-                          // 모바일: flex 자식. width 명시로 AvatarFigure 외곽 박스에 폭 전달
-                          // (AvatarFigure 가 width:100% maxWidth:size 반응형이라 부모 폭으로 결정).
-                          position: "relative",
-                          alignSelf: "flex-end",
-                          width: "min(160px, 48%)",
-                          pointerEvents: "none",
-                        }
-                      : {
-                          // PC: 기존 우측 배치 유지 (회귀 없음)
-                          position: "absolute",
-                          right: 12,
-                          bottom: 0,
-                          pointerEvents: "none",
-                        }
-                  }
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    bottom: 0,
+                    pointerEvents: "none",
+                  }}
                 >
-                  {/* size 는 PC/모바일 모두 동일한 160. AvatarFigure 가 부모 폭에 맞춰 자동 축소
-                      (viewBox 고정 + 외곽 width:100% maxWidth:size). 옷·머리·얼굴 비율 그대로. */}
                   <AvatarFigure config={currentAvatar} size={160} />
                 </div>
               </div>

@@ -1026,75 +1026,59 @@ function GalleryAvatar({
   ];
   const hasAny = layers.some((l) => l.url);
 
-  // inner % 비율 (외곽 박스 size×size 기준의 inner 박스 크기 비율)
-  // 외곽 박스가 모바일에서 줄어들면 inner 도 같은 % 로 자동 축소 → 옷 슬롯 % 좌표가
-  // inner 기준이므로 비율 그대로 유지.
-  const innerWidthPct = (innerWidth / size) * 100;
-  const innerHeightPct = (innerHeight / size) * 100;
-
   return (
-    // 외곽 박스: width:100% + maxWidth:size 로 부모 폭 따라가되 상한 size.
-    // paddingTop:100% 트릭으로 정확한 1:1 정사각형 강제 — aspect-ratio CSS 지원이
-    // 부족한 옛 모바일 브라우저(iOS 15 미만 등) 에서도 동일하게 작동.
     <div
       className={className}
       style={{
         position: "relative",
-        width: "100%",
-        maxWidth: size,
-        paddingTop: "100%",
-        height: 0,
+        width: size,
+        height: size,
         display: "block",
         overflow: "hidden",
       }}
     >
-      {/* 정사각형 외곽의 컨텐츠 영역 — 모든 자식이 이 박스 안에서 % 좌표로 정렬됨. */}
-      <div style={{ position: "absolute", inset: 0 }}>
-        {hasAny ? (
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              // inner = 외곽 박스의 % — 외곽이 작아져도 inner 가 같은 비율로 자동 축소.
-              // 옷 슬롯 % 좌표가 inner 박스 기준이라 어떤 사이즈에서든 파츠 정렬 일관.
-              width: `${innerWidthPct}%`,
-              height: `${innerHeightPct}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-          >
-            {layers.map((l) => {
-              if (!l.url) return null;
-              const frame = GALLERY_SLOT_FRAMES[l.key];
-              return (
-                <FittedLayer
-                  key={l.key}
-                  url={l.url}
-                  top={frame.top}
-                  left={frame.left}
-                  width={frame.width}
-                  height={frame.height}
-                  zIndex={l.z}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#9a8b6c",
-              fontSize: 12,
-            }}
-          >
-            아이템을 골라주세요
-          </div>
-        )}
-      </div>
+      {hasAny ? (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: innerWidth,
+            height: innerHeight,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          {layers.map((l) => {
+            if (!l.url) return null;
+            const frame = GALLERY_SLOT_FRAMES[l.key];
+            return (
+              <FittedLayer
+                key={l.key}
+                url={l.url}
+                top={frame.top}
+                left={frame.left}
+                width={frame.width}
+                height={frame.height}
+                zIndex={l.z}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#9a8b6c",
+            fontSize: 12,
+          }}
+        >
+          아이템을 골라주세요
+        </div>
+      )}
     </div>
   );
 }
@@ -1123,11 +1107,8 @@ export function AvatarFigure({
         height={(size * 170) / 120}
         className={className}
         style={{
-          // width:100% maxWidth:size + height:auto → 부모 폭에 맞춰 축소하며 attr 의 intrinsic
-          // 12:17 비율 자동 유지 (img 자체 메커니즘, aspect-ratio CSS 없이도 모든 브라우저 호환).
-          width: "100%",
-          maxWidth: size,
-          height: "auto",
+          width: size,
+          height: (size * 170) / 120,
           objectFit: "contain",
           objectPosition: "center bottom",
           display: "block",
@@ -1174,15 +1155,6 @@ export function AvatarFigure({
       height={(size * 170) / 120}
       className={className}
       aria-hidden
-      // viewBox 고정 + width:100% height:auto → SVG 자체 메커니즘으로 viewBox 비율
-      // 자동 유지. 안의 모든 부위(머리/얼굴/옷/액세서리)가 viewBox 좌표계로 정렬되어
-      // 어떤 사이즈에서든 파츠끼리 정확히 맞물림.
-      style={{
-        display: "block",
-        width: "100%",
-        maxWidth: size,
-        height: "auto",
-      }}
     >
       {inner}
       {glassesV && <Glasses variant={glassesV} />}
