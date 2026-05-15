@@ -166,6 +166,8 @@ export function AppleTree({
 
   if (!hasImage) return svgEl;
 
+  // 이미지가 있으면 SVG fallback 절대 렌더하지 않음 (사용자 요청).
+  // 로딩 중에는 빈(투명) 박스 — 짧은 순간이지만 SVG 가 잠깐 튀어나오는 것을 방지.
   return (
     <div
       role="img"
@@ -180,7 +182,6 @@ export function AppleTree({
         verticalAlign: "bottom",
       }}
     >
-      {svgEl}
       <img
         key={imageConfig!.url}
         src={imageConfig!.url}
