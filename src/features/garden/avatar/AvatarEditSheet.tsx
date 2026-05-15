@@ -41,6 +41,7 @@ type Props = {
   initial: AvatarConfig;
   onClose: () => void;
   onSaved: (next: AvatarConfig) => void;
+  onReset?: () => void;
 };
 
 function toGalleryDraft(cfg: AvatarConfig): AvatarConfig {
@@ -48,7 +49,7 @@ function toGalleryDraft(cfg: AvatarConfig): AvatarConfig {
   return { kind: "gallery" };
 }
 
-export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
+export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Props) {
   const [draft, setDraft] = useState<AvatarConfig>(() => toGalleryDraft(initial));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -300,6 +301,30 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved }: Props) {
         )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          {onReset && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("아바타를 리셋할까요? 저장된 아바타가 사라집니다.")) {
+                  onReset();
+                }
+              }}
+              disabled={pending}
+              style={{
+                flex: 1,
+                padding: "12px 0",
+                border: "1.5px solid #f5cdc4",
+                background: "#fff",
+                color: "#b04020",
+                borderRadius: 10,
+                fontWeight: 600,
+                cursor: pending ? "default" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              리셋
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

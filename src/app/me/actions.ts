@@ -185,6 +185,30 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
   return { ok: true as const, avatar };
 }
 
+// 아바타 초기화 — avatar 컬럼을 NULL 로. AvatarFigure 가 안 렌더된다.
+export async function resetAvatarAction() {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb
+    .from("garden_students")
+    .update({ avatar: null })
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId);
+  if (error) {
+    return { ok: false as const, message: `리셋 실패: ${error.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true as const };
+}
+
 // 학생 본인 사진을 avatars 버킷에 업로드 후 avatar = { kind: "image", url } 로 저장.
 // 학생당 1장(덮어쓰기). 1MB 제한, png/jpg/webp 만 허용.
 export async function uploadAvatarImageAction(formData: FormData) {

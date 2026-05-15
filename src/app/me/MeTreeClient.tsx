@@ -31,7 +31,7 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterMe } from "@/features/garden/effects/SprayWater";
 import { fireConfetti, firePtCelebration } from "@/features/garden/effects/confetti";
 import { useStudentRealtime } from "@/features/garden/hooks/useStudentRealtime";
-import { claimPointAction } from "./actions";
+import { claimPointAction, resetAvatarAction } from "./actions";
 
 type Row = {
   id: string;
@@ -732,6 +732,15 @@ export function MeTreeClient({
         initial={currentAvatar}
         onClose={() => setAvatarSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, avatar: next } : prev))}
+        onReset={async () => {
+          const r = await resetAvatarAction();
+          if (r.ok) {
+            setRow((prev) => (prev ? { ...prev, avatar: null } : prev));
+            setAvatarSheetOpen(false);
+          } else {
+            window.alert(r.message);
+          }
+        }}
       />
 
       <BackgroundEditSheet
