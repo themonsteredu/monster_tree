@@ -22,6 +22,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );
