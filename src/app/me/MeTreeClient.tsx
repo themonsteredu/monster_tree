@@ -415,6 +415,7 @@ export function MeTreeClient({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "flex-end",
+                  gap: 8,
                   minHeight: 200,
                 }}
               >
@@ -436,10 +437,8 @@ export function MeTreeClient({
                 </div>
                 <div
                   style={{
-                    position: "absolute",
-                    right: 12,
-                    bottom: 0,
                     pointerEvents: "none",
+                    flexShrink: 0,
                   }}
                 >
                   <AvatarFigure config={currentAvatar} size={160} galleryPositions={galleryPositions} />
