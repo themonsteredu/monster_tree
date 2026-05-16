@@ -1092,7 +1092,8 @@ function GalleryAvatar({
         l.customPos ??
         (galleryPositions && galleryPositions[l.url]) ??
         DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key],
-      zIndex: l.z,
+      // zIndex 우선순위: 학생 개별 > 카테고리 기본
+      zIndex: l.customPos?.zIndex ?? l.z,
     }));
 
   if (layers.length === 0) {

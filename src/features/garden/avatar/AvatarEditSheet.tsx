@@ -12,12 +12,8 @@ import type {
   AvatarGalleryItemPosition,
   AvatarGallerySlot,
 } from "@/lib/types";
-import {
-  DEFAULT_GALLERY_POSITION_BY_CATEGORY,
-  getGallerySlotPosition,
-  getGallerySlotUrl,
-} from "@/lib/types";
-import { AvatarFigure } from "./AvatarFigure";
+import { getGallerySlotPosition, getGallerySlotUrl } from "@/lib/types";
+import { AvatarEditCanvas } from "./AvatarEditCanvas";
 import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
 
 const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
@@ -66,11 +62,14 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleCategory = (cat: AvatarGalleryCategory) =>
     setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  // 미리보기 캔버스에서 선택된 슬롯 (터치 조작 대상)
+  const [selectedSlot, setSelectedSlot] = useState<AvatarGalleryCategory | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraft(toGalleryDraft(initial));
     setError(null);
+    setSelectedSlot(null);
   }, [open, initial]);
 
   useEffect(() => {
@@ -127,6 +126,24 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     if (!url) return;
     const next = { ...draft, [slot]: url };
     setDraft(next);
+  };
+
+  // 레이어 순서 변경 — 현재 effective zIndex 에서 ±1.
+  const CATEGORY_DEFAULT_Z: Record<AvatarGalleryCategory, number> = {
+    base: 1, bottom: 2, outfit: 3, shoes: 4, face: 5, hair: 6, accessory: 7, hat: 8,
+  };
+  const adjustZ = (slot: AvatarGalleryCategory, delta: number) => {
+    if (draft.kind !== "gallery") return;
+    const current = (draft as Record<string, unknown>)[slot];
+    const url = getGallerySlotUrl(current as AvatarGallerySlot | undefined);
+    if (!url) return;
+    const customPos = getGallerySlotPosition(current as AvatarGallerySlot | undefined);
+    const adminPos = galleryPositions[url];
+    const base = customPos ?? adminPos ?? { x: 50, y: 50, scaleX: 100, scaleY: 100 };
+    const currentZ = customPos?.zIndex ?? CATEGORY_DEFAULT_Z[slot];
+    const nextZ = Math.min(20, Math.max(1, currentZ + delta));
+    const nextPos: AvatarGalleryItemPosition = { ...base, zIndex: nextZ };
+    setDraft({ ...draft, [slot]: { url, position: nextPos } });
   };
 
   const onSave = () => {
@@ -207,8 +224,90 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
             zIndex: 1,
           }}
         >
-          <AvatarFigure config={draft} size={180} galleryPositions={galleryPositions} />
+          <AvatarEditCanvas
+            draft={draft}
+            size={240}
+            galleryPositions={galleryPositions}
+            selectedSlot={selectedSlot}
+            onSelectSlot={setSelectedSlot}
+            onPositionChange={setSlotPosition}
+          />
         </div>
+
+        {/* 선택된 아이템 컨트롤 — 미리보기 캔버스에서 아이템 탭하면 표시 */}
+        {selectedSlot && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 10px",
+              background: "#fff8e8",
+              border: "1.5px solid #f1e8d8",
+              borderRadius: 12,
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#3d2818" }}>
+              선택: {GALLERY_CAT_LABELS[selectedSlot]}
+            </span>
+            <span style={{ fontSize: 10, color: "#8a6f52" }}>
+              한 손가락 끌기 = 이동 / 두 손가락 = 크기
+            </span>
+            <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              onClick={() => adjustZ(selectedSlot, -1)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1.5px solid #d6c2a0",
+                background: "#fff",
+                color: "#3d2818",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              aria-label="뒤로"
+            >
+              ⬇ 뒤로
+            </button>
+            <button
+              type="button"
+              onClick={() => adjustZ(selectedSlot, 1)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1.5px solid #d6c2a0",
+                background: "#fff",
+                color: "#3d2818",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              aria-label="앞으로"
+            >
+              ⬆ 앞으로
+            </button>
+            <button
+              type="button"
+              onClick={() => resetSlotPosition(selectedSlot)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1.5px solid #d6c2a0",
+                background: "#fff",
+                color: "#8a6f52",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              원래대로
+            </button>
+          </div>
+        )}
 
         {/* 갤러리 — 관리자가 올린 이미지에서 카테고리마다 1개씩 선택 */}
         <div style={{ marginBottom: 12 }}>
@@ -233,18 +332,12 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
           ) : (
             GALLERY_CAT_ORDER.map((cat) => {
               const inCat = galleryItems.filter((it) => it.category === cat);
-              const selectedSlot =
+              const slotValue =
                 draft.kind === "gallery"
                   ? ((draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined)
                   : undefined;
-              const selectedUrl = getGallerySlotUrl(selectedSlot);
-              const isOpen = !collapsed[cat];  // 기본 펼침, 접으면 collapsed=true
-              const customPos = getGallerySlotPosition(selectedSlot);
-              // base 는 관리자만 위치/크기 조절. 나머지는 학생도 가능.
-              const allowAdjust = cat !== "base";
-              const adminPos = selectedUrl ? galleryPositions[selectedUrl] : undefined;
-              const effectivePos: AvatarGalleryItemPosition =
-                customPos ?? adminPos ?? DEFAULT_GALLERY_POSITION_BY_CATEGORY[cat];
+              const selectedUrl = getGallerySlotUrl(slotValue);
+              const isOpen = !collapsed[cat];
               return (
                 <div key={cat} style={{ marginBottom: 10 }}>
                   {/* 카테고리 헤더 — 클릭하면 접기/펼치기 */}
@@ -368,16 +461,6 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                     </div>
                   )}
 
-                  {/* 위치/크기 슬라이더 — base 는 관리자만, 나머지는 학생도 가능.
-                      아이템 선택 + 카테고리 펼침 + 조절 허용 시에만 표시. */}
-                  {isOpen && selectedUrl && allowAdjust && (
-                    <PositionSliders
-                      position={effectivePos}
-                      hasCustom={!!customPos}
-                      onChange={(next) => setSlotPosition(cat, next)}
-                      onReset={() => resetSlotPosition(cat)}
-                    />
-                  )}
                 </div>
               );
             })
@@ -461,147 +544,6 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ============== 위치/크기 슬라이더 ==============
-   base 외 카테고리(상의/하의/모자/머리 등)에서 학생이 직접 조절.
-   CSS transform 만 변경 (canvas 미사용). */
-
-function PositionSliders({
-  position,
-  hasCustom,
-  onChange,
-  onReset,
-}: {
-  position: AvatarGalleryItemPosition;
-  hasCustom: boolean;
-  onChange: (next: AvatarGalleryItemPosition) => void;
-  onReset: () => void;
-}) {
-  const update = (patch: Partial<AvatarGalleryItemPosition>) =>
-    onChange({ ...position, ...patch });
-  return (
-    <div
-      style={{
-        marginTop: 8,
-        background: "#fff8e8",
-        border: "1.5px solid #f1e8d8",
-        borderRadius: 10,
-        padding: "10px 12px",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 6,
-        }}
-      >
-        <span style={{ fontSize: 11, color: "#8a6f52", fontWeight: 700 }}>
-          위치·크기 조절
-        </span>
-        <button
-          type="button"
-          onClick={onReset}
-          disabled={!hasCustom}
-          style={{
-            padding: "3px 10px",
-            borderRadius: 999,
-            border: "1px solid #d6c2a0",
-            background: hasCustom ? "#fff" : "#f0e6d4",
-            color: hasCustom ? "#8a6f52" : "#bbb",
-            fontSize: 11,
-            fontWeight: 700,
-            cursor: hasCustom ? "pointer" : "default",
-          }}
-        >
-          원래대로
-        </button>
-      </div>
-      <SliderRow
-        label="좌우 이동"
-        value={position.x}
-        min={0}
-        max={100}
-        step={1}
-        onChange={(v) => update({ x: v })}
-      />
-      <SliderRow
-        label="위아래 이동"
-        value={position.y}
-        min={0}
-        max={100}
-        step={1}
-        onChange={(v) => update({ y: v })}
-      />
-      <SliderRow
-        label="넓게 / 좁게"
-        value={position.scaleX}
-        min={10}
-        max={200}
-        step={2}
-        onChange={(v) => update({ scaleX: v })}
-      />
-      <SliderRow
-        label="길게 / 짧게"
-        value={position.scaleY}
-        min={10}
-        max={200}
-        step={2}
-        onChange={(v) => update({ scaleY: v })}
-      />
-    </div>
-  );
-}
-
-function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          fontWeight: 600,
-          color: "#3d2818",
-          marginBottom: 2,
-        }}
-      >
-        <span>{label}</span>
-        <span style={{ color: "#8a6f52", fontVariantNumeric: "tabular-nums" }}>
-          {Math.round(value)}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        style={{
-          width: "100%",
-          height: 28,
-          accentColor: "#F26522",
-        }}
-      />
     </div>
   );
 }
