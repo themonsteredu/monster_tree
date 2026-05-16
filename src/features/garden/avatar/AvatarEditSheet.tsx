@@ -57,10 +57,11 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
   const [pending, startTransition] = useTransition();
   const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
   const [galleryLoaded, setGalleryLoaded] = useState(false);
-  // 카테고리별 펼침 상태 — 기본 전부 접힘 (스크롤 부담 줄이기).
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // 카테고리별 펼침 상태 — 기본 전부 펼침 (학생이 바로 아이템 보고 고를 수 있게).
+  // 스크롤이 부담되면 헤더 누르면 개별 접힘.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleCategory = (cat: AvatarGalleryCategory) =>
-    setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
+    setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
 
   useEffect(() => {
     if (!open) return;
@@ -210,7 +211,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                   ? ((draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined)
                   : undefined;
               const selectedUrl = getGallerySlotUrl(selectedSlot);
-              const isOpen = !!expanded[cat];
+              const isOpen = !collapsed[cat];  // 기본 펼침, 접으면 collapsed=true
               return (
                 <div key={cat} style={{ marginBottom: 10 }}>
                   {/* 카테고리 헤더 — 클릭하면 접기/펼치기 */}
