@@ -111,6 +111,7 @@ export function AvatarEditCanvas({
           layer={layer}
           size={size}
           selected={selectedSlot === layer.key}
+          interactive={selectedSlot === null || selectedSlot === layer.key}
           onSelect={() => onSelectSlot(layer.key)}
           onPositionChange={onPositionChange}
         />
@@ -123,12 +124,14 @@ function LayerNode({
   layer,
   size,
   selected,
+  interactive,
   onSelect,
   onPositionChange,
 }: {
   layer: Layer;
   size: number;
   selected: boolean;
+  interactive: boolean;
   onSelect: () => void;
   onPositionChange: (slot: GallerySlot, next: AvatarGalleryItemPosition) => void;
 }) {
@@ -166,6 +169,9 @@ function LayerNode({
 
   // 본체 드래그 — 위치 이동 (x, y)
   const onPointerDown = (e: React.PointerEvent) => {
+    // 이미 다른 제스처(handle resize 등) 진행 중이면 무시 — 멀티 터치가
+    // mode state 를 덮어쓰지 않도록 보호.
+    if (stateRef.current.mode !== "idle") return;
     e.stopPropagation();
     e.preventDefault();
     onSelect();
@@ -216,6 +222,8 @@ function LayerNode({
 
   // 핸들에서 시작하는 resize 제스처
   const onHandleDown = (e: React.PointerEvent, dir: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) => {
+    // 이미 다른 제스처 진행 중이면 무시 (멀티 터치 보호)
+    if (stateRef.current.mode !== "idle") return;
     e.stopPropagation();
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -253,11 +261,11 @@ function LayerNode({
   return (
     <div
       ref={ref}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onWheel={onWheel}
+      onPointerDown={interactive ? onPointerDown : undefined}
+      onPointerMove={interactive ? onPointerMove : undefined}
+      onPointerUp={interactive ? onPointerUp : undefined}
+      onPointerCancel={interactive ? onPointerUp : undefined}
+      onWheel={interactive ? onWheel : undefined}
       style={{
         position: "absolute",
         left: `${position.x}%`,
@@ -266,7 +274,10 @@ function LayerNode({
         height: innerH,
         transform: "translate(-50%, -50%)",
         zIndex: layer.zIndex,
-        cursor: selected ? "move" : "pointer",
+        cursor: interactive ? (selected ? "move" : "pointer") : "default",
+        // 다른 레이어가 선택돼 있으면 비활성 — 클릭 무시, 시각적으로 흐릿하게.
+        pointerEvents: interactive ? "auto" : "none",
+        opacity: interactive ? 1 : 0.55,
         touchAction: "none",
       }}
     >
