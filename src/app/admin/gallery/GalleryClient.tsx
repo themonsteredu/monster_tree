@@ -27,6 +27,18 @@ import {
 // 본문 전체에서 tolerance 안에 들어오는 픽셀을 알파 0 으로 만든다.
 // (편집기에서 체크무늬 transparency 배경이 픽셀로 baked-in 된 경우를 자동 정리)
 // 마지막으로 투명 가장자리를 잘라내(crop) 인트린식 크기 = 콘텐츠 크기로 맞춰 슬롯 간 비율 정렬을 돕는다.
+// 누끼 건너뛰고 단순 PNG 변환만 (흰색 아이템 등 흰색이 사라지면 안 될 때).
+async function convertToPng(file: File): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0);
+  return await canvasToPngFile(canvas, file.name);
+}
+
 async function stripBackgroundToPng(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const w = bitmap.width;
@@ -171,7 +183,12 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     if (typeof window !== "undefined") window.location.reload();
   };
 
-  const handleUpload = (cat: AvatarGalleryCategory, file: File, label: string) => {
+  const handleUpload = (
+    cat: AvatarGalleryCategory,
+    file: File,
+    label: string,
+    removeBg: boolean,
+  ) => {
     setError(null);
     if (file.size > 4_194_304) {
       setError("이미지가 너무 커요 (4MB 이하 원본만 처리해요).");
@@ -180,7 +197,8 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     startTransition(async () => {
       let processed: File;
       try {
-        processed = await stripBackgroundToPng(file);
+        // removeBg=false (예: 흰색 아이템) 이면 누끼 건너뛰고 PNG 로만 변환.
+        processed = removeBg ? await stripBackgroundToPng(file) : await convertToPng(file);
       } catch (e) {
         setError(`이미지 처리 실패: ${(e as Error).message}`);
         return;
@@ -355,7 +373,7 @@ function CategorySection({
   hint: string;
   items: AvatarGalleryItem[];
   pending: boolean;
-  onUpload: (cat: AvatarGalleryCategory, file: File, label: string) => void;
+  onUpload: (cat: AvatarGalleryCategory, file: File, label: string, removeBg: boolean) => void;
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
   onReclean: (it: AvatarGalleryItem) => void;
@@ -363,13 +381,14 @@ function CategorySection({
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
+  const [removeBg, setRemoveBg] = useState(true);
 
   const onPick = () => fileRef.current?.click();
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    onUpload(category, f, draftLabel);
+    onUpload(category, f, draftLabel, removeBg);
     setDraftLabel("");
   };
 
@@ -404,6 +423,15 @@ function CategorySection({
           {pending ? "업로드 중..." : "이미지 추가"}
         </button>
       </div>
+      <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={removeBg}
+          onChange={(e) => setRemoveBg(e.target.checked)}
+          className="w-4 h-4 accent-amber-500"
+        />
+        <span>배경 자동 제거 (흰색·연한색 아이템은 끄세요)</span>
+      </label>
       {items.length === 0 ? (
         <div className="text-xs text-gray-400 py-6 text-center bg-gray-50 rounded-lg">
           업로드된 항목이 없어요.
