@@ -10,6 +10,12 @@ import type {
   AvatarGalleryCategory,
   AvatarGalleryItem,
   AvatarGalleryItemPosition,
+  AvatarGallerySlot,
+} from "@/lib/types";
+import {
+  DEFAULT_GALLERY_POSITION_BY_CATEGORY,
+  getGallerySlotPosition,
+  getGallerySlotUrl,
 } from "@/lib/types";
 import { AvatarFigure } from "./AvatarFigure";
 import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
@@ -92,6 +98,29 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     }
     const next = { ...draft, [slot]: url };
     if (!url) delete (next as Record<string, unknown>)[slot];
+    setDraft(next);
+  };
+
+  // 슬롯의 position 만 갱신 (URL 은 유지). url 없으면 no-op.
+  const setSlotPosition = (
+    slot: AvatarGalleryCategory,
+    nextPos: AvatarGalleryItemPosition,
+  ) => {
+    if (draft.kind !== "gallery") return;
+    const current = (draft as Record<string, unknown>)[slot];
+    const url = getGallerySlotUrl(current as AvatarGallerySlot | undefined);
+    if (!url) return;
+    const next = { ...draft, [slot]: { url, position: nextPos } };
+    setDraft(next);
+  };
+
+  // 슬롯의 custom position 제거 → 관리자 기본값으로 복원 (URL 은 유지).
+  const resetSlotPosition = (slot: AvatarGalleryCategory) => {
+    if (draft.kind !== "gallery") return;
+    const current = (draft as Record<string, unknown>)[slot];
+    const url = getGallerySlotUrl(current as AvatarGallerySlot | undefined);
+    if (!url) return;
+    const next = { ...draft, [slot]: url };  // 객체 → 문자열 (custom 제거)
     setDraft(next);
   };
 
@@ -199,8 +228,16 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
           ) : (
             GALLERY_CAT_ORDER.map((cat) => {
               const inCat = galleryItems.filter((it) => it.category === cat);
-              const selected =
-                draft.kind === "gallery" ? (draft as Record<string, unknown>)[cat] : undefined;
+              const selectedSlot =
+                draft.kind === "gallery"
+                  ? ((draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined)
+                  : undefined;
+              const selectedUrl = getGallerySlotUrl(selectedSlot);
+              const customPos = getGallerySlotPosition(selectedSlot);
+              // 위치 우선순위: custom > 관리자 기본(galleryPositions) > 카테고리 기본
+              const adminPos = selectedUrl ? galleryPositions[selectedUrl] : undefined;
+              const effectivePos: AvatarGalleryItemPosition =
+                customPos ?? adminPos ?? DEFAULT_GALLERY_POSITION_BY_CATEGORY[cat];
               return (
                 <div key={cat} style={{ marginBottom: 14 }}>
                   <div
@@ -233,7 +270,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                         onClick={() => setGallerySlot(cat, undefined)}
                         style={{
                           aspectRatio: "1",
-                          border: !selected ? "2px solid #F26522" : "1.5px solid #d6c2a0",
+                          border: !selectedUrl ? "2px solid #F26522" : "1.5px solid #d6c2a0",
                           background: "#fff5d6",
                           color: "#3d2818",
                           borderRadius: 8,
@@ -245,7 +282,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                         선택 안함
                       </button>
                       {inCat.map((it) => {
-                        const isActive = selected === it.image_url;
+                        const isActive = selectedUrl === it.image_url;
                         return (
                           <button
                             key={it.id}
@@ -278,6 +315,16 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                         );
                       })}
                     </div>
+                  )}
+
+                  {/* 위치/크기 슬라이더 — 아이템 선택 시에만 표시 */}
+                  {selectedUrl && (
+                    <PositionSliders
+                      position={effectivePos}
+                      hasCustom={!!customPos}
+                      onChange={(next) => setSlotPosition(cat, next)}
+                      onReset={() => resetSlotPosition(cat)}
+                    />
                   )}
                 </div>
               );
@@ -362,6 +409,146 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============== 위치/크기 슬라이더 (학생용) ==============
+   초등 저학년도 편하게 — 큰 슬라이더, 쉬운 라벨, '원래대로' 버튼.
+   CSS transform 만 변경 (canvas 미사용). */
+
+function PositionSliders({
+  position,
+  hasCustom,
+  onChange,
+  onReset,
+}: {
+  position: AvatarGalleryItemPosition;
+  hasCustom: boolean;
+  onChange: (next: AvatarGalleryItemPosition) => void;
+  onReset: () => void;
+}) {
+  const update = (patch: Partial<AvatarGalleryItemPosition>) => {
+    onChange({ ...position, ...patch });
+  };
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        background: "#fff8e8",
+        border: "1.5px solid #f1e8d8",
+        borderRadius: 10,
+        padding: "10px 12px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ fontSize: 11, color: "#8a6f52", fontWeight: 700 }}>
+          위치·크기 조절
+        </span>
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={!hasCustom}
+          style={{
+            padding: "3px 10px",
+            borderRadius: 999,
+            border: "1px solid #d6c2a0",
+            background: hasCustom ? "#fff" : "#f0e6d4",
+            color: hasCustom ? "#8a6f52" : "#bbb",
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: hasCustom ? "pointer" : "default",
+          }}
+        >
+          원래대로
+        </button>
+      </div>
+      <SliderRow
+        label="좌우 이동"
+        value={position.x}
+        min={0}
+        max={100}
+        step={1}
+        onChange={(v) => update({ x: v })}
+      />
+      <SliderRow
+        label="위아래 이동"
+        value={position.y}
+        min={0}
+        max={100}
+        step={1}
+        onChange={(v) => update({ y: v })}
+      />
+      <SliderRow
+        label="넓게 / 좁게"
+        value={position.scaleX}
+        min={10}
+        max={200}
+        step={2}
+        onChange={(v) => update({ scaleX: v })}
+      />
+      <SliderRow
+        label="길게 / 짧게"
+        value={position.scaleY}
+        min={10}
+        max={200}
+        step={2}
+        onChange={(v) => update({ scaleY: v })}
+      />
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 11,
+          fontWeight: 600,
+          color: "#3d2818",
+          marginBottom: 2,
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ color: "#8a6f52", fontVariantNumeric: "tabular-nums" }}>{Math.round(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        style={{
+          width: "100%",
+          height: 28,
+          accentColor: "#F26522",
+        }}
+      />
     </div>
   );
 }

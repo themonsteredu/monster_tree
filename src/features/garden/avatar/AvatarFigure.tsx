@@ -4,8 +4,13 @@
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
 import { useEffect, useState } from "react";
-import type { AvatarConfig, AvatarGalleryItemPosition } from "@/lib/types";
-import { DEFAULT_AVATAR, DEFAULT_GALLERY_POSITION_BY_CATEGORY } from "@/lib/types";
+import type { AvatarConfig, AvatarGalleryItemPosition, AvatarGallerySlot } from "@/lib/types";
+import {
+  DEFAULT_AVATAR,
+  DEFAULT_GALLERY_POSITION_BY_CATEGORY,
+  getGallerySlotPosition,
+  getGallerySlotUrl,
+} from "@/lib/types";
 
 // ============================================================
 // 갤러리 PNG auto-fit — 이미지를 로드해서 alpha 채널의 실제 bbox 를 구한 뒤
@@ -1060,22 +1065,31 @@ function GalleryAvatar({
   className?: string;
   galleryPositions?: Record<string, AvatarGalleryItemPosition>;
 }) {
-  const ordered: Array<{ key: GallerySlot; url?: string; z: number }> = [
-    { key: "base", url: cfg.base, z: 1 },
-    { key: "bottom", url: cfg.bottom, z: 2 },
-    { key: "outfit", url: cfg.outfit, z: 3 },
-    { key: "shoes", url: cfg.shoes, z: 4 },
-    { key: "face", url: cfg.face, z: 5 },
-    { key: "hair", url: cfg.hair, z: 6 },
-    { key: "accessory", url: cfg.accessory, z: 7 },
-    { key: "hat", url: cfg.hat, z: 8 },
+  // 각 슬롯은 string 또는 { url, position? } 두 형태 모두 지원 (legacy + 신규).
+  const ordered: Array<{ key: GallerySlot; slot?: AvatarGallerySlot; z: number }> = [
+    { key: "base", slot: cfg.base, z: 1 },
+    { key: "bottom", slot: cfg.bottom, z: 2 },
+    { key: "outfit", slot: cfg.outfit, z: 3 },
+    { key: "shoes", slot: cfg.shoes, z: 4 },
+    { key: "face", slot: cfg.face, z: 5 },
+    { key: "hair", slot: cfg.hair, z: 6 },
+    { key: "accessory", slot: cfg.accessory, z: 7 },
+    { key: "hat", slot: cfg.hat, z: 8 },
   ];
   const layers: AvatarCompositeLayer[] = ordered
-    .filter((l): l is { key: GallerySlot; url: string; z: number } => !!l.url)
+    .map((l) => ({
+      key: l.key,
+      url: getGallerySlotUrl(l.slot),
+      customPos: getGallerySlotPosition(l.slot),
+      z: l.z,
+    }))
+    .filter((l): l is { key: GallerySlot; url: string; customPos: AvatarGalleryItemPosition | undefined; z: number } => !!l.url)
     .map((l) => ({
       key: l.key,
       url: l.url,
+      // 위치 우선순위: 1) 학생 개별 position  2) 관리자 기본 position  3) 카테고리 기본
       position:
+        l.customPos ??
         (galleryPositions && galleryPositions[l.url]) ??
         DEFAULT_GALLERY_POSITION_BY_CATEGORY[l.key],
       zIndex: l.z,
@@ -1113,7 +1127,7 @@ function GalleryAvatar({
   return (
     <AvatarComposite
       size={size}
-      baseUrl={cfg.base}
+      baseUrl={getGallerySlotUrl(cfg.base)}
       layers={layers}
       className={className}
     />
