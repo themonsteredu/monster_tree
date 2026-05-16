@@ -282,102 +282,117 @@ function LayerNode({
     if (stateRef.current.rafId != null) cancelAnimationFrame(stateRef.current.rafId);
   }, []);
 
-  // 화면 표시: 중심점 (x%, y%), 크기 (scaleX% × scaleY% of canvas).
-  // 컨테이너 사이즈는 100% × 100% 가정. innerSize = scaleX/100 * size.
-  // 레이어 크기 = inner 박스 (base bbox 기준) 의 scaleX% / scaleY%.
-  // AvatarFigure 의 AvatarLayer 와 동일.
-  const layerW = (position.scaleX / 100) * innerWidth;
-  const layerH = (position.scaleY / 100) * innerHeight;
-  // AvatarLayer 와 동일하게 useFittedImage 로 투명 가장자리 자른 이미지 사용 →
-  // contain 시 콘텐츠가 동일하게 채워짐. 원본 URL 쓰면 패딩 때문에 작아 보임.
+  // AvatarLayer 와 동일하게 useFittedImage 로 투명 가장자리 자른 이미지 사용.
   const fitted = useFittedImage(layer.url);
 
+  // 비주얼 영역 (시각 + interaction zone 위치 기준).
+  const visualW = (position.scaleX / 100) * innerWidth;
+  const visualH = (position.scaleY / 100) * innerHeight;
+
   return (
-    <div
-      ref={ref}
-      onPointerDown={interactive ? onPointerDown : undefined}
-      onPointerMove={interactive ? onPointerMove : undefined}
-      onPointerUp={interactive ? onPointerUp : undefined}
-      onPointerCancel={interactive ? onPointerUp : undefined}
-      onWheel={interactive ? onWheel : undefined}
-      style={{
-        position: "absolute",
-        left: `${position.x}%`,
-        top: `${position.y}%`,
-        width: layerW,
-        height: layerH,
-        transform: "translate(-50%, -50%)",
-        zIndex: layer.zIndex,
-        cursor: interactive ? (selected ? "move" : "pointer") : "default",
-        // 다른 레이어가 선택돼 있으면 비활성 — 클릭 무시, 시각적으로 흐릿하게.
-        pointerEvents: interactive ? "auto" : "none",
-        opacity: interactive ? 1 : 0.55,
-        touchAction: "none",
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={fitted?.url ?? layer.url}
-        alt=""
-        draggable={false}
+    <>
+      {/* 비주얼 — AvatarLayer 완전히 동일한 패턴.
+          박스 100%/100% + transform scale + objectFit:contain.
+          이렇게 해야 /me 의 실제 렌더와 픽셀 단위로 일치한다. */}
+      <div
         style={{
+          position: "absolute",
+          left: `${position.x}%`,
+          top: `${position.y}%`,
           width: "100%",
           height: "100%",
-          objectFit: "contain",
-          objectPosition: "center",
+          transform: `translate(-50%, -50%) scaleX(${position.scaleX / 100}) scaleY(${position.scaleY / 100})`,
+          transformOrigin: "center center",
+          zIndex: layer.zIndex,
+          opacity: interactive ? 1 : 0.55,
           pointerEvents: "none",
-          userSelect: "none",
-          WebkitUserSelect: "none",
         }}
-      />
-      {selected && (
-        <>
-          {/* 점선 테두리 */}
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              inset: -2,
-              border: "1.5px dashed #F26522",
-              borderRadius: 4,
-              pointerEvents: "none",
-            }}
-          />
-          {/* 8개 기능 핸들 — 모서리 4개(양축) + 엣지 4개(한 축) */}
-          {[
-            // 모서리
-            { dir: { x: -1, y: -1 }, style: { top: -10, left: -10 }, cursor: "nwse-resize" as const },
-            { dir: { x:  1, y: -1 }, style: { top: -10, right: -10 }, cursor: "nesw-resize" as const },
-            { dir: { x: -1, y:  1 }, style: { bottom: -10, left: -10 }, cursor: "nesw-resize" as const },
-            { dir: { x:  1, y:  1 }, style: { bottom: -10, right: -10 }, cursor: "nwse-resize" as const },
-            // 좌·우 엣지 (scaleX 만)
-            { dir: { x: -1, y: 0 }, style: { top: "50%", left: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
-            { dir: { x:  1, y: 0 }, style: { top: "50%", right: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
-            // 상·하 엣지 (scaleY 만)
-            { dir: { x: 0, y: -1 }, style: { left: "50%", top: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
-            { dir: { x: 0, y:  1 }, style: { left: "50%", bottom: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
-          ].map((h, i) => (
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={fitted?.url ?? layer.url}
+          alt=""
+          draggable={false}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            objectPosition: "center",
+            display: "block",
+            userSelect: "none",
+            WebkitUserSelect: "none",
+          }}
+        />
+      </div>
+      {/* Interaction zone — 비주얼 사이즈와 같게, 별도 div (scale 안 받음).
+          핸들이 scale 영향 없이 항상 같은 크기로 표시되게 한다. */}
+      <div
+        ref={ref}
+        onPointerDown={interactive ? onPointerDown : undefined}
+        onPointerMove={interactive ? onPointerMove : undefined}
+        onPointerUp={interactive ? onPointerUp : undefined}
+        onPointerCancel={interactive ? onPointerUp : undefined}
+        onWheel={interactive ? onWheel : undefined}
+        style={{
+          position: "absolute",
+          left: `${position.x}%`,
+          top: `${position.y}%`,
+          width: visualW,
+          height: visualH,
+          transform: "translate(-50%, -50%)",
+          zIndex: layer.zIndex + 100,
+          cursor: interactive ? (selected ? "move" : "pointer") : "default",
+          pointerEvents: interactive ? "auto" : "none",
+          touchAction: "none",
+          background: "transparent",
+        }}
+      >
+        {selected && (
+          <>
+            {/* 점선 테두리 */}
             <div
-              key={i}
-              onPointerDown={(e) => onHandleDown(e, h.dir as { x: -1 | 0 | 1; y: -1 | 0 | 1 })}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-              onPointerCancel={onHandleUp}
+              aria-hidden
               style={{
                 position: "absolute",
-                width: 20,
-                height: 20,
-                borderRadius: 999,
-                background: "#fff",
-                border: "2px solid #F26522",
-                cursor: h.cursor,
-                touchAction: "none",
-                ...h.style,
+                inset: -2,
+                border: "1.5px dashed #F26522",
+                borderRadius: 4,
+                pointerEvents: "none",
               }}
             />
-          ))}
-        </>
-      )}
-    </div>
+            {/* 8개 기능 핸들 — 모서리 4개(양축) + 엣지 4개(한 축) */}
+            {[
+              { dir: { x: -1, y: -1 }, style: { top: -10, left: -10 }, cursor: "nwse-resize" as const },
+              { dir: { x:  1, y: -1 }, style: { top: -10, right: -10 }, cursor: "nesw-resize" as const },
+              { dir: { x: -1, y:  1 }, style: { bottom: -10, left: -10 }, cursor: "nesw-resize" as const },
+              { dir: { x:  1, y:  1 }, style: { bottom: -10, right: -10 }, cursor: "nwse-resize" as const },
+              { dir: { x: -1, y: 0 }, style: { top: "50%", left: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
+              { dir: { x:  1, y: 0 }, style: { top: "50%", right: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
+              { dir: { x: 0, y: -1 }, style: { left: "50%", top: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
+              { dir: { x: 0, y:  1 }, style: { left: "50%", bottom: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
+            ].map((h, i) => (
+              <div
+                key={i}
+                onPointerDown={(e) => onHandleDown(e, h.dir as { x: -1 | 0 | 1; y: -1 | 0 | 1 })}
+                onPointerMove={onHandleMove}
+                onPointerUp={onHandleUp}
+                onPointerCancel={onHandleUp}
+                style={{
+                  position: "absolute",
+                  width: 20,
+                  height: 20,
+                  borderRadius: 999,
+                  background: "#fff",
+                  border: "2px solid #F26522",
+                  cursor: h.cursor,
+                  touchAction: "none",
+                  ...h.style,
+                }}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </>
   );
 }
