@@ -134,7 +134,7 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
         scaleX: p.scaleX as number,
         scaleY: p.scaleY as number,
       };
-      if (typeof p.zIndex === "number" && Number.isFinite(p.zIndex) && p.zIndex >= 1 && p.zIndex <= 20) {
+      if (typeof p.zIndex === "number" && Number.isFinite(p.zIndex) && p.zIndex >= 0 && p.zIndex <= 20) {
         result.zIndex = Math.round(p.zIndex);
       }
       return result;

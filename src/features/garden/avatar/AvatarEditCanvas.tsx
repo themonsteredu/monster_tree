@@ -3,14 +3,17 @@
 // 학생 아바타 꾸미기 — 터치/마우스로 직접 조작하는 인터랙티브 미리보기.
 //
 // 동작:
-// - 아이템 탭/클릭 → 선택 (점선 테두리 + 네 모서리 핸들)
+// - 아이템 탭/클릭 → 선택 (점선 테두리 + 8개 핸들 표시)
 // - 빈 영역 탭 → 선택 해제
-// - 1손가락 드래그 / 마우스 드래그 → 위치 이동 (x, y)
-// - 2손가락 핀치 → 크기 조절 (scaleX, scaleY 동시)
-// - 마우스 휠 → 크기 조절
+// - 선택된 아이템 본체 드래그 → 위치 이동 (x, y)
+// - 핸들 8개 드래그:
+//     · 모서리 (4개): 가로·세로 동시 변경
+//     · 가로 엣지 (좌·우): scaleX 만 변경 (좌우 길이)
+//     · 세로 엣지 (위·아래): scaleY 만 변경 (위아래 길이)
+// - 마우스 휠: 양쪽 동시 / Shift+휠 = scaleX / Alt+휠 = scaleY
 //
-// 모든 변환은 CSS transform (position 단위 % / scale 단위 %).
-// canvas 미사용. requestAnimationFrame 으로 부드럽게.
+// 모든 변환은 CSS transform / position 단위 %. canvas 미사용.
+// requestAnimationFrame 으로 부드럽게.
 
 import { useEffect, useRef, useState } from "react";
 import type {
@@ -133,21 +136,17 @@ function LayerNode({
   const { position, key } = layer;
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // 제스처 상태 — ref 로 추적 (re-render 비용 없이 빠름)
+  // 제스처 상태 — ref 로 추적 (re-render 비용 없이 빠름).
+  // mode: idle / drag(본체 이동) / resize(핸들 끌어 크기)
   const stateRef = useRef<{
-    mode: "idle" | "drag" | "pinch";
+    mode: "idle" | "drag" | "resize";
     startX?: number;
     startY?: number;
     startPos?: AvatarGalleryItemPosition;
-    pointers: Map<number, { x: number; y: number }>;
-    initialDx?: number;
-    initialDy?: number;
-    initialScaleX?: number;
-    initialScaleY?: number;
-    moved?: boolean;
+    resizeDir?: { x: -1 | 0 | 1; y: -1 | 0 | 1 };
     rafId?: number | null;
     pendingPos?: AvatarGalleryItemPosition;
-  }>({ mode: "idle", pointers: new Map() });
+  }>({ mode: "idle" });
 
   // 부모 박스(canvas) 의 picel 크기 → % 변환에 사용
   const getCanvasRect = () => ref.current?.parentElement?.getBoundingClientRect() ?? null;
@@ -165,89 +164,70 @@ function LayerNode({
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+  // 본체 드래그 — 위치 이동 (x, y)
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
     onSelect();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    stateRef.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    stateRef.current.moved = false;
-
-    if (stateRef.current.pointers.size === 1) {
-      stateRef.current.mode = "drag";
-      stateRef.current.startX = e.clientX;
-      stateRef.current.startY = e.clientY;
-      stateRef.current.startPos = { ...position };
-    } else if (stateRef.current.pointers.size === 2) {
-      // 두 번째 손가락 들어옴 → 핀치 모드.
-      // X·Y 거리 분리해서 각 축 독립 스케일.
-      const pts = Array.from(stateRef.current.pointers.values());
-      stateRef.current.mode = "pinch";
-      stateRef.current.initialDx = Math.abs(pts[0].x - pts[1].x);
-      stateRef.current.initialDy = Math.abs(pts[0].y - pts[1].y);
-      stateRef.current.initialScaleX = position.scaleX;
-      stateRef.current.initialScaleY = position.scaleY;
-    }
+    stateRef.current.mode = "drag";
+    stateRef.current.startX = e.clientX;
+    stateRef.current.startY = e.clientY;
+    stateRef.current.startPos = { ...position };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const s = stateRef.current;
     if (s.mode === "idle") return;
-    if (!s.pointers.has(e.pointerId)) return;
-    s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
     const rect = getCanvasRect();
     if (!rect) return;
 
-    if (s.mode === "drag" && s.pointers.size === 1) {
+    if (s.mode === "drag") {
       const dxPx = e.clientX - (s.startX ?? e.clientX);
       const dyPx = e.clientY - (s.startY ?? e.clientY);
-      if (Math.abs(dxPx) > TAP_THRESHOLD_PX || Math.abs(dyPx) > TAP_THRESHOLD_PX) s.moved = true;
       const dxPct = (dxPx / rect.width) * 100;
       const dyPct = (dyPx / rect.height) * 100;
-      const next: AvatarGalleryItemPosition = {
+      scheduleCommit({
         ...(s.startPos ?? position),
         x: clamp((s.startPos?.x ?? position.x) + dxPct, -20, 120),
         y: clamp((s.startPos?.y ?? position.y) + dyPct, -20, 120),
-      };
-      scheduleCommit(next);
-    } else if (s.mode === "pinch" && s.pointers.size === 2) {
-      // 두 손가락의 X·Y 분리 거리로 축별 독립 스케일.
-      // 좌우로 벌리면 scaleX, 상하로 벌리면 scaleY, 대각선이면 둘 다.
-      // 초기 거리가 너무 작으면 (예: 손가락이 수직 정렬) 그 축은 잠금.
-      const pts = Array.from(s.pointers.values());
-      const dx = Math.abs(pts[0].x - pts[1].x);
-      const dy = Math.abs(pts[0].y - pts[1].y);
-      const MIN_BASE = 30; // 손가락 정렬돼서 한 축 차이가 거의 0 일 때 보호
-      const baseDx = Math.max(s.initialDx ?? 0, MIN_BASE);
-      const baseDy = Math.max(s.initialDy ?? 0, MIN_BASE);
-      // 초기 거리가 정렬 임계 이상일 때만 그 축에 ratio 적용 (튐 방지)
-      const useX = (s.initialDx ?? 0) >= MIN_BASE;
-      const useY = (s.initialDy ?? 0) >= MIN_BASE;
-      const ratioX = useX ? dx / baseDx : 1;
-      const ratioY = useY ? dy / baseDy : 1;
-      const nextSX = clamp((s.initialScaleX ?? position.scaleX) * ratioX, MIN_SCALE, MAX_SCALE);
-      const nextSY = clamp((s.initialScaleY ?? position.scaleY) * ratioY, MIN_SCALE, MAX_SCALE);
-      scheduleCommit({ ...position, scaleX: nextSX, scaleY: nextSY });
-      s.moved = true;
+      });
+    } else if (s.mode === "resize" && s.resizeDir) {
+      const dxPx = e.clientX - (s.startX ?? e.clientX);
+      const dyPx = e.clientY - (s.startY ?? e.clientY);
+      const dxPct = (dxPx / rect.width) * 100;
+      const dyPct = (dyPx / rect.height) * 100;
+      // 중심 고정 가정 → 한쪽 엣지가 d 만큼 움직이면 폭은 2d 증가.
+      const sxDelta = 2 * dxPct * s.resizeDir.x;
+      const syDelta = 2 * dyPct * s.resizeDir.y;
+      scheduleCommit({
+        ...(s.startPos ?? position),
+        scaleX: clamp((s.startPos?.scaleX ?? position.scaleX) + sxDelta, MIN_SCALE, MAX_SCALE),
+        scaleY: clamp((s.startPos?.scaleY ?? position.scaleY) + syDelta, MIN_SCALE, MAX_SCALE),
+      });
     }
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
     const s = stateRef.current;
-    s.pointers.delete(e.pointerId);
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (s.pointers.size === 0) {
-      s.mode = "idle";
-    } else if (s.pointers.size === 1 && s.mode === "pinch") {
-      // 핀치 끝나고 한 손가락만 남으면 드래그 모드로 전환
-      const rest = Array.from(s.pointers.entries())[0];
-      s.mode = "drag";
-      s.startX = rest[1].x;
-      s.startY = rest[1].y;
-      s.startPos = { ...position };
-    }
+    s.mode = "idle";
   };
+
+  // 핸들에서 시작하는 resize 제스처
+  const onHandleDown = (e: React.PointerEvent, dir: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    stateRef.current.mode = "resize";
+    stateRef.current.startX = e.clientX;
+    stateRef.current.startY = e.clientY;
+    stateRef.current.startPos = { ...position };
+    stateRef.current.resizeDir = dir;
+  };
+
+  const onHandleMove = (e: React.PointerEvent) => onPointerMove(e);
+  const onHandleUp = (e: React.PointerEvent) => onPointerUp(e);
 
   const onWheel = (e: React.WheelEvent) => {
     if (!selected) return;
@@ -317,25 +297,36 @@ function LayerNode({
               pointerEvents: "none",
             }}
           />
-          {/* 네 모서리 핸들 (시각용) */}
+          {/* 8개 기능 핸들 — 모서리 4개(양축) + 엣지 4개(한 축) */}
           {[
-            { top: -5, left: -5 },
-            { top: -5, right: -5 },
-            { bottom: -5, left: -5 },
-            { bottom: -5, right: -5 },
-          ].map((pos, i) => (
+            // 모서리
+            { dir: { x: -1, y: -1 }, style: { top: -10, left: -10 }, cursor: "nwse-resize" as const },
+            { dir: { x:  1, y: -1 }, style: { top: -10, right: -10 }, cursor: "nesw-resize" as const },
+            { dir: { x: -1, y:  1 }, style: { bottom: -10, left: -10 }, cursor: "nesw-resize" as const },
+            { dir: { x:  1, y:  1 }, style: { bottom: -10, right: -10 }, cursor: "nwse-resize" as const },
+            // 좌·우 엣지 (scaleX 만)
+            { dir: { x: -1, y: 0 }, style: { top: "50%", left: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
+            { dir: { x:  1, y: 0 }, style: { top: "50%", right: -10, transform: "translateY(-50%)" }, cursor: "ew-resize" as const },
+            // 상·하 엣지 (scaleY 만)
+            { dir: { x: 0, y: -1 }, style: { left: "50%", top: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
+            { dir: { x: 0, y:  1 }, style: { left: "50%", bottom: -10, transform: "translateX(-50%)" }, cursor: "ns-resize" as const },
+          ].map((h, i) => (
             <div
               key={i}
-              aria-hidden
+              onPointerDown={(e) => onHandleDown(e, h.dir as { x: -1 | 0 | 1; y: -1 | 0 | 1 })}
+              onPointerMove={onHandleMove}
+              onPointerUp={onHandleUp}
+              onPointerCancel={onHandleUp}
               style={{
                 position: "absolute",
-                width: 10,
-                height: 10,
+                width: 20,
+                height: 20,
                 borderRadius: 999,
                 background: "#fff",
-                border: "1.5px solid #F26522",
-                pointerEvents: "none",
-                ...pos,
+                border: "2px solid #F26522",
+                cursor: h.cursor,
+                touchAction: "none",
+                ...h.style,
               }}
             />
           ))}
