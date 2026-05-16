@@ -75,11 +75,13 @@ export type AvatarGalleryCategory =
 // 갤러리 아이템이 합성 아바타 안에서 차지하는 위치/크기 — base bbox 기준.
 // x, y: 0~100 (% 위치, 중심점 기준 — translate(-50%, -50%) 와 결합).
 // scaleX, scaleY: 10~200 (% 크기, 100 = inner box 전체 너비/높이).
+// zIndex: 1~20 (학생이 레이어 순서 조절 시. 없으면 카테고리 기본 z 사용).
 export type AvatarGalleryItemPosition = {
   x: number;
   y: number;
   scaleX: number;
   scaleY: number;
+  zIndex?: number;
 };
 
 // 카테고리별 기본 위치 — 관리자가 position 을 따로 지정하지 않은 항목에 적용.

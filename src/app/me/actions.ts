@@ -128,12 +128,16 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
         typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi;
       if (!inRange(p.x, -50, 150) || !inRange(p.y, -50, 150)) return undefined;
       if (!inRange(p.scaleX, 5, 250) || !inRange(p.scaleY, 5, 250)) return undefined;
-      return {
+      const result: import("@/lib/types").AvatarGalleryItemPosition = {
         x: p.x as number,
         y: p.y as number,
         scaleX: p.scaleX as number,
         scaleY: p.scaleY as number,
       };
+      if (typeof p.zIndex === "number" && Number.isFinite(p.zIndex) && p.zIndex >= 1 && p.zIndex <= 20) {
+        result.zIndex = Math.round(p.zIndex);
+      }
+      return result;
     };
 
     // slot 은 string 또는 { url, position? } 두 형태 모두 허용.
