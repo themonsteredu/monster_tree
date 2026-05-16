@@ -23,7 +23,7 @@ import {
 type FittedImage = { url: string; ratio: number }; // ratio = bboxHeight / bboxWidth
 const CROP_CACHE = new Map<string, FittedImage>();
 
-function useFittedImage(url: string | undefined): FittedImage | undefined {
+export function useFittedImage(url: string | undefined): FittedImage | undefined {
   const [fitted, setFitted] = useState<FittedImage | undefined>(() =>
     url ? CROP_CACHE.get(url) : undefined,
   );

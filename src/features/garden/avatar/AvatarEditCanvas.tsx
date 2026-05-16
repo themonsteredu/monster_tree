@@ -27,6 +27,7 @@ import {
   getGallerySlotPosition,
   getGallerySlotUrl,
 } from "@/lib/types";
+import { useFittedImage } from "./AvatarFigure";
 
 type GallerySlot = "base" | "outfit" | "bottom" | "shoes" | "hair" | "face" | "hat" | "accessory";
 
@@ -86,6 +87,16 @@ export function AvatarEditCanvas({
     })
     .filter((l): l is Layer => l !== null);
 
+  // AvatarFigure 의 AvatarComposite 과 동일한 inner box 계산.
+  // base 이미지의 bbox 비율로 inner 박스를 만들어 layer 의 % 좌표가 그 안에서 동작.
+  const baseUrl = isGallery
+    ? getGallerySlotUrl(((draft as Record<string, unknown>).base) as AvatarGallerySlot | undefined)
+    : undefined;
+  const baseFitted = useFittedImage(baseUrl);
+  const ratio = baseFitted?.ratio ?? 1.4;
+  const innerWidth = ratio >= 1 ? size / ratio : size;
+  const innerHeight = ratio >= 1 ? size : size * ratio;
+
   return (
     <div
       style={{
@@ -101,35 +112,53 @@ export function AvatarEditCanvas({
         WebkitUserSelect: "none",
       }}
       onPointerDown={(e) => {
-        // 빈 영역 탭 → 선택 해제. 자식이 stopPropagation 하면 여기 안 옴.
         if (e.target === e.currentTarget) onSelectSlot(null);
       }}
     >
-      {layers.map((layer) => (
-        <LayerNode
-          key={layer.key}
-          layer={layer}
-          size={size}
-          selected={selectedSlot === layer.key}
-          interactive={selectedSlot === null || selectedSlot === layer.key}
-          onSelect={() => onSelectSlot(layer.key)}
-          onPositionChange={onPositionChange}
-        />
-      ))}
+      {/* inner 박스 — base 이미지 비율 기준. AvatarFigure 와 동일한 좌표계. */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: innerWidth,
+          height: innerHeight,
+          transform: "translate(-50%, -50%)",
+        }}
+        onPointerDown={(e) => {
+          // inner 박스의 빈 공간 탭도 선택 해제로 처리.
+          if (e.target === e.currentTarget) onSelectSlot(null);
+        }}
+      >
+        {layers.map((layer) => (
+          <LayerNode
+            key={layer.key}
+            layer={layer}
+            innerWidth={innerWidth}
+            innerHeight={innerHeight}
+            selected={selectedSlot === layer.key}
+            interactive={selectedSlot === null || selectedSlot === layer.key}
+            onSelect={() => onSelectSlot(layer.key)}
+            onPositionChange={onPositionChange}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 function LayerNode({
   layer,
-  size,
+  innerWidth,
+  innerHeight,
   selected,
   interactive,
   onSelect,
   onPositionChange,
 }: {
   layer: Layer;
-  size: number;
+  innerWidth: number;
+  innerHeight: number;
   selected: boolean;
   interactive: boolean;
   onSelect: () => void;
@@ -255,8 +284,10 @@ function LayerNode({
 
   // 화면 표시: 중심점 (x%, y%), 크기 (scaleX% × scaleY% of canvas).
   // 컨테이너 사이즈는 100% × 100% 가정. innerSize = scaleX/100 * size.
-  const innerW = (position.scaleX / 100) * size;
-  const innerH = (position.scaleY / 100) * size;
+  // 레이어 크기 = inner 박스 (base bbox 기준) 의 scaleX% / scaleY%.
+  // AvatarFigure 의 AvatarLayer 와 동일.
+  const layerW = (position.scaleX / 100) * innerWidth;
+  const layerH = (position.scaleY / 100) * innerHeight;
 
   return (
     <div
@@ -270,8 +301,8 @@ function LayerNode({
         position: "absolute",
         left: `${position.x}%`,
         top: `${position.y}%`,
-        width: innerW,
-        height: innerH,
+        width: layerW,
+        height: layerH,
         transform: "translate(-50%, -50%)",
         zIndex: layer.zIndex,
         cursor: interactive ? (selected ? "move" : "pointer") : "default",
