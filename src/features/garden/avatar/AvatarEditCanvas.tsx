@@ -140,7 +140,8 @@ function LayerNode({
     startY?: number;
     startPos?: AvatarGalleryItemPosition;
     pointers: Map<number, { x: number; y: number }>;
-    initialDist?: number;
+    initialDx?: number;
+    initialDy?: number;
     initialScaleX?: number;
     initialScaleY?: number;
     moved?: boolean;
@@ -178,12 +179,12 @@ function LayerNode({
       stateRef.current.startY = e.clientY;
       stateRef.current.startPos = { ...position };
     } else if (stateRef.current.pointers.size === 2) {
-      // 두 번째 손가락 들어옴 → 핀치 모드
+      // 두 번째 손가락 들어옴 → 핀치 모드.
+      // X·Y 거리 분리해서 각 축 독립 스케일.
       const pts = Array.from(stateRef.current.pointers.values());
-      const dx = pts[0].x - pts[1].x;
-      const dy = pts[0].y - pts[1].y;
       stateRef.current.mode = "pinch";
-      stateRef.current.initialDist = Math.sqrt(dx * dx + dy * dy);
+      stateRef.current.initialDx = Math.abs(pts[0].x - pts[1].x);
+      stateRef.current.initialDy = Math.abs(pts[0].y - pts[1].y);
       stateRef.current.initialScaleX = position.scaleX;
       stateRef.current.initialScaleY = position.scaleY;
     }
@@ -211,13 +212,22 @@ function LayerNode({
       };
       scheduleCommit(next);
     } else if (s.mode === "pinch" && s.pointers.size === 2) {
+      // 두 손가락의 X·Y 분리 거리로 축별 독립 스케일.
+      // 좌우로 벌리면 scaleX, 상하로 벌리면 scaleY, 대각선이면 둘 다.
+      // 초기 거리가 너무 작으면 (예: 손가락이 수직 정렬) 그 축은 잠금.
       const pts = Array.from(s.pointers.values());
-      const dx = pts[0].x - pts[1].x;
-      const dy = pts[0].y - pts[1].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const ratio = s.initialDist && s.initialDist > 0 ? dist / s.initialDist : 1;
-      const nextSX = clamp((s.initialScaleX ?? position.scaleX) * ratio, MIN_SCALE, MAX_SCALE);
-      const nextSY = clamp((s.initialScaleY ?? position.scaleY) * ratio, MIN_SCALE, MAX_SCALE);
+      const dx = Math.abs(pts[0].x - pts[1].x);
+      const dy = Math.abs(pts[0].y - pts[1].y);
+      const MIN_BASE = 30; // 손가락 정렬돼서 한 축 차이가 거의 0 일 때 보호
+      const baseDx = Math.max(s.initialDx ?? 0, MIN_BASE);
+      const baseDy = Math.max(s.initialDy ?? 0, MIN_BASE);
+      // 초기 거리가 정렬 임계 이상일 때만 그 축에 ratio 적용 (튐 방지)
+      const useX = (s.initialDx ?? 0) >= MIN_BASE;
+      const useY = (s.initialDy ?? 0) >= MIN_BASE;
+      const ratioX = useX ? dx / baseDx : 1;
+      const ratioY = useY ? dy / baseDy : 1;
+      const nextSX = clamp((s.initialScaleX ?? position.scaleX) * ratioX, MIN_SCALE, MAX_SCALE);
+      const nextSY = clamp((s.initialScaleY ?? position.scaleY) * ratioY, MIN_SCALE, MAX_SCALE);
       scheduleCommit({ ...position, scaleX: nextSX, scaleY: nextSY });
       s.moved = true;
     }
@@ -243,8 +253,11 @@ function LayerNode({
     if (!selected) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.06 : 0.94;
-    const nextSX = clamp(position.scaleX * factor, MIN_SCALE, MAX_SCALE);
-    const nextSY = clamp(position.scaleY * factor, MIN_SCALE, MAX_SCALE);
+    // Shift = 좌우(scaleX) 만, Alt = 상하(scaleY) 만, 기본 = 양쪽
+    const adjustX = !e.altKey;
+    const adjustY = !e.shiftKey;
+    const nextSX = adjustX ? clamp(position.scaleX * factor, MIN_SCALE, MAX_SCALE) : position.scaleX;
+    const nextSY = adjustY ? clamp(position.scaleY * factor, MIN_SCALE, MAX_SCALE) : position.scaleY;
     onPositionChange(key, { ...position, scaleX: nextSX, scaleY: nextSY });
   };
 
