@@ -28,7 +28,7 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
 import { fireConfetti } from "@/features/garden/effects/confetti";
 import { useTvRealtime } from "@/features/garden/hooks/useTvRealtime";
-import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
+import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import type { AvatarGalleryItemPosition } from "@/lib/types";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
@@ -449,7 +449,7 @@ const Spotlight = forwardRef<
               />
               {student.avatar && (
                 <div className="shrink-0" style={{ marginLeft: compact ? -48 : -90, marginBottom: 4 }} aria-hidden>
-                  <AvatarFigure config={student.avatar} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
+                  <AvatarFigurePreloaded config={student.avatar} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
                 </div>
               )}
               {isPositive && (

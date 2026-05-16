@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
-import { AvatarFigure } from "@/features/garden/avatar/AvatarFigure";
+import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
@@ -525,7 +525,7 @@ export function MeTreeClient({
                   </div>
                   {row.avatar && (
                     <div style={{ flex: "0 0 auto", marginLeft: -70, marginBottom: 4 }}>
-                      <AvatarFigure config={currentAvatar} size={170} galleryPositions={galleryPositions} />
+                      <AvatarFigurePreloaded config={currentAvatar} size={170} galleryPositions={galleryPositions} />
                     </div>
                   )}
                 </div>

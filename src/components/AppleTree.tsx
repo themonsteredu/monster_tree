@@ -70,9 +70,14 @@ export function AppleTree({
 
   const hasImage = !!imageConfig?.url;
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
   useEffect(() => {
     setImgLoaded(false);
+    setImgError(false);
   }, [imageConfig?.url]);
+
+  // 이미지가 있다고 했는데 실제 로드 실패하면 SVG 로 복귀 (안전망)
+  const shouldShowImage = hasImage && !imgError;
 
   const ariaLabel = title ?? `사과나무 ${s}단계`;
 
@@ -164,7 +169,7 @@ export function AppleTree({
     </svg>
   );
 
-  if (!hasImage) return svgEl;
+  if (!shouldShowImage) return svgEl;
 
   // 이미지가 있으면 SVG fallback 절대 렌더하지 않음 (사용자 요청).
   // 로딩 중에는 빈(투명) 박스 — 짧은 순간이지만 SVG 가 잠깐 튀어나오는 것을 방지.
@@ -190,7 +195,7 @@ export function AppleTree({
         width={px}
         height={px}
         onLoad={() => setImgLoaded(true)}
-        onError={() => setImgLoaded(false)}
+        onError={() => setImgError(true)}
         style={{
           position: "absolute",
           inset: 0,
