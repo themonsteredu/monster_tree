@@ -30,17 +30,37 @@ export type AvatarConfig =
     }
   | {
       // 관리자가 카테고리별로 업로드한 갤러리에서 학생이 1개씩 골라 합성하는 아바타.
-      // 각 슬롯은 garden_avatar_gallery.image_url 값. 없으면 해당 레이어 미표시.
+      // 각 슬롯은 다음 두 형태 중 하나:
+      //   1) string  — 관리자 기본 position 사용 (legacy)
+      //   2) { url, position? } — 학생이 위치/크기 개별 조절 (신규)
+      // 둘 다 호환되며 position 없으면 string 으로 정규화 가능.
       kind: "gallery";
-      base?: string;
-      outfit?: string;
-      bottom?: string;
-      shoes?: string;
-      hair?: string;
-      face?: string;
-      hat?: string;
-      accessory?: string;
+      base?: AvatarGallerySlot;
+      outfit?: AvatarGallerySlot;
+      bottom?: AvatarGallerySlot;
+      shoes?: AvatarGallerySlot;
+      hair?: AvatarGallerySlot;
+      face?: AvatarGallerySlot;
+      hat?: AvatarGallerySlot;
+      accessory?: AvatarGallerySlot;
     };
+
+export type AvatarGallerySlot =
+  | string
+  | { url: string; position?: AvatarGalleryItemPosition };
+
+export function getGallerySlotUrl(slot: AvatarGallerySlot | undefined): string | undefined {
+  if (!slot) return undefined;
+  if (typeof slot === "string") return slot;
+  return typeof slot.url === "string" && slot.url.length > 0 ? slot.url : undefined;
+}
+
+export function getGallerySlotPosition(
+  slot: AvatarGallerySlot | undefined,
+): AvatarGalleryItemPosition | undefined {
+  if (!slot || typeof slot === "string") return undefined;
+  return slot.position;
+}
 
 export type AvatarGalleryCategory =
   | "base"

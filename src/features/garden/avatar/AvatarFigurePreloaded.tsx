@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AvatarFigure } from "./AvatarFigure";
 import type { AvatarConfig, AvatarGalleryItemPosition } from "@/lib/types";
+import { getGallerySlotUrl } from "@/lib/types";
 
 type Props = {
   config: AvatarConfig | null;
@@ -20,8 +21,8 @@ function collectUrls(cfg: AvatarConfig | null): string[] {
   if (cfg.kind === "gallery") {
     const urls: string[] = [];
     for (const key of ["base", "outfit", "bottom", "shoes", "hair", "face", "hat", "accessory"] as const) {
-      const v = cfg[key];
-      if (typeof v === "string" && v.length > 0) urls.push(v);
+      const url = getGallerySlotUrl(cfg[key]);
+      if (url) urls.push(url);
     }
     return urls;
   }

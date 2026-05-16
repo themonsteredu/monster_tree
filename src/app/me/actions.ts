@@ -111,12 +111,45 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
   if (kind === "gallery") {
     // 각 슬롯이 비어있거나 우리 Supabase URL 인지만 점검.
     const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-    const slot = (v: unknown): string | undefined => {
+
+    const cleanUrl = (v: unknown): string | undefined => {
       if (typeof v !== "string" || v.length === 0) return undefined;
       if (v.length > 500) return undefined;
       if (!allowed || !v.startsWith(allowed)) return undefined;
       return v;
     };
+
+    const validPos = (
+      v: unknown,
+    ): import("@/lib/types").AvatarGalleryItemPosition | undefined => {
+      if (!v || typeof v !== "object") return undefined;
+      const p = v as Record<string, unknown>;
+      const inRange = (n: unknown, lo: number, hi: number) =>
+        typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi;
+      if (!inRange(p.x, -50, 150) || !inRange(p.y, -50, 150)) return undefined;
+      if (!inRange(p.scaleX, 5, 250) || !inRange(p.scaleY, 5, 250)) return undefined;
+      return {
+        x: p.x as number,
+        y: p.y as number,
+        scaleX: p.scaleX as number,
+        scaleY: p.scaleY as number,
+      };
+    };
+
+    // slot 은 string 또는 { url, position? } 두 형태 모두 허용.
+    // position 이 있으면 객체로, 없으면 string 으로 정규화한다.
+    const slot = (v: unknown): import("@/lib/types").AvatarGallerySlot | undefined => {
+      if (typeof v === "string") return cleanUrl(v);
+      if (v && typeof v === "object") {
+        const o = v as Record<string, unknown>;
+        const url = cleanUrl(o.url);
+        if (!url) return undefined;
+        const position = validPos(o.position);
+        return position ? { url, position } : url;
+      }
+      return undefined;
+    };
+
     const base = slot(a.base);
     const outfit = slot(a.outfit);
     const bottom = slot(a.bottom);
