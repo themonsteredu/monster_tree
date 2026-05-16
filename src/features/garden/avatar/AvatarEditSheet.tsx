@@ -145,7 +145,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     const adminPos = galleryPositions[url];
     const base = customPos ?? adminPos ?? { x: 50, y: 50, scaleX: 100, scaleY: 100 };
     const currentZ = customPos?.zIndex ?? CATEGORY_DEFAULT_Z[slot];
-    const nextZ = Math.min(20, Math.max(1, currentZ + delta));
+    const nextZ = Math.min(20, Math.max(0, currentZ + delta));
     const nextPos: AvatarGalleryItemPosition = { ...base, zIndex: nextZ };
     setDraft({ ...draft, [slot]: { url, position: nextPos } });
   };
