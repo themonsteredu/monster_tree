@@ -71,16 +71,18 @@ export function AppleTree({
   const hasImage = !!imageConfig?.url;
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [everLoaded, setEverLoaded] = useState(false);
   // URL 바뀔 때 error 만 reset — loaded 는 유지해 이전 이미지가 표시된 채로
-  // 새 이미지가 자연스럽게 교체되도록 (단계 업 등에서 빈 화면 깜빡임 방지).
+  // 새 이미지가 자연스럽게 교체되도록.
   useEffect(() => {
     setImgError(false);
   }, [imageConfig?.url]);
-  // 첫 진입 시(아직 한 번도 로드 안됨)만 imgLoaded false 로 시작.
-  // 이후엔 src 변경되어도 onLoad 가 새로 발생하기까지 이전 이미지 표시 유지.
 
-  // 이미지가 있다고 했는데 실제 로드 실패하면 SVG 로 복귀 (안전망)
+  // 이미지가 있다고 했는데 실제 로드 실패하면 SVG 로 복귀 (안전망).
   const shouldShowImage = hasImage && !imgError;
+  // SVG 표시 조건: 이미지가 없거나 / 에러거나 / "아직 한 번도 로드 안 된"
+  // 첫 진입 상태. 한 번 로드된 뒤엔 URL 바뀌어도 SVG 다시 안 보임 (깜빡임 방지).
+  const showSvg = !shouldShowImage || !everLoaded;
 
   const ariaLabel = title ?? `사과나무 ${s}단계`;
 
@@ -174,8 +176,10 @@ export function AppleTree({
 
   if (!shouldShowImage) return svgEl;
 
-  // 이미지가 있으면 SVG fallback 절대 렌더하지 않음 (사용자 요청).
-  // 로딩 중에는 빈(투명) 박스 — 짧은 순간이지만 SVG 가 잠깐 튀어나오는 것을 방지.
+  // 이미지가 있는 경우: SVG 가 항상 underneath 로 깔리고 img 가 위로 올라옴.
+  // - 첫 로드 전 (!everLoaded): SVG 보임 → 빈 화면 방지
+  // - 로드 완료 후: SVG 숨김 (opacity 0) → URL 바뀌어도 SVG flash 없음
+  // - 로드 에러: shouldShowImage=false 분기로 svgEl 만 반환됨 (위 if)
   return (
     <div
       role="img"
@@ -190,13 +194,30 @@ export function AppleTree({
         verticalAlign: "bottom",
       }}
     >
+      {showSvg && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            opacity: imgLoaded ? 0 : 1,
+            transition: "opacity 200ms ease",
+            pointerEvents: "none",
+          }}
+        >
+          {svgEl}
+        </div>
+      )}
       <img
         src={imageConfig!.url}
         alt=""
         aria-hidden="true"
         width={px}
         height={px}
-        onLoad={() => setImgLoaded(true)}
+        onLoad={() => {
+          setImgLoaded(true);
+          setEverLoaded(true);
+        }}
         onError={() => setImgError(true)}
         style={{
           position: "absolute",
@@ -204,8 +225,6 @@ export function AppleTree({
           width: px,
           height: px,
           objectFit: "contain",
-          /* offset 은 xl(340px) 기준 px. 작은 사이즈에서는 비율 맞춰 축소.
-             scale 은 translate 뒤에 적용되어 화면상 이동량이 일정해진다. */
           transform: `translate(${(imageConfig!.offsetX * px) / 340}px, ${(imageConfig!.offsetY * px) / 340}px) scale(${imageConfig!.scale})`,
           transformOrigin: "center bottom",
           opacity: imgLoaded ? 1 : 0,

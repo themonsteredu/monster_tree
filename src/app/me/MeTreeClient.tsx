@@ -372,7 +372,7 @@ export function MeTreeClient({
                 position: "relative",
                 borderRadius: 20,
                 overflow: "hidden",
-                aspectRatio: "3 / 4",
+                aspectRatio: "1 / 1",
                 marginBottom: 12,
                 background: "#e8d8b8",
               }}
@@ -492,7 +492,7 @@ export function MeTreeClient({
                   alignItems: "flex-end",
                   justifyContent: "center",
                   paddingBottom: row.mood_text && row.mood_text.trim().length > 0 ? 32 : 12,
-                  paddingTop: 60,
+                  paddingTop: 50,
                   zIndex: 2,
                 }}
               >
