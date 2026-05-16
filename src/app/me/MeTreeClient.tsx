@@ -525,7 +525,7 @@ export function MeTreeClient({
                   </div>
                   {row.avatar && (
                     <div style={{ flex: "0 0 auto", marginLeft: -70, marginBottom: 4 }}>
-                      <AvatarFigurePreloaded config={currentAvatar} size={170} galleryPositions={galleryPositions} />
+                      <AvatarFigurePreloaded config={currentAvatar} size={220} galleryPositions={galleryPositions} />
                     </div>
                   )}
                 </div>
