@@ -57,11 +57,15 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
   const [pending, startTransition] = useTransition();
   const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
   const [galleryLoaded, setGalleryLoaded] = useState(false);
-  // 카테고리별 펼침 상태 — 기본 전부 펼침 (학생이 바로 아이템 보고 고를 수 있게).
-  // 스크롤이 부담되면 헤더 누르면 개별 접힘.
+  // 카테고리별 펼침 상태 — 기본 전부 접힘. 헤더 누르면 토글.
+  // collapsed[cat] === false (명시) 일 때만 펼침. undefined/true 면 접힘.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleCategory = (cat: AvatarGalleryCategory) =>
-    setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
+    setCollapsed((prev) => ({
+      ...prev,
+      // 기본 접힘(undefined) → false(펼침). false(펼침) → true(접힘). true → false.
+      [cat]: prev[cat] === false ? true : false,
+    }));
   // 미리보기 캔버스에서 선택된 슬롯 (터치 조작 대상)
   const [selectedSlot, setSelectedSlot] = useState<AvatarGalleryCategory | null>(null);
 
@@ -337,7 +341,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                   ? ((draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined)
                   : undefined;
               const selectedUrl = getGallerySlotUrl(slotValue);
-              const isOpen = !collapsed[cat];
+              const isOpen = collapsed[cat] === false; // 기본 접힘. 명시적으로 false 일 때만 펼침.
               return (
                 <div key={cat} style={{ marginBottom: 10 }}>
                   {/* 카테고리 헤더 — 클릭하면 접기/펼치기 */}
