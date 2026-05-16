@@ -71,10 +71,13 @@ export function AppleTree({
   const hasImage = !!imageConfig?.url;
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  // URL 바뀔 때 error 만 reset — loaded 는 유지해 이전 이미지가 표시된 채로
+  // 새 이미지가 자연스럽게 교체되도록 (단계 업 등에서 빈 화면 깜빡임 방지).
   useEffect(() => {
-    setImgLoaded(false);
     setImgError(false);
   }, [imageConfig?.url]);
+  // 첫 진입 시(아직 한 번도 로드 안됨)만 imgLoaded false 로 시작.
+  // 이후엔 src 변경되어도 onLoad 가 새로 발생하기까지 이전 이미지 표시 유지.
 
   // 이미지가 있다고 했는데 실제 로드 실패하면 SVG 로 복귀 (안전망)
   const shouldShowImage = hasImage && !imgError;
@@ -188,7 +191,6 @@ export function AppleTree({
       }}
     >
       <img
-        key={imageConfig!.url}
         src={imageConfig!.url}
         alt=""
         aria-hidden="true"
