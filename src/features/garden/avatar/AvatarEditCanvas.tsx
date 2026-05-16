@@ -288,6 +288,9 @@ function LayerNode({
   // AvatarFigure 의 AvatarLayer 와 동일.
   const layerW = (position.scaleX / 100) * innerWidth;
   const layerH = (position.scaleY / 100) * innerHeight;
+  // AvatarLayer 와 동일하게 useFittedImage 로 투명 가장자리 자른 이미지 사용 →
+  // contain 시 콘텐츠가 동일하게 채워짐. 원본 URL 쓰면 패딩 때문에 작아 보임.
+  const fitted = useFittedImage(layer.url);
 
   return (
     <div
@@ -314,13 +317,14 @@ function LayerNode({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={layer.url}
+        src={fitted?.url ?? layer.url}
         alt=""
         draggable={false}
         style={{
           width: "100%",
           height: "100%",
           objectFit: "contain",
+          objectPosition: "center",
           pointerEvents: "none",
           userSelect: "none",
           WebkitUserSelect: "none",
