@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { AvatarConfig, AvatarAccessories, BackgroundConfig, WeatherType } from "@/lib/types";
+import type { AvatarConfig, AvatarAccessories, BackgroundConfig, WeatherType, SceneLayout, SceneItemLayout } from "@/lib/types";
 import { MOOD_TEXT_MAX, WEATHER_TYPES } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
@@ -442,9 +442,22 @@ function validateYardItem(it: YardItemInput): boolean {
   );
 }
 
-// 학생 본인의 마당 배치를 통째로 교체한다. (꾸미기 모드 "저장" 누를 때)
-// 기존 행 모두 삭제 후 새 배열 insert.
-export async function replaceYardLayoutAction(args: { items: YardItemInput[] }) {
+function validateSceneItemLayout(v: unknown): v is SceneItemLayout {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.x === "number" && Number.isFinite(o.x) && o.x >= -10 && o.x <= 110 &&
+    typeof o.y === "number" && Number.isFinite(o.y) && o.y >= -10 && o.y <= 110 &&
+    typeof o.width === "number" && Number.isFinite(o.width) && o.width >= 3 && o.width <= 200
+  );
+}
+
+// 학생 본인의 마당 배치 + 씬 액터(나무·아바타) 레이아웃을 한 번에 교체.
+// 꾸미기 모드 "저장" 누를 때 호출. sceneLayout 가 undefined 면 garden_students.scene_layout 은 안 건드림.
+export async function replaceYardLayoutAction(args: {
+  items: YardItemInput[];
+  sceneLayout?: SceneLayout | null;
+}) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
@@ -517,6 +530,33 @@ export async function replaceYardLayoutAction(args: { items: YardItemInput[] }) 
     }));
     const { error: insErr } = await sb.from("student_yard_layout").insert(rows);
     if (insErr) return { ok: false as const, message: `저장 실패: ${insErr.message}` };
+  }
+
+  // 씬 액터(나무·아바타) 레이아웃도 함께 저장 — sceneLayout 가 명시된 경우만.
+  if (args.sceneLayout !== undefined) {
+    const sl = args.sceneLayout;
+    let toStore: SceneLayout | null = null;
+    if (sl !== null && typeof sl === "object") {
+      toStore = {};
+      if (sl.tree !== undefined) {
+        if (!validateSceneItemLayout(sl.tree)) {
+          return { ok: false as const, message: "나무 위치 값이 올바르지 않아요." };
+        }
+        toStore.tree = sl.tree;
+      }
+      if (sl.avatar !== undefined) {
+        if (!validateSceneItemLayout(sl.avatar)) {
+          return { ok: false as const, message: "아바타 위치 값이 올바르지 않아요." };
+        }
+        toStore.avatar = sl.avatar;
+      }
+      if (Object.keys(toStore).length === 0) toStore = null;
+    }
+    const { error: sceneErr } = await sb
+      .from("garden_students")
+      .update({ scene_layout: toStore })
+      .eq("id", row.id);
+    if (sceneErr) return { ok: false as const, message: `씬 저장 실패: ${sceneErr.message}` };
   }
 
   revalidatePath("/me");

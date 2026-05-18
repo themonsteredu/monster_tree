@@ -20,9 +20,15 @@ import { useTreeStages } from "@/features/garden/tree/useTreeStages";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
+  DEFAULT_SCENE_LAYOUT,
   type AvatarConfig,
   type BackgroundConfig,
+  type SceneLayout,
 } from "@/lib/types";
+
+// 트리/아바타의 자연 px 크기. transform: scale 계산에 사용.
+const TREE_NATURAL_PX = 340;
+const AVATAR_NATURAL_PX = 220;
 import {
   STAGE_TABLE,
   calculateStage,
@@ -140,6 +146,7 @@ export function MeTreeClient({
   initialDecorationItems = [],
   initialYardLayout = [],
   yardBackgroundImage = null,
+  initialSceneLayout = null,
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -151,6 +158,7 @@ export function MeTreeClient({
   initialDecorationItems?: import("@/lib/types").DecorationItem[];
   initialYardLayout?: import("@/lib/types").StudentYardItem[];
   yardBackgroundImage?: string | null;
+  initialSceneLayout?: import("@/lib/types").SceneLayout | null;
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -168,12 +176,34 @@ export function MeTreeClient({
   const [weather, setWeather] = useState<import("@/lib/types").WeatherType>(initialWeather);
   const [decorateMode, setDecorateMode] = useState(false);
   const [yardLayout, setYardLayout] = useState<import("@/lib/types").StudentYardItem[]>(initialYardLayout);
+  const [sceneLayout, setSceneLayout] = useState<import("@/lib/types").SceneLayout | null>(initialSceneLayout);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
   const galleryPositions = useGalleryPositions();
   const treeStages = useTreeStages(initialTreeStages);
+
+  // Yard 박스 크기 측정 — 트리/아바타 cqmin 스케일링 계산용.
+  const yardRef = useRef<HTMLDivElement>(null);
+  const [yardPx, setYardPx] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = yardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setYardPx({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const cqminPx = Math.min(yardPx.w || 1, yardPx.h || 1) / 100;
+
+  // 효과적인 씬 레이아웃: DB 값 ⊕ 기본값.
+  const effectiveScene = {
+    tree: sceneLayout?.tree ?? DEFAULT_SCENE_LAYOUT.tree,
+    avatar: sceneLayout?.avatar ?? DEFAULT_SCENE_LAYOUT.avatar,
+  };
 
   useEffect(() => {
     setNow(new Date());
@@ -382,6 +412,7 @@ export function MeTreeClient({
           <>
             {/* === 씬 영역 — 세로 1:1, 가로 16:9 적응. 자식 cqmin 단위 활성화 === */}
             <div
+              ref={yardRef}
               className="aspect-square landscape:aspect-[16/9]"
               style={{
                 position: "relative",
@@ -422,8 +453,31 @@ export function MeTreeClient({
                 <DecorateMode
                   items={initialDecorationItems}
                   initialLayout={yardLayout}
+                  initialSceneLayout={effectiveScene}
+                  treeNode={
+                    <AppleTree
+                      stage={stage}
+                      size="xl"
+                      mood={treeMood}
+                      wilted={isNegative}
+                      growthBoost={progress}
+                      imageConfig={treeStages[stage] ?? null}
+                    />
+                  }
+                  avatarNode={
+                    row.avatar ? (
+                      <AvatarFigurePreloaded
+                        config={currentAvatar}
+                        size={AVATAR_NATURAL_PX}
+                        galleryPositions={galleryPositions}
+                      />
+                    ) : null
+                  }
+                  treeNaturalPx={TREE_NATURAL_PX}
+                  avatarNaturalPx={AVATAR_NATURAL_PX}
+                  cqminPx={cqminPx}
                   onCancel={() => setDecorateMode(false)}
-                  onSave={async (next) => {
+                  onSave={async ({ layout: next, sceneLayout: nextScene }) => {
                     const r = await replaceYardLayoutAction({
                       items: next.map((l) => ({
                         decorationItemId: l.decoration_item_id,
@@ -434,9 +488,11 @@ export function MeTreeClient({
                         rotation: l.rotation ?? 0,
                         zIndex: l.z_index,
                       })),
+                      sceneLayout: nextScene,
                     });
                     if (!r.ok) return { ok: false, message: r.message };
                     setYardLayout(next);
+                    setSceneLayout(nextScene);
                     setDecorateMode(false);
                     return { ok: true };
                   }}
@@ -547,30 +603,15 @@ export function MeTreeClient({
                 </div>
               )}
 
-              {/* 나무 + 아바타 */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "flex-end",
-                  justifyContent: "center",
-                  paddingBottom: row.mood_text && row.mood_text.trim().length > 0 ? 32 : 12,
-                  paddingTop: 50,
-                  zIndex: 2,
-                }}
-              >
-                <div
-                  className="me-tree-row"
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    alignItems: "flex-end",
-                    justifyContent: "center",
-                    gap: 2,
-                  }}
-                >
-                  <div style={{ position: "relative", flex: "0 0 auto" }}>
+              {/* 나무 + 아바타 — 절대 좌표 (sceneLayout 기반). 편집 모드일 땐 DecorateMode 가 자체 렌더. */}
+              {!decorateMode && (
+                <>
+                  <SceneActor
+                    layout={effectiveScene.tree}
+                    naturalPx={TREE_NATURAL_PX}
+                    cqminPx={cqminPx}
+                    zIndex={2}
+                  >
                     {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
                     <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
                       <AppleTree
@@ -586,14 +627,23 @@ export function MeTreeClient({
                     {isFresh && highlight && (
                       <PtFloat key={highlight.id} delta={highlight.delta} reason={highlight.reason} />
                     )}
-                  </div>
+                  </SceneActor>
                   {row.avatar && (
-                    <div style={{ flex: "0 0 auto", marginLeft: -70, marginBottom: 4 }}>
-                      <AvatarFigurePreloaded config={currentAvatar} size={220} galleryPositions={galleryPositions} />
-                    </div>
+                    <SceneActor
+                      layout={effectiveScene.avatar}
+                      naturalPx={AVATAR_NATURAL_PX}
+                      cqminPx={cqminPx}
+                      zIndex={3}
+                    >
+                      <AvatarFigurePreloaded
+                        config={currentAvatar}
+                        size={AVATAR_NATURAL_PX}
+                        galleryPositions={galleryPositions}
+                      />
+                    </SceneActor>
                   )}
-                </div>
-              </div>
+                </>
+              )}
 
               {/* 하단 기분 전광판 */}
               <MoodTicker text={row.mood_text ?? ""} borderRadius={20} />
@@ -1706,6 +1756,51 @@ function DetailsCollapse({
           {children}
         </div>
       )}
+    </div>
+  );
+}
+
+function SceneActor({
+  layout,
+  naturalPx,
+  cqminPx,
+  zIndex = 2,
+  children,
+}: {
+  layout: import("@/lib/types").SceneItemLayout;
+  naturalPx: number;
+  cqminPx: number;
+  zIndex?: number;
+  children: React.ReactNode;
+}) {
+  // 외부 wrapper: 절대 좌표로 (x%, y%) 에 0px 점 만들고 translate(-50%,-50%) 로 자식 중심을 그 점에 정렬.
+  // 내부 wrapper: 자식의 자연 크기(naturalPx) 로 box 잡고 transform: scale 로 확대/축소.
+  const scale = cqminPx > 0 ? (layout.width * cqminPx) / naturalPx : 1;
+  return (
+    <div
+      aria-hidden={false}
+      style={{
+        position: "absolute",
+        left: `${layout.x}%`,
+        top: `${layout.y}%`,
+        width: 0,
+        height: 0,
+        zIndex,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: -naturalPx / 2,
+          top: -naturalPx / 2,
+          width: naturalPx,
+          height: naturalPx,
+          transform: `scale(${scale})`,
+          transformOrigin: "center",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

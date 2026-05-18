@@ -273,6 +273,27 @@ export type StudentYardItem = {
   placed_at: string;
 };
 
+// 마이룸 씬 액터(나무·아바타)의 위치/크기.
+// x, y: 컨테이너 너비/높이 대비 % (0~100, 중심점 기준)
+// width: cqmin (짧은 변) 대비 % — 가로/세로 모드 모두에서 같은 물리적 크기
+export type SceneItemLayout = {
+  x: number;
+  y: number;
+  width: number;
+};
+
+export type SceneLayout = {
+  tree?: SceneItemLayout;
+  avatar?: SceneItemLayout;
+};
+
+// 학생이 한 번도 위치를 잡지 않았을 때의 기본값.
+// 마이룸 yard 안에 트리는 중앙-하단, 아바타는 그 우측에 약간 겹치게.
+export const DEFAULT_SCENE_LAYOUT: Required<SceneLayout> = {
+  tree:   { x: 45, y: 92, width: 55 },
+  avatar: { x: 68, y: 95, width: 28 },
+};
+
 // 마이룸 마당 글로벌 배경 — 관리자만 업로드, 모든 학생에게 동일 적용.
 export type YardSettings = {
   id: string;
