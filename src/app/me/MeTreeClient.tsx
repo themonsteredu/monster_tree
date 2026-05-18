@@ -611,6 +611,7 @@ export function MeTreeClient({
                     naturalPx={TREE_NATURAL_PX}
                     cqminPx={cqminPx}
                     zIndex={2}
+                    animation="sway"
                   >
                     {isPositive && highlight && <GlowRing key={`ring-${highlight.id}`} />}
                     <div key={shakeKey} className={isPositive ? "tree-shake" : undefined}>
@@ -634,6 +635,7 @@ export function MeTreeClient({
                       naturalPx={AVATAR_NATURAL_PX}
                       cqminPx={cqminPx}
                       zIndex={3}
+                      animation="bob"
                     >
                       <AvatarFigurePreloaded
                         config={currentAvatar}
@@ -1765,17 +1767,23 @@ function SceneActor({
   naturalPx,
   cqminPx,
   zIndex = 2,
+  animation,
   children,
 }: {
   layout: import("@/lib/types").SceneItemLayout;
   naturalPx: number;
   cqminPx: number;
   zIndex?: number;
+  // 미세 idle 애니메이션 — 살아있는 느낌. 부모의 transform 과 충돌하지 않도록
+  // 자식 wrapper 에 적용.
+  animation?: "bob" | "sway";
   children: React.ReactNode;
 }) {
   // 외부 wrapper: 절대 좌표로 (x%, y%) 에 0px 점 만들고 translate(-50%,-50%) 로 자식 중심을 그 점에 정렬.
   // 내부 wrapper: 자식의 자연 크기(naturalPx) 로 box 잡고 transform: scale 로 확대/축소.
   const scale = cqminPx > 0 ? (layout.width * cqminPx) / naturalPx : 1;
+  const animClass =
+    animation === "bob" ? "scene-idle-bob" : animation === "sway" ? "scene-tree-sway" : "";
   return (
     <div
       aria-hidden={false}
@@ -1799,7 +1807,13 @@ function SceneActor({
           transformOrigin: "center",
         }}
       >
-        {children}
+        {animClass ? (
+          <div className={animClass} style={{ width: "100%", height: "100%" }}>
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
