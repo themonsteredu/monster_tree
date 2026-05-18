@@ -197,7 +197,15 @@ export function MeTreeClient({
   const [yardLayout, setYardLayout] = useState<import("@/lib/types").StudentYardItem[]>(initialYardLayout);
   const [sceneLayout, setSceneLayout] = useState<import("@/lib/types").SceneLayout | null>(initialSceneLayout);
   const [evolutionBanner, setEvolutionBanner] = useState<typeof justEvolved>(justEvolved);
+  const [monsterInfoOpen, setMonsterInfoOpen] = useState(false);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
+
+  // 몬스터 정보 말풍선 — 3초 후 자동 닫힘.
+  useEffect(() => {
+    if (!monsterInfoOpen) return;
+    const t = window.setTimeout(() => setMonsterInfoOpen(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [monsterInfoOpen]);
 
   // 몬스터 진화 시 축하 — confetti + 모달 (자동 닫힘 4s)
   useEffect(() => {
@@ -723,19 +731,14 @@ export function MeTreeClient({
                       isActive
                       layoutOverride={effectiveScene.monster}
                       justEvolved={!!justEvolved}
+                      onTap={() => setMonsterInfoOpen((v) => !v)}
+                      infoOpen={monsterInfoOpen}
                     />
                   )}
                 </>
               )}
 
-              {/* 몬스터 EXP 진행바 — yard 상단 좌측 */}
-              {initialMonster && initialMonsterSpecies && !decorateMode && (
-                <MonsterExpBar
-                  monster={initialMonster}
-                  species={initialMonsterSpecies}
-                  stages={initialMonsterStages}
-                />
-              )}
+              {/* 몬스터 EXP 정보 말풍선 — 탭 시에만 표시 (MonsterActor 내부에서 렌더) */}
 
               {/* 하단 기분 전광판 */}
               <MoodTicker text={row.mood_text ?? ""} borderRadius={20} />
@@ -1989,6 +1992,8 @@ function MonsterActor({
   layoutOverride,
   justEvolved = false,
   evolvedIndex = 0,
+  onTap,
+  infoOpen = false,
 }: {
   monster: import("@/lib/types").StudentMonster;
   species: import("@/lib/types").MonsterSpecies;
@@ -1999,6 +2004,8 @@ function MonsterActor({
   justEvolved?: boolean;
   evolvedIndex?: number;
   evolvedTotal?: number;
+  onTap?: () => void;
+  infoOpen?: boolean;
 }) {
   const pick = pickStageImage(stages, monster.current_stage);
   if (!pick.url) {
@@ -2021,7 +2028,12 @@ function MonsterActor({
         zIndex: isActive ? 4 : 2,
       }}
       className={justEvolved ? "scene-evolution-glow" : undefined}
+      onClick={onTap ? () => onTap() : undefined}
     >
+      {/* 정보 말풍선 — 탭 시 표시 (활성 몬스터만) */}
+      {isActive && infoOpen && (
+        <MonsterInfoBubble monster={monster} species={species} stages={stages} />
+      )}
       <div
         style={{
           position: "absolute",
@@ -2031,6 +2043,7 @@ function MonsterActor({
           height: MONSTER_NATURAL_PX,
           transform: `scale(${scale * (layout.flipX ? -1 : 1)}, ${scale}) rotate(${layout.rotation ?? 0}deg)`,
           transformOrigin: "center",
+          cursor: onTap ? "pointer" : undefined,
         }}
       >
         {/* 미세 idle bob */}
@@ -2104,7 +2117,10 @@ function MonsterActor({
   );
 }
 
-function MonsterExpBar({
+// 몬스터 정보 말풍선 — 활성 몬스터 위에 떠 있는 카드.
+// MonsterActor 내부에서 infoOpen=true 일 때만 렌더. 부모의 transform 영향을 받으므로
+// 자기 자신은 정상 크기로 보이게 absolute 위치를 outer 0x0 wrapper 기준으로 잡음.
+function MonsterInfoBubble({
   monster,
   species,
   stages,
@@ -2117,87 +2133,106 @@ function MonsterExpBar({
   const cur = stages.find((s) => s.stage === currentStage);
   const next = stages.find((s) => s.stage === currentStage + 1);
 
-  // 이미 5단계면 (정상적으로는 여기 도달 안 함 — page 에서 redirect) 표시 X
-  if (currentStage >= 5 || !next) {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 8,
-          zIndex: 10,
-          background: "rgba(245, 158, 11, 0.92)",
-          color: "white",
-          fontSize: 10,
-          fontWeight: 700,
-          padding: "4px 10px",
-          borderRadius: 999,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-        }}
-      >
-        🏆 {cur?.stage_name ?? "최종"} 도달
-      </div>
-    );
-  }
-
+  const isFinal = currentStage >= 5 || !next;
   const fromExp = cur?.required_exp ?? 0;
-  const toExp = next.required_exp;
+  const toExp = next?.required_exp ?? fromExp;
   const range = Math.max(1, toExp - fromExp);
   const progressed = Math.max(0, monster.current_exp - fromExp);
   const pct = Math.min(100, Math.round((progressed / range) * 100));
-  const imageMissing = !next.image_url;
+  const imageMissing = next ? !next.image_url : false;
 
   return (
     <div
+      role="status"
+      aria-hidden={false}
       style={{
         position: "absolute",
-        top: 8,
-        left: 8,
-        zIndex: 10,
-        background: "rgba(17, 24, 39, 0.78)",
-        backdropFilter: "blur(4px)",
-        color: "white",
-        fontSize: 10,
-        fontWeight: 600,
-        padding: "6px 10px",
-        borderRadius: 12,
-        minWidth: 160,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+        bottom: "100%",
+        left: "50%",
+        transform: "translate(-50%, -16px)",
+        zIndex: 50,
+        minWidth: 180,
+        maxWidth: 240,
+        padding: "10px 14px",
+        background: "rgba(255, 255, 255, 0.97)",
+        color: "#1a1a1a",
+        borderRadius: 14,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.25)",
+        pointerEvents: "none",
+        animation: "monster-info-pop 200ms ease-out backwards",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-        <span style={{ fontSize: 10, fontWeight: 700 }}>
-          {next.stage_name}{imageMissing ? " ✨" : ""}
-        </span>
-        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.75)" }}>
-          {monster.current_exp} / {toExp}
-        </span>
+      <style jsx>{`
+        @keyframes monster-info-pop {
+          from { opacity: 0; transform: translate(-50%, -10px) scale(0.92); }
+          to   { opacity: 1; transform: translate(-50%, -16px) scale(1); }
+        }
+      `}</style>
+      <div style={{ fontSize: 13, fontWeight: 800, textAlign: "center", marginBottom: 4 }}>
+        {monster.nickname}
+        {!species.hide_name && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", marginLeft: 4 }}>
+            · {species.name}
+          </span>
+        )}
       </div>
-      <div
-        style={{
-          width: "100%",
-          height: 6,
-          background: "rgba(255,255,255,0.18)",
-          borderRadius: 999,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: `${pct}%`,
-            height: "100%",
-            background: imageMissing
-              ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
-              : "linear-gradient(90deg, #34d399, #10b981)",
-            transition: "width 300ms ease",
-          }}
-        />
+      <div style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textAlign: "center", marginBottom: 6 }}>
+        {cur?.stage_name ?? `${currentStage}단계`}
       </div>
-      {imageMissing && progressed >= range && (
-        <div style={{ fontSize: 9, color: "#fcd34d", marginTop: 3 }}>
-          곧 부화해요! 🥚✨
+
+      {isFinal ? (
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: "#b45309", textAlign: "center",
+          background: "#fef3c7", padding: "4px 8px", borderRadius: 8,
+        }}>
+          🏆 최종 진화 도달
         </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 600, marginBottom: 3 }}>
+            <span style={{ color: "#1a1a1a" }}>
+              {next!.stage_name}{imageMissing ? " ✨" : ""}
+            </span>
+            <span style={{ color: "#6b7280" }}>
+              {monster.current_exp} / {toExp} EXP
+            </span>
+          </div>
+          <div style={{
+            width: "100%", height: 6,
+            background: "#f3f4f6", borderRadius: 999, overflow: "hidden",
+          }}>
+            <div style={{
+              width: `${pct}%`, height: "100%",
+              background: imageMissing
+                ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
+                : "linear-gradient(90deg, #34d399, #10b981)",
+              transition: "width 300ms ease",
+            }} />
+          </div>
+          {imageMissing && progressed >= range && (
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#d97706", marginTop: 4, textAlign: "center" }}>
+              곧 부화해요! 🥚✨
+            </div>
+          )}
+        </>
       )}
+
+      {/* 아래쪽 화살표 */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: "100%",
+          left: "50%",
+          marginLeft: -7,
+          width: 0,
+          height: 0,
+          borderLeft: "7px solid transparent",
+          borderRight: "7px solid transparent",
+          borderTop: "7px solid rgba(255,255,255,0.97)",
+          filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.15))",
+        }}
+      />
     </div>
   );
 }
