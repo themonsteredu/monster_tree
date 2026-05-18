@@ -48,25 +48,15 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
         onToast={setToast}
       />
 
+      {/* ① 건물별 이미지 + 설정 (카드) — 가장 먼저 보이도록 */}
       <section className="bg-white rounded-2xl border border-gray-100 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">건물 5종</h2>
-            <p className="text-[11px] text-gray-500 mt-0.5">
-              아래 <b>카드</b>에서 이미지 업로드/소개 문구를, <b>미리보기</b>에서 드래그·회전·크기 조절을 할 수 있어요.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            className="text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-1.5 transition"
-          >
-            {showPreview ? "미리보기 닫기" : "미리보기 열기 ↓"}
-          </button>
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-gray-900">🏠 건물별 이미지 & 설정</h2>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            각 카드에서 이미지를 업로드하고, 말풍선 소개·위치·회전·오픈 여부를 설정해요.
+          </p>
         </div>
-
-        {/* 카드 먼저 — 이미지 업로드 / 소개 / 위치 / 회전 / 오픈여부 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {buildings.map((b) => (
             <BuildingCard
               key={b.id}
@@ -76,18 +66,32 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
             />
           ))}
         </div>
+      </section>
 
-        {/* 미리보기 — 드래그로 위치/크기/회전 조정 */}
-        {showPreview && (
+      {/* ② 미리보기 — 드래그로 위치/회전/크기 정렬 */}
+      <section className="bg-white rounded-2xl border border-gray-100 p-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="text-[11px] font-semibold text-gray-500 mb-1">미리보기 (드래그로 정렬)</div>
-            <InteractiveVillagePreview
-              settings={settings}
-              buildings={buildings}
-              onBuildingChange={onBuildingChanged}
-              onToast={setToast}
-            />
+            <h2 className="text-base font-semibold text-gray-900">🎯 위치 / 회전 / 크기 정렬</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              건물을 <b>드래그</b>로 이동, 우하단 <b>↘</b> 로 크기, 상단 <b>↻</b> 로 회전. 손을 떼면 자동 저장돼요.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-1.5 transition shrink-0"
+          >
+            {showPreview ? "닫기" : "열기 ↓"}
+          </button>
+        </div>
+        {showPreview && (
+          <InteractiveVillagePreview
+            settings={settings}
+            buildings={buildings}
+            onBuildingChange={onBuildingChanged}
+            onToast={setToast}
+          />
         )}
       </section>
 
@@ -360,48 +364,61 @@ function BuildingCard({
 
   return (
     <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-16 h-16 rounded-lg bg-white border border-gray-100 flex items-center justify-center overflow-hidden shrink-0">
-          {building.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={building.image_url} alt={building.name} className="max-w-full max-h-full object-contain" />
-          ) : (
-            <span className="text-[10px] text-gray-400">이미지 없음</span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-gray-900 truncate">{building.name}</div>
           <div className="text-[11px] text-gray-400 truncate">{building.link}</div>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => fileRef.current?.click()}
-          className="text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50 rounded-lg px-3 py-1.5 transition"
-        >
-          {pending ? "처리 중…" : "이미지 변경"}
-        </button>
         {building.image_url && (
           <button
             type="button"
             disabled={pending}
             onClick={onDeleteImage}
-            className="text-xs font-semibold text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg px-2 py-1.5 transition"
+            className="text-[10px] font-semibold text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded px-2 py-1 transition shrink-0"
           >
-            삭제
+            이미지 삭제
           </button>
         )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="hidden"
-          onChange={onFile}
-        />
       </div>
+
+      {/* 큰 이미지 업로드 영역 — 클릭 가능. 빈 상태일 때 명확한 안내. */}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => fileRef.current?.click()}
+        aria-label={`${building.name} 이미지 업로드`}
+        className={[
+          "w-full aspect-[16/10] mb-3 rounded-lg border-2 border-dashed transition flex items-center justify-center overflow-hidden relative",
+          building.image_url
+            ? "border-transparent bg-white hover:border-amber-300"
+            : "border-amber-300 bg-amber-50 hover:bg-amber-100 hover:border-amber-400",
+        ].join(" ")}
+      >
+        {building.image_url ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={building.image_url}
+              alt={building.name}
+              className="max-w-[80%] max-h-[80%] object-contain pointer-events-none"
+            />
+            <span className="absolute bottom-1 right-1 text-[10px] font-semibold text-white bg-black/60 rounded px-1.5 py-0.5">
+              {pending ? "처리 중…" : "이미지 변경"}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs font-semibold text-amber-700 text-center px-3">
+            {pending ? "업로드 중…" : "📁 이미지 업로드 (PNG / JPG / WebP, 2MB↓)"}
+          </span>
+        )}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={onFile}
+      />
 
       <div className="grid grid-cols-2 gap-2 mb-3">
         <PercentField label="top" value={positionTop} onChange={setPositionTop} />
