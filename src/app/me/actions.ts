@@ -568,3 +568,77 @@ export async function replaceYardLayoutAction(args: {
   revalidatePath("/me");
   return { ok: true as const, count: args.items.length };
 }
+
+/* ============== 몬스터 — 알 선택 ============== */
+
+export async function selectEggAction(args: { speciesId: string; nickname: string }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  const speciesId = (args.speciesId ?? "").trim();
+  const nickname = (args.nickname ?? "").trim();
+  if (!speciesId) return { ok: false as const, message: "알을 선택해주세요." };
+  if (!nickname || nickname.length > 10) {
+    return { ok: false as const, message: "이름은 1~10자 이내로 입력해주세요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+
+  // 1) 본인 student 행
+  const { data: row } = await sb
+    .from("garden_students")
+    .select("id")
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
+    .maybeSingle();
+  if (!row?.id) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+  // 2) 미진화 몬스터 이미 있는지 확인 (partial unique 가 막아주지만 친절한 메시지)
+  const { data: existing } = await sb
+    .from("student_monsters")
+    .select("id")
+    .eq("student_id", row.id)
+    .eq("is_evolved", false)
+    .maybeSingle();
+  if (existing?.id) {
+    return { ok: false as const, message: "이미 키우고 있는 몬스터가 있어요." };
+  }
+
+  // 3) 종이 활성화 상태인지 + 1단계 이미지가 있는지 검증
+  const { data: species } = await sb
+    .from("monster_species")
+    .select("id, is_active")
+    .eq("id", speciesId)
+    .maybeSingle();
+  if (!species || !species.is_active) {
+    return { ok: false as const, message: "선택할 수 없는 알이에요." };
+  }
+  const { data: stage1 } = await sb
+    .from("monster_stage_images")
+    .select("image_url")
+    .eq("species_id", speciesId)
+    .eq("stage", 1)
+    .maybeSingle();
+  if (!stage1?.image_url) {
+    return { ok: false as const, message: "알 이미지가 없어요." };
+  }
+
+  // 4) student_monsters insert
+  const { error: insErr } = await sb.from("student_monsters").insert({
+    student_id: row.id,
+    species_id: speciesId,
+    nickname,
+    current_exp: 0,
+    current_stage: 1,
+    is_evolved: false,
+  });
+  if (insErr) {
+    return { ok: false as const, message: `생성 실패: ${insErr.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/me/onboarding");
+  return { ok: true as const };
+}

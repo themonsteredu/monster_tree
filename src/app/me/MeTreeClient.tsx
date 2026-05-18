@@ -147,6 +147,9 @@ export function MeTreeClient({
   initialYardLayout = [],
   yardBackgroundImage = null,
   initialSceneLayout = null,
+  initialMonster = null,
+  initialMonsterSpecies = null,
+  initialMonsterStages = [],
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -159,6 +162,9 @@ export function MeTreeClient({
   initialYardLayout?: import("@/lib/types").StudentYardItem[];
   yardBackgroundImage?: string | null;
   initialSceneLayout?: import("@/lib/types").SceneLayout | null;
+  initialMonster?: import("@/lib/types").StudentMonster | null;
+  initialMonsterSpecies?: import("@/lib/types").MonsterSpecies | null;
+  initialMonsterStages?: import("@/lib/types").MonsterStageImage[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -644,7 +650,26 @@ export function MeTreeClient({
                       />
                     </SceneActor>
                   )}
+
+                  {/* 몬스터 (있을 때) */}
+                  {initialMonster && initialMonsterSpecies && (
+                    <MonsterActor
+                      monster={initialMonster}
+                      species={initialMonsterSpecies}
+                      stages={initialMonsterStages}
+                      cqminPx={cqminPx}
+                    />
+                  )}
                 </>
+              )}
+
+              {/* 몬스터 EXP 진행바 — yard 상단 좌측 */}
+              {initialMonster && initialMonsterSpecies && !decorateMode && (
+                <MonsterExpBar
+                  monster={initialMonster}
+                  species={initialMonsterSpecies}
+                  stages={initialMonsterStages}
+                />
               )}
 
               {/* 하단 기분 전광판 */}
@@ -1815,6 +1840,245 @@ function SceneActor({
           children
         )}
       </div>
+    </div>
+  );
+}
+
+/* ============== 몬스터 렌더 ============== */
+
+const MONSTER_NATURAL_PX = 220;
+const MONSTER_DEFAULT_LAYOUT: import("@/lib/types").SceneItemLayout = {
+  x: 28,
+  y: 88,
+  width: 22,
+};
+
+function pickStageImage(
+  stages: import("@/lib/types").MonsterStageImage[],
+  currentStage: number,
+): { url: string; isFallback: boolean; targetStageName: string | null } {
+  // 1) 현재 단계 이미지 있으면 그대로
+  const cur = stages.find((s) => s.stage === currentStage);
+  if (cur?.image_url) return { url: cur.image_url, isFallback: false, targetStageName: null };
+  // 2) 이전 단계 이미지 fallback
+  for (let s = currentStage - 1; s >= 1; s--) {
+    const prev = stages.find((x) => x.stage === s);
+    if (prev?.image_url) {
+      return {
+        url: prev.image_url,
+        isFallback: true,
+        targetStageName: cur?.stage_name ?? null,
+      };
+    }
+  }
+  return { url: "", isFallback: true, targetStageName: cur?.stage_name ?? null };
+}
+
+function MonsterActor({
+  monster,
+  species,
+  stages,
+  cqminPx,
+}: {
+  monster: import("@/lib/types").StudentMonster;
+  species: import("@/lib/types").MonsterSpecies;
+  stages: import("@/lib/types").MonsterStageImage[];
+  cqminPx: number;
+}) {
+  const pick = pickStageImage(stages, monster.current_stage);
+  if (!pick.url) {
+    return null; // 1단계 이미지조차 없으면 그냥 숨김 (있을 수 없는 케이스지만 방어)
+  }
+  const layout = MONSTER_DEFAULT_LAYOUT;
+  const scale = cqminPx > 0 ? (layout.width * cqminPx) / MONSTER_NATURAL_PX : 1;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${layout.x}%`,
+        top: `${layout.y}%`,
+        width: 0,
+        height: 0,
+        zIndex: 4,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: -MONSTER_NATURAL_PX / 2,
+          top: -MONSTER_NATURAL_PX / 2,
+          width: MONSTER_NATURAL_PX,
+          height: MONSTER_NATURAL_PX,
+          transform: `scale(${scale})`,
+          transformOrigin: "center",
+        }}
+      >
+        {/* 미세 idle bob */}
+        <div className="scene-idle-bob" style={{ width: "100%", height: "100%", position: "relative" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={pick.url}
+            alt={monster.nickname}
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))",
+            }}
+          />
+          {pick.isFallback && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "center",
+                paddingBottom: 4,
+                pointerEvents: "none",
+              }}
+            >
+              <span
+                style={{
+                  background: "rgba(245, 158, 11, 0.92)",
+                  color: "white",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "3px 8px",
+                  borderRadius: 999,
+                  whiteSpace: "nowrap",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                  // 부모 transform: scale 의 영향 상쇄
+                  transform: cqminPx > 0 ? `scale(${1 / Math.max(scale, 0.1)})` : undefined,
+                  transformOrigin: "bottom center",
+                }}
+              >
+                ✨ 곧 {pick.targetStageName ?? "변신"}해요!
+              </span>
+            </div>
+          )}
+        </div>
+        {/* 닉네임 라벨 — 항상 아래에 */}
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: "50%",
+            transform: `translateX(-50%) ${cqminPx > 0 ? `scale(${1 / Math.max(scale, 0.1)})` : ""}`,
+            transformOrigin: "top center",
+            whiteSpace: "nowrap",
+            marginTop: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            color: "white",
+            textShadow: "0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6)",
+            pointerEvents: "none",
+          }}
+        >
+          {species.hide_name ? monster.nickname : `${monster.nickname} (${species.name})`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonsterExpBar({
+  monster,
+  species,
+  stages,
+}: {
+  monster: import("@/lib/types").StudentMonster;
+  species: import("@/lib/types").MonsterSpecies;
+  stages: import("@/lib/types").MonsterStageImage[];
+}) {
+  const currentStage = monster.current_stage;
+  const cur = stages.find((s) => s.stage === currentStage);
+  const next = stages.find((s) => s.stage === currentStage + 1);
+
+  // 이미 5단계면 (정상적으로는 여기 도달 안 함 — page 에서 redirect) 표시 X
+  if (currentStage >= 5 || !next) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          left: 8,
+          zIndex: 10,
+          background: "rgba(245, 158, 11, 0.92)",
+          color: "white",
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "4px 10px",
+          borderRadius: 999,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+        }}
+      >
+        🏆 {cur?.stage_name ?? "최종"} 도달
+      </div>
+    );
+  }
+
+  const fromExp = cur?.required_exp ?? 0;
+  const toExp = next.required_exp;
+  const range = Math.max(1, toExp - fromExp);
+  const progressed = Math.max(0, monster.current_exp - fromExp);
+  const pct = Math.min(100, Math.round((progressed / range) * 100));
+  const imageMissing = !next.image_url;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 8,
+        left: 8,
+        zIndex: 10,
+        background: "rgba(17, 24, 39, 0.78)",
+        backdropFilter: "blur(4px)",
+        color: "white",
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "6px 10px",
+        borderRadius: 12,
+        minWidth: 160,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+        <span style={{ fontSize: 10, fontWeight: 700 }}>
+          {next.stage_name}{imageMissing ? " ✨" : ""}
+        </span>
+        <span style={{ fontSize: 9, color: "rgba(255,255,255,0.75)" }}>
+          {monster.current_exp} / {toExp}
+        </span>
+      </div>
+      <div
+        style={{
+          width: "100%",
+          height: 6,
+          background: "rgba(255,255,255,0.18)",
+          borderRadius: 999,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: imageMissing
+              ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
+              : "linear-gradient(90deg, #34d399, #10b981)",
+            transition: "width 300ms ease",
+          }}
+        />
+      </div>
+      {imageMissing && progressed >= range && (
+        <div style={{ fontSize: 9, color: "#fcd34d", marginTop: 3 }}>
+          곧 부화해요! 🥚✨
+        </div>
+      )}
     </div>
   );
 }
