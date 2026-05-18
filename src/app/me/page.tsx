@@ -13,7 +13,15 @@ import { redirect } from 'next/navigation';
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from '@/lib/student-jwt';
 import { createSupabaseServerAnonClient, createSupabaseServiceClient } from '@/lib/supabase/server';
 import { MeTreeClient } from './MeTreeClient';
-import type { WeatherType, DecorationItem, StudentYardItem, SceneLayout } from '@/lib/types';
+import type {
+  WeatherType,
+  DecorationItem,
+  StudentYardItem,
+  SceneLayout,
+  StudentMonster,
+  MonsterStageImage,
+  MonsterSpecies,
+} from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -116,6 +124,83 @@ export default async function MyTreePage() {
     pendingPoints = pendingResult.data ?? [];
   }
 
+  // ============ 몬스터 — 활성 몬스터 fetch + 자동 부화 체크 ============
+  let activeMonster: StudentMonster | null = null;
+  let monsterSpecies: MonsterSpecies | null = null;
+  let monsterStages: MonsterStageImage[] = [];
+
+  if (row) {
+    const sbService = createSupabaseServiceClient();
+    const { data: monsterRow } = await sbService
+      .from('student_monsters')
+      .select('id, student_id, species_id, nickname, current_exp, current_stage, is_evolved, selected_at, evolved_at')
+      .eq('student_id', row.id)
+      .eq('is_evolved', false)
+      .maybeSingle();
+
+    if (!monsterRow) {
+      // 활성 몬스터 없음 → 알 선택 페이지로 (단, 종이 1개라도 활성 + 1단계 이미지 있을 때만 강제)
+      const { data: anyEgg } = await sbService
+        .from('monster_stage_images')
+        .select('species_id, monster_species!inner(is_active)')
+        .eq('stage', 1)
+        .not('image_url', 'is', null)
+        .eq('monster_species.is_active', true)
+        .limit(1)
+        .maybeSingle();
+      if (anyEgg) {
+        redirect('/me/onboarding');
+      }
+    } else {
+      activeMonster = monsterRow as StudentMonster;
+
+      // 몬스터의 종 + 단계 이미지 5개
+      const [{ data: speciesRow }, { data: stagesRows }] = await Promise.all([
+        sbService
+          .from('monster_species')
+          .select('id, name, description, display_order, is_active, hide_name, created_at, updated_at')
+          .eq('id', activeMonster.species_id)
+          .maybeSingle(),
+        sbService
+          .from('monster_stage_images')
+          .select('id, species_id, stage, image_url, stage_name, required_exp, updated_at')
+          .eq('species_id', activeMonster.species_id)
+          .order('stage', { ascending: true }),
+      ]);
+      monsterSpecies = (speciesRow as MonsterSpecies | null) ?? null;
+      monsterStages = (stagesRows ?? []) as MonsterStageImage[];
+
+      // 자동 부화: current_exp 와 image_url 둘 다 충족하는 최고 단계로.
+      const targetStage = (() => {
+        let best = activeMonster.current_stage;
+        for (const s of monsterStages) {
+          if (s.stage > best && s.required_exp <= activeMonster.current_exp && s.image_url) {
+            best = s.stage;
+          }
+        }
+        return best;
+      })();
+
+      if (targetStage > activeMonster.current_stage) {
+        const reachedFinal = targetStage >= 5;
+        const patch: Record<string, unknown> = {
+          current_stage: targetStage,
+        };
+        if (reachedFinal) {
+          patch.is_evolved = true;
+          patch.evolved_at = new Date().toISOString();
+        }
+        await sbService.from('student_monsters').update(patch).eq('id', activeMonster.id);
+        // 로컬 상태 갱신
+        activeMonster = { ...activeMonster, current_stage: targetStage, ...(reachedFinal ? { is_evolved: true, evolved_at: new Date().toISOString() } : {}) };
+        // 5단계 도달 → 활성 몬스터 사라짐 → 알 선택 페이지로
+        if (reachedFinal) {
+          redirect('/me/onboarding');
+        }
+      }
+    }
+  }
+
   return (
     <MeTreeClient
       initialRow={row ?? null}
@@ -129,6 +214,9 @@ export default async function MyTreePage() {
       initialYardLayout={yardLayout}
       yardBackgroundImage={yardBackgroundImage}
       initialSceneLayout={(row?.scene_layout as SceneLayout | null) ?? null}
+      initialMonster={activeMonster}
+      initialMonsterSpecies={monsterSpecies}
+      initialMonsterStages={monsterStages}
     />
   );
 }
