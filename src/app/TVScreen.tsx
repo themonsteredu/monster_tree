@@ -28,6 +28,7 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterTv } from "@/features/garden/effects/SprayWater";
 import { fireConfetti } from "@/features/garden/effects/confetti";
 import { useTvRealtime } from "@/features/garden/hooks/useTvRealtime";
+import { YardScene } from "@/features/garden/scene/YardScene";
 import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import type { AvatarGalleryItemPosition } from "@/lib/types";
@@ -80,11 +81,29 @@ export function TVScreen({
   initialTodayHarvest = 0,
   branchId,
   initialTreeStages,
+  yardBackgroundImage = null,
+  decorationItems = [],
+  yardLayoutByStudent = {},
+  weatherByStudent = {},
+  activeMonsterByStudent = {},
+  evolvedMonstersByStudent = {},
+  sceneLayoutByStudent = {},
+  monsterSpeciesById = {},
+  monsterStagesBySpecies = {},
 }: {
   initialStudents: GardenStudent[];
   initialTodayHarvest?: number;
   branchId: string;
   initialTreeStages?: import("@/lib/types").GardenTreeStage[];
+  yardBackgroundImage?: string | null;
+  decorationItems?: import("@/lib/types").DecorationItem[];
+  yardLayoutByStudent?: Record<string, import("@/lib/types").StudentYardItem[]>;
+  weatherByStudent?: Record<string, import("@/lib/types").WeatherType>;
+  activeMonsterByStudent?: Record<string, import("@/lib/types").StudentMonster>;
+  evolvedMonstersByStudent?: Record<string, import("@/lib/types").StudentMonster[]>;
+  sceneLayoutByStudent?: Record<string, import("@/lib/types").SceneLayout | null>;
+  monsterSpeciesById?: Record<string, import("@/lib/types").MonsterSpecies>;
+  monsterStagesBySpecies?: Record<string, import("@/lib/types").MonsterStageImage[]>;
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -292,6 +311,15 @@ export function TVScreen({
               compact={!isDesktop}
               galleryPositions={galleryPositions}
               treeStages={treeStages}
+              yardBackgroundImage={yardBackgroundImage}
+              decorationItems={decorationItems}
+              spotlightYardLayout={spotlight ? yardLayoutByStudent[spotlight.id] ?? [] : []}
+              spotlightWeather={spotlight ? weatherByStudent[spotlight.id] ?? "none" : "none"}
+              spotlightActiveMonster={spotlight ? activeMonsterByStudent[spotlight.id] ?? null : null}
+              spotlightEvolvedMonsters={spotlight ? evolvedMonstersByStudent[spotlight.id] ?? [] : []}
+              spotlightSceneLayout={spotlight ? sceneLayoutByStudent[spotlight.id] ?? null : null}
+              monsterSpeciesById={monsterSpeciesById}
+              monsterStagesBySpecies={monsterStagesBySpecies}
             />
           </div>
           <div className="flex flex-col gap-3 min-h-0 flex-1">
@@ -353,8 +381,36 @@ const Spotlight = forwardRef<
     compact?: boolean;
     galleryPositions?: Record<string, AvatarGalleryItemPosition>;
     treeStages?: Record<number, TreeStageImageConfig | null>;
+    // TV 마이룸 전체 렌더용 추가 props
+    yardBackgroundImage?: string | null;
+    decorationItems?: import("@/lib/types").DecorationItem[];
+    spotlightYardLayout?: import("@/lib/types").StudentYardItem[];
+    spotlightWeather?: import("@/lib/types").WeatherType;
+    spotlightActiveMonster?: import("@/lib/types").StudentMonster | null;
+    spotlightEvolvedMonsters?: import("@/lib/types").StudentMonster[];
+    spotlightSceneLayout?: import("@/lib/types").SceneLayout | null;
+    monsterSpeciesById?: Record<string, import("@/lib/types").MonsterSpecies>;
+    monsterStagesBySpecies?: Record<string, import("@/lib/types").MonsterStageImage[]>;
   }
->(function Spotlight({ student, highlight, now, cycleLabel, isShaking, compact = false, galleryPositions, treeStages }, ref) {
+>(function Spotlight({
+  student,
+  highlight,
+  now,
+  cycleLabel,
+  isShaking,
+  compact = false,
+  galleryPositions,
+  treeStages,
+  yardBackgroundImage = null,
+  decorationItems = [],
+  spotlightYardLayout = [],
+  spotlightWeather = "none",
+  spotlightActiveMonster = null,
+  spotlightEvolvedMonsters = [],
+  spotlightSceneLayout = null,
+  monsterSpeciesById = {},
+  monsterStagesBySpecies = {},
+}, ref) {
   if (!student) {
     return (
       <div
@@ -420,53 +476,60 @@ const Spotlight = forwardRef<
 
       <div className="flex-1 flex items-center justify-center w-full min-h-0 my-3 relative">
         <div
-          className="relative w-full h-full rounded-3xl overflow-hidden flex items-end justify-center"
-          style={{ paddingBottom: hasMood ? (compact ? 30 : 44) : 12 }}
+          key={student.id}
+          className={[
+            "relative w-full h-full rounded-3xl overflow-hidden flex items-end justify-center",
+            isShaking ? "tree-shake" : "",
+          ].join(" ")}
         >
-          <BackgroundCanvas config={student.background ?? null} rounded={24} />
+          {/* 학생 마이룸 풀 렌더 */}
+          <YardScene
+            yardBackgroundImage={yardBackgroundImage}
+            studentBackground={student.background ?? null}
+            treeStage={stage}
+            treeMood={mood}
+            treeWilted={isNegative}
+            treeGrowthBoost={progress}
+            treeImageConfig={treeStages?.[stage] ?? null}
+            avatar={student.avatar ?? null}
+            galleryPositions={galleryPositions ?? {}}
+            sceneLayout={spotlightSceneLayout}
+            decorationItems={decorationItems}
+            yardLayout={spotlightYardLayout}
+            weather={spotlightWeather}
+            activeMonster={spotlightActiveMonster}
+            activeMonsterSpecies={
+              spotlightActiveMonster
+                ? monsterSpeciesById[spotlightActiveMonster.species_id] ?? null
+                : null
+            }
+            activeMonsterStages={
+              spotlightActiveMonster
+                ? monsterStagesBySpecies[spotlightActiveMonster.species_id] ?? []
+                : []
+            }
+            evolvedMonsters={spotlightEvolvedMonsters}
+            monsterSpeciesById={monsterSpeciesById}
+            monsterStagesBySpecies={monsterStagesBySpecies}
+          />
+          {/* MoodTicker 오버레이 (yard 위) */}
           <MoodTicker
             text={student.mood_text ?? ""}
             height={compact ? 22 : 32}
             fontSize={compact ? 11 : 15}
             durationSec={18}
           />
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={student.id}
-              initial={{ opacity: 0, scale: 0.85, y: 18 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: -10 }}
-              transition={{ duration: 0.45, ease: [0.34, 1.2, 0.64, 1] }}
-              className={["relative flex items-end justify-center", isShaking ? "tree-shake" : ""].join(" ")}
-            >
-              <AppleTree
-                stage={stage}
-                size={compact ? "large" : "xl"}
-                mood={mood}
-                wilted={isNegative}
-                growthBoost={progress}
-                imageConfig={treeStages?.[stage] ?? null}
-              />
-              {student.avatar && (
-                <div className="shrink-0" style={{ marginLeft: compact ? -48 : -90, marginBottom: 4 }} aria-hidden>
-                  <AvatarFigurePreloaded config={student.avatar} size={compact ? 96 : 180} galleryPositions={galleryPositions} />
-                </div>
-              )}
-              {isPositive && (
-                <>
-                  <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
-                    +{highlight!.delta}pt ✨
-                  </div>
-                  <SprayWaterTv />
-                </>
-              )}
-              {isNegative && (
-                <div className="absolute -top-2 -right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--apple-deep)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in">
-                  {highlight!.delta}pt
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+          {/* +pt / -pt 인디케이터 — 카드 우상단 */}
+          {isPositive && (
+            <div className="absolute top-2 right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--accent-success)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in z-50">
+              +{highlight!.delta}pt ✨
+            </div>
+          )}
+          {isNegative && (
+            <div className="absolute top-2 right-2 px-3.5 py-1.5 rounded-2xl bg-[var(--apple-deep)] border-[2.5px] border-[var(--ink)] text-white text-xl font-extrabold shadow-card-pop animate-pop-in z-50">
+              {highlight!.delta}pt
+            </div>
+          )}
         </div>
       </div>
 
