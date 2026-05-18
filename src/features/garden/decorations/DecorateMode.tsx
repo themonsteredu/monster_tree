@@ -182,6 +182,9 @@ export function DecorateMode({
 
     const dxPct = ((e.clientX - drag.startClientX) / rect.width) * 100;
     const dyPct = ((e.clientY - drag.startClientY) / rect.height) * 100;
+    // 리사이즈는 cqmin (짧은 변) 기준. 가로 모드면 height, 세로면 width.
+    const minDimPx = Math.min(rect.width, rect.height);
+    const dxCqmin = ((e.clientX - drag.startClientX) / minDimPx) * 100;
 
     setLayout((prev) =>
       prev.map((l) => {
@@ -196,7 +199,7 @@ export function DecorateMode({
         if (drag.mode === "resize") {
           return {
             ...l,
-            width_percent: clamp(drag.startWidth + dxPct, 3, 80),
+            width_percent: clamp(drag.startWidth + dxCqmin, 3, 80),
           };
         }
         // rotate
@@ -272,9 +275,10 @@ export function DecorateMode({
                 position: "absolute",
                 left: `${li.position_x}%`,
                 top: `${li.position_y}%`,
-                width: `${li.width_percent}%`,
+                // width 는 짧은 변(cqmin) 기준 — 가로/세로 모드 모두에서 같은 크기.
+                width: `${li.width_percent}cqmin`,
                 transform: `translate(-50%, -50%) rotate(${li.rotation}deg)`,
-                zIndex: li.z_index + 1, // 편집 모드 안에서도 zIndex 순서 유지
+                zIndex: li.z_index + 1,
                 cursor: isDragging ? "grabbing" : "grab",
               }}
               onPointerDown={(e) => handlePointerDown(e, li, "move")}

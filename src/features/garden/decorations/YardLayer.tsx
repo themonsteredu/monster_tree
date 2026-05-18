@@ -38,7 +38,8 @@ export function YardLayer({
               position: "absolute",
               left: `${li.position_x}%`,
               top: `${li.position_y}%`,
-              width: `${li.width_percent}%`,
+              // width 는 짧은 변(cqmin) 기준 — 세로/가로 모드 모두에서 물리적으로 같은 크기.
+              width: `${li.width_percent}cqmin`,
               transform: `translate(-50%, -50%) rotate(${li.rotation}deg)`,
               zIndex: li.z_index,
             }}
