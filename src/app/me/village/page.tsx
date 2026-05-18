@@ -29,7 +29,7 @@ export default async function VillagePage() {
       sb
         .from("village_buildings")
         .select(
-          "id, building_key, name, image_url, link, position_top, position_left, position_right, size, display_order, is_ready, is_visible, updated_at",
+          "id, building_key, name, image_url, link, position_top, position_left, position_right, size, rotation, display_order, is_ready, is_visible, updated_at",
         )
         .eq("is_visible", true)
         .order("display_order", { ascending: true }),

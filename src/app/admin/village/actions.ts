@@ -219,6 +219,7 @@ export async function updateBuildingAction(args: {
   positionLeft?: string | null;
   positionRight?: string | null;
   size?: string | null;
+  rotation?: number;
   isReady?: boolean;
   isVisible?: boolean;
 }) {
@@ -255,6 +256,12 @@ export async function updateBuildingAction(args: {
       return { ok: false as const, message: "size 값이 올바르지 않아요." };
     }
     patch.size = v ?? "25%";
+  }
+  if (typeof args.rotation === "number" && Number.isFinite(args.rotation)) {
+    let r = args.rotation % 360;
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    patch.rotation = Math.round(r * 10) / 10;
   }
   if (typeof args.isReady === "boolean") patch.is_ready = args.isReady;
   if (typeof args.isVisible === "boolean") patch.is_visible = args.isVisible;

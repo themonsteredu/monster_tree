@@ -260,6 +260,7 @@ function BuildingCard({
   const [positionLeft, setPositionLeft] = useState(building.position_left ?? "");
   const [positionRight, setPositionRight] = useState(building.position_right ?? "");
   const [size, setSize] = useState(building.size);
+  const [rotation, setRotation] = useState<number>(building.rotation ?? 0);
   const [isReady, setIsReady] = useState(building.is_ready);
   const [isVisible, setIsVisible] = useState(building.is_visible);
   const [pending, startTransition] = useTransition();
@@ -270,15 +271,17 @@ function BuildingCard({
     setPositionLeft(building.position_left ?? "");
     setPositionRight(building.position_right ?? "");
     setSize(building.size);
+    setRotation(building.rotation ?? 0);
     setIsReady(building.is_ready);
     setIsVisible(building.is_visible);
-  }, [building.id, building.position_top, building.position_left, building.position_right, building.size, building.is_ready, building.is_visible]);
+  }, [building.id, building.position_top, building.position_left, building.position_right, building.size, building.rotation, building.is_ready, building.is_visible]);
 
   const dirty =
     positionTop !== building.position_top ||
     (positionLeft || "") !== (building.position_left ?? "") ||
     (positionRight || "") !== (building.position_right ?? "") ||
     size !== building.size ||
+    Math.abs(rotation - (building.rotation ?? 0)) >= 0.5 ||
     isReady !== building.is_ready ||
     isVisible !== building.is_visible;
 
@@ -322,6 +325,7 @@ function BuildingCard({
         positionLeft: positionLeft || null,
         positionRight: positionRight || null,
         size,
+        rotation,
         isReady,
         isVisible,
       });
@@ -335,6 +339,7 @@ function BuildingCard({
         position_left: positionLeft || null,
         position_right: positionRight || null,
         size,
+        rotation,
         is_ready: isReady,
         is_visible: isVisible,
         updated_at: new Date().toISOString(),
@@ -397,6 +402,43 @@ function BuildingCard({
       <p className="text-[10px] text-gray-400 mb-3">
         ※ left / right 중 한 쪽만 채워주세요. 둘 다 채우면 left 가 우선합니다.
       </p>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 mb-1">
+          <span>회전 (rotation)</span>
+          <button
+            type="button"
+            onClick={() => setRotation(0)}
+            className="text-[10px] text-gray-400 hover:text-gray-700"
+          >
+            0°로 초기화
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={-180}
+            max={180}
+            step={1}
+            value={Math.round(rotation)}
+            onChange={(e) => setRotation(Number(e.target.value))}
+            className="flex-1 accent-sky-500"
+          />
+          <input
+            type="number"
+            value={Math.round(rotation)}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) setRotation(v);
+            }}
+            min={-180}
+            max={180}
+            step={1}
+            className="w-16 px-2 py-1 rounded-md border border-gray-200 text-xs text-right bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+          />
+          <span className="text-[11px] text-gray-500">°</span>
+        </div>
+      </div>
 
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1">
         <span>오픈 여부 (is_ready)</span>
@@ -495,14 +537,26 @@ function effectiveLeft(b: VillageBuilding): number {
 
 type DragState = {
   buildingId: string;
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "rotate";
   pointerId: number;
   startClientX: number;
   startClientY: number;
   startTop: number;
   startLeft: number;
   startSize: number;
+  startRotation: number;
+  // 회전용 — 건물 중심점(화면 px) + 시작 시 포인터-중심 각도(rad)
+  centerX: number;
+  centerY: number;
+  startPointerAngleRad: number;
 };
+
+function normalizeAngle(deg: number): number {
+  let n = deg % 360;
+  if (n > 180) n -= 360;
+  if (n <= -180) n += 360;
+  return n;
+}
 
 function InteractiveVillagePreview({
   settings,
@@ -518,7 +572,7 @@ function InteractiveVillagePreview({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [transient, setTransient] = useState<
-    Record<string, { top: number; left: number; size: number }>
+    Record<string, { top: number; left: number; size: number; rotation: number }>
   >({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -538,11 +592,25 @@ function InteractiveVillagePreview({
   const handlePointerDown = (
     e: React.PointerEvent<HTMLElement>,
     b: VillageBuilding,
-    mode: "move" | "resize",
+    mode: "move" | "resize" | "rotate",
+    refEl?: HTMLElement | null,
   ) => {
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    // 회전 모드에서는 건물 박스의 중심점이 필요하다.
+    // refEl 은 회전 핸들이 부착된 건물 컨테이너(또는 가장 가까운 ancestor).
+    let centerX = 0;
+    let centerY = 0;
+    let startPointerAngleRad = 0;
+    if (mode === "rotate") {
+      const box = (refEl ?? (e.currentTarget as HTMLElement).closest("[data-building]")) as HTMLElement | null;
+      const rect = (box ?? (e.currentTarget as HTMLElement)).getBoundingClientRect();
+      centerX = rect.left + rect.width / 2;
+      centerY = rect.top + rect.height / 2;
+      startPointerAngleRad = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+    }
 
     setSelectedId(b.id);
     setDrag({
@@ -554,6 +622,10 @@ function InteractiveVillagePreview({
       startTop: parsePct(b.position_top),
       startLeft: effectiveLeft(b),
       startSize: parsePct(b.size),
+      startRotation: b.rotation ?? 0,
+      centerX,
+      centerY,
+      startPointerAngleRad,
     });
   };
 
@@ -569,14 +641,15 @@ function InteractiveVillagePreview({
 
     if (drag.mode === "move") {
       const size = transient[drag.buildingId]?.size ?? drag.startSize;
+      const rotation = transient[drag.buildingId]?.rotation ?? drag.startRotation;
       const newLeft = clamp(drag.startLeft + dxPct, 0, Math.max(0, 100 - size));
       const newTop = clamp(drag.startTop + dyPct, 0, 100);
       setTransient((prev) => ({
         ...prev,
-        [drag.buildingId]: { top: newTop, left: newLeft, size },
+        [drag.buildingId]: { top: newTop, left: newLeft, size, rotation },
       }));
-    } else {
-      // resize: 우하단 핸들 — dx 기반으로 너비 확대/축소.
+    } else if (drag.mode === "resize") {
+      const rotation = transient[drag.buildingId]?.rotation ?? drag.startRotation;
       const newSize = clamp(drag.startSize + dxPct, 5, 100 - drag.startLeft);
       setTransient((prev) => ({
         ...prev,
@@ -584,6 +657,21 @@ function InteractiveVillagePreview({
           top: drag.startTop,
           left: drag.startLeft,
           size: newSize,
+          rotation,
+        },
+      }));
+    } else {
+      // rotate: 건물 중심점 기준 포인터 각도 변화량만큼 회전.
+      const currentAngleRad = Math.atan2(e.clientY - drag.centerY, e.clientX - drag.centerX);
+      const deltaDeg = ((currentAngleRad - drag.startPointerAngleRad) * 180) / Math.PI;
+      const newRotation = normalizeAngle(drag.startRotation + deltaDeg);
+      setTransient((prev) => ({
+        ...prev,
+        [drag.buildingId]: {
+          top: drag.startTop,
+          left: drag.startLeft,
+          size: drag.startSize,
+          rotation: newRotation,
         },
       }));
     }
@@ -606,11 +694,12 @@ function InteractiveVillagePreview({
     const building = buildings.find((b) => b.id === targetId);
     if (!building) return;
 
-    // 변화가 거의 없으면(0.5% 미만) 저장 생략 — 단순 탭 처리.
+    const startRotation = building.rotation ?? 0;
     const noChange =
       Math.abs(tr.top - parsePct(building.position_top)) < 0.5 &&
       Math.abs(tr.left - effectiveLeft(building)) < 0.5 &&
-      Math.abs(tr.size - parsePct(building.size)) < 0.5;
+      Math.abs(tr.size - parsePct(building.size)) < 0.5 &&
+      Math.abs(normalizeAngle(tr.rotation - startRotation)) < 0.5;
 
     if (noChange) {
       setTransient((prev) => {
@@ -624,18 +713,19 @@ function InteractiveVillagePreview({
     const positionTop = `${round1(tr.top)}%`;
     const positionLeft = `${round1(tr.left)}%`;
     const size = `${round1(tr.size)}%`;
+    const rotation = round1(tr.rotation);
 
     (async () => {
       const r = await updateBuildingAction({
         buildingKey: building.building_key,
         positionTop,
         positionLeft,
-        positionRight: null, // 드래그 시에는 left 앵커로 통일.
+        positionRight: null,
         size,
+        rotation,
       });
       if (!r.ok) {
         onToast(r.message);
-        // 실패하면 transient 만 제거 — 원래 좌표로 복귀.
         setTransient((prev) => {
           const next = { ...prev };
           delete next[targetId];
@@ -649,6 +739,7 @@ function InteractiveVillagePreview({
         position_left: positionLeft,
         position_right: null,
         size,
+        rotation,
         updated_at: new Date().toISOString(),
       });
       setTransient((prev) => {
@@ -685,6 +776,7 @@ function InteractiveVillagePreview({
           const t = transient[b.id];
           const top = t ? `${t.top}%` : b.position_top;
           const size = t ? `${t.size}%` : b.size;
+          const rotation = t ? t.rotation : (b.rotation ?? 0);
 
           const positionStyle: React.CSSProperties = {
             position: "absolute",
@@ -710,6 +802,7 @@ function InteractiveVillagePreview({
           return (
             <div
               key={b.id}
+              data-building={b.id}
               style={positionStyle}
               className={[
                 "text-center group",
@@ -724,6 +817,7 @@ function InteractiveVillagePreview({
                 setSelectedId(b.id);
               }}
             >
+              {/* 회전 박스 — 이미지 + 선택 outline + 핸들들이 함께 회전 */}
               <div
                 className={[
                   "relative w-full rounded-lg",
@@ -732,6 +826,7 @@ function InteractiveVillagePreview({
                     : "outline outline-1 outline-white/30 outline-offset-1 opacity-95",
                   isDragging ? "opacity-90" : "",
                 ].join(" ")}
+                style={{ transform: rotation ? `rotate(${rotation}deg)` : undefined }}
               >
                 {b.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -747,21 +842,44 @@ function InteractiveVillagePreview({
                   </div>
                 )}
 
-                {/* 리사이즈 핸들 — 우하단 */}
                 {isSelected && (
-                  <button
-                    type="button"
-                    aria-label={`${b.name} 크기 조절`}
-                    onPointerDown={(e) => handlePointerDown(e, b, "resize")}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerCancel={handlePointerCancel}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute -right-2 -bottom-2 w-6 h-6 rounded-full bg-amber-400 border-2 border-white shadow-md flex items-center justify-center text-[10px] text-white font-bold"
-                    style={{ touchAction: "none", cursor: "nwse-resize" }}
-                  >
-                    ↘
-                  </button>
+                  <>
+                    {/* 회전 핸들 — 상단 가운데 위로 살짝 띄움 */}
+                    <div
+                      className="absolute left-1/2 -top-7 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+                      aria-hidden
+                    >
+                      <div className="w-px h-3 bg-amber-400" />
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`${b.name} 회전`}
+                      onPointerDown={(e) => handlePointerDown(e, b, "rotate")}
+                      onPointerMove={handlePointerMove}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerCancel}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute -top-10 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-sky-400 border-2 border-white shadow-md flex items-center justify-center text-[11px] text-white font-bold"
+                      style={{ touchAction: "none", cursor: "grab" }}
+                    >
+                      ↻
+                    </button>
+
+                    {/* 리사이즈 핸들 — 우하단 */}
+                    <button
+                      type="button"
+                      aria-label={`${b.name} 크기 조절`}
+                      onPointerDown={(e) => handlePointerDown(e, b, "resize")}
+                      onPointerMove={handlePointerMove}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerCancel}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute -right-2 -bottom-2 w-6 h-6 rounded-full bg-amber-400 border-2 border-white shadow-md flex items-center justify-center text-[10px] text-white font-bold"
+                      style={{ touchAction: "none", cursor: "nwse-resize" }}
+                    >
+                      ↘
+                    </button>
+                  </>
                 )}
               </div>
               <div className="mt-1 inline-block bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full pointer-events-none">
@@ -775,14 +893,14 @@ function InteractiveVillagePreview({
         {/* 드래그 중 좌표 표시 */}
         {drag && dragBuilding && dragInfo && (
           <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-mono px-2 py-1 rounded pointer-events-none">
-            {dragBuilding.name} · top {round1(dragInfo.top)}% · left {round1(dragInfo.left)}% · size {round1(dragInfo.size)}%
+            {dragBuilding.name} · top {round1(dragInfo.top)}% · left {round1(dragInfo.left)}% · size {round1(dragInfo.size)}% · rot {round1(dragInfo.rotation)}°
           </div>
         )}
       </div>
 
       <p className="text-[11px] text-gray-500 leading-relaxed">
-        💡 건물을 <b>탭</b> → 노란 테두리 + 우하단 핸들 표시 → <b>드래그</b>로 이동, <b>핸들 드래그</b>로 크기 조절. 손을 떼면 자동 저장돼요.
-        드래그 후에는 left 기준으로 좌표가 통일됩니다.
+        💡 건물을 <b>탭</b> → 노란 테두리 + 핸들 표시 → 본체 <b>드래그</b>로 이동, 우하단 <b>↘</b> 로 크기,
+        상단 <b>↻</b> 로 회전. 손을 떼면 자동 저장돼요. 드래그 후에는 left 기준으로 좌표가 통일됩니다.
       </p>
     </div>
   );

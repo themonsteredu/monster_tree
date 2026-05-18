@@ -93,7 +93,10 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
               className="group focus:outline-none active:scale-95"
               aria-label={`${b.name}${b.is_ready ? "" : " (준비 중)"}`}
             >
-              <div className="w-full transition-transform group-hover:scale-105 group-active:scale-95">
+              <div
+                className="w-full transition-transform group-hover:scale-105 group-active:scale-95"
+                style={{ transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined }}
+              >
                 {b.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
