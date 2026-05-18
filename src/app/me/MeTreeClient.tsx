@@ -13,6 +13,8 @@ import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas"
 import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
 import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
 import { MoodTicker } from "@/features/garden/mood/MoodTicker";
+import { WeatherEffect } from "@/features/garden/weather/WeatherEffect";
+import { WeatherPickerSheet } from "@/features/garden/weather/WeatherPickerSheet";
 import { useTreeStages } from "@/features/garden/tree/useTreeStages";
 import {
   DEFAULT_AVATAR,
@@ -133,6 +135,7 @@ export function MeTreeClient({
   initialHarvests,
   initialPending,
   initialTreeStages,
+  initialWeather = "none",
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -140,6 +143,7 @@ export function MeTreeClient({
   initialHarvests: Harvest[];
   initialPending: PendingClaim[];
   initialTreeStages?: import("@/lib/types").GardenTreeStage[];
+  initialWeather?: import("@/lib/types").WeatherType;
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -154,6 +158,8 @@ export function MeTreeClient({
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
   const [bgSheetOpen, setBgSheetOpen] = useState(false);
   const [moodSheetOpen, setMoodSheetOpen] = useState(false);
+  const [weatherSheetOpen, setWeatherSheetOpen] = useState(false);
+  const [weather, setWeather] = useState<import("@/lib/types").WeatherType>(initialWeather);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
@@ -379,6 +385,9 @@ export function MeTreeClient({
             >
               <BackgroundCanvas config={currentBackground} rounded={20} />
 
+              {/* 날씨/분위기 효과 오버레이 — 배경 위 / 나무·아바타 아래 */}
+              <WeatherEffect weather={weather} />
+
               {/* 이름 오버레이 (좌상단) */}
               <div
                 style={{
@@ -587,8 +596,8 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 액션 버튼 3개 (텍스트만, Pretendard 13px/500) */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            {/* 액션 버튼 (텍스트만, Pretendard 13px/500) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               <button
                 type="button"
                 onClick={() => setAvatarSheetOpen(true)}
@@ -612,6 +621,14 @@ export function MeTreeClient({
                 style={{ fontSize: 13, fontWeight: 500 }}
               >
                 한마디
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeatherSheetOpen(true)}
+                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
+                style={{ fontSize: 13, fontWeight: 500 }}
+              >
+                ☁️ 분위기
               </button>
             </div>
 
@@ -757,6 +774,13 @@ export function MeTreeClient({
         initial={row?.mood_text ?? ""}
         onClose={() => setMoodSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, mood_text: next } : prev))}
+      />
+
+      <WeatherPickerSheet
+        open={weatherSheetOpen}
+        current={weather}
+        onClose={() => setWeatherSheetOpen(false)}
+        onApplied={(w) => setWeather(w)}
       />
     </main>
   );

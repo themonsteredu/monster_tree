@@ -272,3 +272,36 @@ export type StudentYardItem = {
   z_index: number;
   placed_at: string;
 };
+
+// 마이룸 날씨/분위기 효과 타입.
+export type WeatherType =
+  | "none"
+  | "rain"
+  | "snow"
+  | "cherry_blossom"
+  | "sunshine"
+  | "firefly"
+  | "stars"
+  | "autumn_leaves";
+
+export const WEATHER_TYPES: WeatherType[] = [
+  "none",
+  "rain",
+  "snow",
+  "cherry_blossom",
+  "sunshine",
+  "firefly",
+  "stars",
+  "autumn_leaves",
+];
+
+export const WEATHER_LABEL: Record<WeatherType, { icon: string; name: string }> = {
+  none: { icon: "☀️", name: "맑음" },
+  rain: { icon: "🌧️", name: "비" },
+  snow: { icon: "❄️", name: "눈" },
+  cherry_blossom: { icon: "🌸", name: "벚꽃비" },
+  sunshine: { icon: "✨", name: "반짝햇살" },
+  firefly: { icon: "🌟", name: "반딧불이" },
+  stars: { icon: "⭐", name: "별밤" },
+  autumn_leaves: { icon: "🍂", name: "단풍" },
+};

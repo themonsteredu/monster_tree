@@ -8,8 +8,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { AvatarConfig, AvatarAccessories, BackgroundConfig } from "@/lib/types";
-import { MOOD_TEXT_MAX } from "@/lib/types";
+import type { AvatarConfig, AvatarAccessories, BackgroundConfig, WeatherType } from "@/lib/types";
+import { MOOD_TEXT_MAX, WEATHER_TYPES } from "@/lib/types";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
@@ -382,4 +382,38 @@ export async function updateMoodAction(args: { text: string }) {
   revalidatePath("/");
   revalidatePath("/admin");
   return { ok: true as const, moodText: cleaned };
+}
+
+// 학생 본인의 마당 날씨/분위기 효과 설정.
+export async function setWeatherAction(args: { weather: WeatherType }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  if (!WEATHER_TYPES.includes(args.weather)) {
+    return { ok: false as const, message: "지원하지 않는 날씨예요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  // 학생 id 확인 (FK 매칭).
+  const { data: row, error: selErr } = await sb
+    .from("garden_students")
+    .select("id")
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
+    .maybeSingle();
+  if (selErr) return { ok: false as const, message: `조회 실패: ${selErr.message}` };
+  if (!row?.id) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+  const { error } = await sb
+    .from("student_weather_setting")
+    .upsert(
+      { student_id: row.id, weather_type: args.weather, updated_at: new Date().toISOString() },
+      { onConflict: "student_id" },
+    );
+  if (error) return { ok: false as const, message: `저장 실패: ${error.message}` };
+
+  revalidatePath("/me");
+  return { ok: true as const, weather: args.weather };
 }
