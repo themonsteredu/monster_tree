@@ -13,7 +13,7 @@ import { redirect } from 'next/navigation';
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from '@/lib/student-jwt';
 import { createSupabaseServerAnonClient, createSupabaseServiceClient } from '@/lib/supabase/server';
 import { MeTreeClient } from './MeTreeClient';
-import type { WeatherType, DecorationItem, StudentYardItem } from '@/lib/types';
+import type { WeatherType, DecorationItem, StudentYardItem, SceneLayout } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,7 +26,7 @@ export default async function MyTreePage() {
   const sb = createSupabaseServerAnonClient();
   const { data: row } = await sb
     .from('garden_students')
-    .select('id, total_points, current_stage, apples_harvested, grade, avatar, background, mood_text')
+    .select('id, total_points, current_stage, apples_harvested, grade, avatar, background, mood_text, scene_layout')
     .eq('branch_id', payload!.branchId)
     .eq('external_student_id', payload!.studentLocalId)
     .maybeSingle();
@@ -128,6 +128,7 @@ export default async function MyTreePage() {
       initialDecorationItems={decorationItems}
       initialYardLayout={yardLayout}
       yardBackgroundImage={yardBackgroundImage}
+      initialSceneLayout={(row?.scene_layout as SceneLayout | null) ?? null}
     />
   );
 }

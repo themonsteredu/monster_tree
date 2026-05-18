@@ -14,18 +14,26 @@ import type {
   DecorationCategory,
   DecorationItem,
   StudentYardItem,
+  SceneItemLayout,
+  SceneLayout,
 } from "@/lib/types";
 import {
   DECORATION_CATEGORIES,
   DECORATION_CATEGORY_LABEL,
 } from "@/lib/types";
 
+type SceneActorKey = "tree" | "avatar";
+
 type EditableItem = StudentYardItem;
 
 type DragMode = "move" | "resize" | "rotate";
 
+type DragTarget =
+  | { type: "deco"; instanceId: string }
+  | { type: "scene"; key: SceneActorKey };
+
 type DragState = {
-  instanceId: string;
+  target: DragTarget;
   mode: DragMode;
   pointerId: number;
   startClientX: number;
@@ -69,16 +77,32 @@ const TAB_LABEL: Record<TabKey, string> = {
 export function DecorateMode({
   items,
   initialLayout,
+  initialSceneLayout,
+  treeNode,
+  avatarNode,
+  treeNaturalPx,
+  avatarNaturalPx,
+  cqminPx,
   onSave,
   onCancel,
 }: {
   items: DecorationItem[];
   initialLayout: EditableItem[];
-  onSave: (layout: EditableItem[]) => Promise<{ ok: boolean; message?: string }>;
+  initialSceneLayout: { tree: SceneItemLayout; avatar: SceneItemLayout };
+  treeNode: React.ReactNode;
+  avatarNode: React.ReactNode | null;
+  treeNaturalPx: number;
+  avatarNaturalPx: number;
+  cqminPx: number;
+  onSave: (args: {
+    layout: EditableItem[];
+    sceneLayout: SceneLayout;
+  }) => Promise<{ ok: boolean; message?: string }>;
   onCancel: () => void;
 }) {
   const [layout, setLayout] = useState<EditableItem[]>(initialLayout);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sceneLayout, setSceneLayout] = useState(initialSceneLayout);
+  const [selectedId, setSelectedId] = useState<string | "scene:tree" | "scene:avatar" | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [saving, setSaving] = useState(false);
@@ -158,7 +182,7 @@ export function DecorateMode({
     }
 
     setDrag({
-      instanceId: li.instance_id,
+      target: { type: "deco", instanceId: li.instance_id },
       mode,
       pointerId: e.pointerId,
       startClientX: e.clientX,
@@ -170,6 +194,33 @@ export function DecorateMode({
       centerX,
       centerY,
       startPointerAngleRad,
+    });
+  };
+
+  // 씬 액터(나무/아바타) 포인터 다운. rotation 은 미지원 — move / resize 만.
+  const handleScenePointerDown = (
+    e: React.PointerEvent<HTMLElement>,
+    key: SceneActorKey,
+    mode: "move" | "resize",
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setSelectedId(`scene:${key}`);
+    const cur = sceneLayout[key];
+    setDrag({
+      target: { type: "scene", key },
+      mode,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startX: cur.x,
+      startY: cur.y,
+      startWidth: cur.width,
+      startRotation: 0,
+      centerX: 0,
+      centerY: 0,
+      startPointerAngleRad: 0,
     });
   };
 
@@ -186,9 +237,36 @@ export function DecorateMode({
     const minDimPx = Math.min(rect.width, rect.height);
     const dxCqmin = ((e.clientX - drag.startClientX) / minDimPx) * 100;
 
+    if (drag.target.type === "scene") {
+      const key = drag.target.key;
+      const maxWidthByKey = key === "tree" ? 90 : 60; // 자연 크기 차이 반영
+      setSceneLayout((prev) => {
+        const cur = prev[key];
+        if (drag.mode === "move") {
+          return {
+            ...prev,
+            [key]: {
+              ...cur,
+              x: clamp(drag.startX + dxPct, 0, 100),
+              y: clamp(drag.startY + dyPct, 0, 100),
+            },
+          };
+        }
+        if (drag.mode === "resize") {
+          return {
+            ...prev,
+            [key]: { ...cur, width: clamp(drag.startWidth + dxCqmin, 5, maxWidthByKey) },
+          };
+        }
+        return prev;
+      });
+      return;
+    }
+
+    // 데코레이션
     setLayout((prev) =>
       prev.map((l) => {
-        if (l.instance_id !== drag.instanceId) return l;
+        if (drag.target.type !== "deco" || l.instance_id !== drag.target.instanceId) return l;
         if (drag.mode === "move") {
           return {
             ...l,
@@ -222,6 +300,7 @@ export function DecorateMode({
     }
     setDrag(null);
   };
+  const handlePointerCancel = handlePointerUp;
 
   /* ============== 저장 / 취소 ============== */
 
@@ -236,7 +315,19 @@ export function DecorateMode({
       width_percent: round1(l.width_percent),
       rotation: round1(l.rotation ?? 0),
     }));
-    const r = await onSave(cleaned);
+    const cleanedScene: SceneLayout = {
+      tree: {
+        x: round1(sceneLayout.tree.x),
+        y: round1(sceneLayout.tree.y),
+        width: round1(sceneLayout.tree.width),
+      },
+      avatar: {
+        x: round1(sceneLayout.avatar.x),
+        y: round1(sceneLayout.avatar.y),
+        width: round1(sceneLayout.avatar.width),
+      },
+    };
+    const r = await onSave({ layout: cleaned, sceneLayout: cleanedScene });
     setSaving(false);
     if (!r.ok) {
       setError(r.message ?? "저장에 실패했어요.");
@@ -246,7 +337,12 @@ export function DecorateMode({
 
   /* ============== 렌더 ============== */
 
-  const selected = selectedId ? layout.find((l) => l.instance_id === selectedId) ?? null : null;
+  const selectedDeco =
+    selectedId && !selectedId.startsWith("scene:")
+      ? layout.find((l) => l.instance_id === selectedId) ?? null
+      : null;
+  const selectedScene: SceneActorKey | null =
+    selectedId === "scene:tree" ? "tree" : selectedId === "scene:avatar" ? "avatar" : null;
 
   return (
     <>
@@ -256,16 +352,48 @@ export function DecorateMode({
         style={{
           position: "absolute",
           inset: 0,
-          zIndex: 50, // 정적 yardLayer / 나무 / 아바타 위
+          zIndex: 50,
           touchAction: "none",
         }}
         onPointerDown={() => setSelectedId(null)} // 빈 곳 탭 → 선택 해제
       >
+        {/* 씬 액터: 나무 */}
+        <SceneActorEditable
+          actorKey="tree"
+          layout={sceneLayout.tree}
+          naturalPx={treeNaturalPx}
+          cqminPx={cqminPx}
+          selected={selectedScene === "tree"}
+          onPointerDown={handleScenePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+        >
+          {treeNode}
+        </SceneActorEditable>
+        {/* 씬 액터: 아바타 (있을 때만) */}
+        {avatarNode && (
+          <SceneActorEditable
+            actorKey="avatar"
+            layout={sceneLayout.avatar}
+            naturalPx={avatarNaturalPx}
+            cqminPx={cqminPx}
+            selected={selectedScene === "avatar"}
+            onPointerDown={handleScenePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+          >
+            {avatarNode}
+          </SceneActorEditable>
+        )}
+
         {orderedLayout.map((li) => {
           const item = itemById.get(li.decoration_item_id);
           if (!item) return null;
           const isSelected = selectedId === li.instance_id;
-          const isDragging = drag?.instanceId === li.instance_id;
+          const isDragging =
+            drag?.target.type === "deco" && drag.target.instanceId === li.instance_id;
 
           return (
             <div
@@ -406,7 +534,7 @@ export function DecorateMode({
       </div>
 
       {/* 선택된 소품 플로팅 액션바 (앞으로/뒤로/삭제) — 마당 박스 하단 */}
-      {selected && (
+      {selectedDeco && (
         <div
           style={{
             position: "absolute",
@@ -422,13 +550,35 @@ export function DecorateMode({
             boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
           }}
         >
-          <ActionPill onClick={() => onBumpZ(selected.instance_id, -1)} label="⬇ 뒤로" />
-          <ActionPill onClick={() => onBumpZ(selected.instance_id, 1)} label="⬆ 앞으로" />
+          <ActionPill onClick={() => onBumpZ(selectedDeco.instance_id, -1)} label="⬇ 뒤로" />
+          <ActionPill onClick={() => onBumpZ(selectedDeco.instance_id, 1)} label="⬆ 앞으로" />
           <ActionPill
-            onClick={() => onDelete(selected.instance_id)}
+            onClick={() => onDelete(selectedDeco.instance_id)}
             label="🗑️ 삭제"
             danger
           />
+        </div>
+      )}
+
+      {/* 선택된 씬 액터(나무/아바타) 액션바 — 삭제/순서 변경 없음, 라벨만 */}
+      {selectedScene && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            background: "rgba(17, 24, 39, 0.92)",
+            padding: "6px 12px",
+            borderRadius: 999,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+            color: "white",
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
+          {selectedScene === "tree" ? "🌳 나무 — 드래그 / ↘ 크기" : "🧍 아바타 — 드래그 / ↘ 크기"}
         </div>
       )}
 
@@ -551,6 +701,107 @@ function DecorationDrawer({
         <p className="text-center text-[10px] text-gray-400 pb-1">
           탭하면 마당 가운데에 추가돼요 · 마당의 소품을 탭하면 핸들이 보여요
         </p>
+      </div>
+    </div>
+  );
+}
+
+function SceneActorEditable({
+  actorKey,
+  layout,
+  naturalPx,
+  cqminPx,
+  selected,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  children,
+}: {
+  actorKey: SceneActorKey;
+  layout: SceneItemLayout;
+  naturalPx: number;
+  cqminPx: number;
+  selected: boolean;
+  onPointerDown: (
+    e: React.PointerEvent<HTMLElement>,
+    key: SceneActorKey,
+    mode: "move" | "resize",
+  ) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel: (e: React.PointerEvent<HTMLElement>) => void;
+  children: React.ReactNode;
+}) {
+  const scale = cqminPx > 0 ? (layout.width * cqminPx) / naturalPx : 1;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${layout.x}%`,
+        top: `${layout.y}%`,
+        width: 0,
+        height: 0,
+        zIndex: actorKey === "tree" ? 10 : 11,
+        cursor: "grab",
+        touchAction: "none",
+      }}
+      onPointerDown={(e) => onPointerDown(e, actorKey, "move")}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: -naturalPx / 2,
+          top: -naturalPx / 2,
+          width: naturalPx,
+          height: naturalPx,
+          transform: `scale(${scale})`,
+          transformOrigin: "center",
+          outline: selected ? "2px dashed #f59e0b" : "1px dashed rgba(255,255,255,0.4)",
+          outlineOffset: 2,
+          borderRadius: 8,
+          pointerEvents: "auto",
+        }}
+      >
+        {children}
+        {selected && (
+          <button
+            type="button"
+            aria-label={`${actorKey === "tree" ? "나무" : "아바타"} 크기 조절`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onPointerDown(e, actorKey, "resize");
+            }}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              right: -10,
+              bottom: -10,
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: "#f59e0b",
+              border: "2px solid white",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+              color: "white",
+              fontSize: 13,
+              fontWeight: 700,
+              touchAction: "none",
+              cursor: "nwse-resize",
+              // 핸들은 스케일 영향을 받지 않게 (역스케일)
+              transform: `scale(${1 / Math.max(scale, 0.1)})`,
+              transformOrigin: "bottom right",
+            }}
+          >
+            ↘
+          </button>
+        )}
       </div>
     </div>
   );
