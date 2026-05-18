@@ -1,9 +1,9 @@
 "use client";
 
 // 몬스터 마을 학생 화면.
-// - 배경 이미지(없으면 그라데이션) 위에 건물을 절대좌표로 배치.
-// - is_ready=true 인 건물은 해당 경로로 이동, false 면 "곧 오픈 예정" 토스트.
-// - 모바일 한 화면에 들어맞도록 9:16 비율의 컨테이너 사용.
+// - 배경 16:9 위에 건물을 절대좌표로 배치 (좌표는 % 기반, 회전 적용).
+// - is_ready=true 인 건물은 link 이동, false 면 자물쇠 + 어두운 필터 + 토스트.
+// - 첫 진입 시 환영 메시지가 떴다가 1.5s 뒤 fade-out.
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,12 +19,24 @@ type Props = {
 export function VillageClient({ settings, buildings, studentName, totalPoints }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
+  const [welcomeVisible, setWelcomeVisible] = useState(true);
+  const [welcomeFading, setWelcomeFading] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 2000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // 환영 메시지 — 1.5s 표시 → 1s fade out → DOM 제거.
+  useEffect(() => {
+    const fadeAt = window.setTimeout(() => setWelcomeFading(true), 1500);
+    const removeAt = window.setTimeout(() => setWelcomeVisible(false), 1500 + 1000);
+    return () => {
+      window.clearTimeout(fadeAt);
+      window.clearTimeout(removeAt);
+    };
+  }, []);
 
   const visible = useMemo(
     () => buildings.filter((b) => b.is_visible),
@@ -57,14 +69,8 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
 
   return (
     <main className="fixed inset-0 bg-black overflow-hidden text-white flex items-center justify-center">
-      {/* 상단 정보 — 레터박스 영역까지 덮도록 main 기준 absolute */}
-      <header className="absolute top-0 inset-x-0 z-30 px-4 pt-3 flex items-start justify-between gap-3 pointer-events-none">
-        <h1
-          className="text-lg sm:text-xl font-extrabold tracking-tight"
-          style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}
-        >
-          몬스터 마을
-        </h1>
+      {/* 상단 우측 — 학생 이름 + 포인트만 유지 (좌측 타이틀 제거) */}
+      <header className="absolute top-0 right-0 z-30 px-4 pt-3 pointer-events-none">
         <div className="bg-black/55 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-2 pointer-events-auto">
           <span className="text-white/90">{studentName}</span>
           <span className="text-amber-300">⭐ {totalPoints}</span>
@@ -74,27 +80,29 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
       {/* 16:9 무대 */}
       <div style={stageStyle}>
         {visible.map((b) => {
-          const style: React.CSSProperties = {
+          const positionStyle: React.CSSProperties = {
             position: "absolute",
             top: b.position_top,
             width: b.size,
-            transition: "transform 0.15s ease",
           };
-          if (b.position_left) style.left = b.position_left;
-          else if (b.position_right) style.right = b.position_right;
-          else style.left = "50%";
+          if (b.position_left) positionStyle.left = b.position_left;
+          else if (b.position_right) positionStyle.right = b.position_right;
+          else positionStyle.left = "50%";
+
+          const locked = !b.is_ready;
 
           return (
             <button
               key={b.id}
               type="button"
               onClick={() => onBuildingClick(b)}
-              style={style}
+              style={positionStyle}
               className="group focus:outline-none active:scale-95"
-              aria-label={`${b.name}${b.is_ready ? "" : " (준비 중)"}`}
+              aria-label={`${b.name}${locked ? " (준비 중)" : ""}`}
             >
+              {/* 회전 적용 영역 — 이미지만 회전, 자물쇠/라벨은 미회전 */}
               <div
-                className="w-full transition-transform group-hover:scale-105 group-active:scale-95"
+                className="relative w-full transition-transform group-hover:scale-105 group-active:scale-95"
                 style={{ transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined }}
               >
                 {b.image_url ? (
@@ -104,26 +112,57 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
                     alt={b.name}
                     draggable={false}
                     className="w-full h-auto object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.45)]"
+                    style={locked ? { filter: "brightness(0.55) saturate(0.7)" } : undefined}
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
                     }}
                   />
                 ) : (
-                  <div className="w-full aspect-square bg-white/15 border border-white/40 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <div
+                    className="w-full aspect-square bg-white/15 border border-white/40 rounded-xl flex items-center justify-center backdrop-blur-sm"
+                    style={locked ? { filter: "brightness(0.55) saturate(0.7)" } : undefined}
+                  >
                     <span className="text-white text-[11px] font-semibold px-2 text-center">
                       {b.name}
                     </span>
                   </div>
                 )}
               </div>
-              <div className="mt-1 inline-block bg-black/65 text-white text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">
-                {b.name}
-                {!b.is_ready && <span className="ml-1 text-amber-200">· 준비중</span>}
-              </div>
+
+              {/* 자물쇠 뱃지 — 우상단, 회전 영향 받지 않음 */}
+              {locked && <LockBadge />}
+
+              {/* 라벨 — 건물 아래 중앙, 회전 영향 받지 않음 */}
+              <BuildingLabel name={b.name} isReady={b.is_ready} />
             </button>
           );
         })}
       </div>
+
+      {/* 환영 메시지 — 첫 진입 시 1.5s 표시 후 fade out */}
+      {welcomeVisible && (
+        <div
+          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
+          style={{
+            opacity: welcomeFading ? 0 : 1,
+            transition: "opacity 1s ease-out",
+          }}
+        >
+          <div
+            className="px-6 text-center"
+            style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: "#fff",
+              letterSpacing: "0.4px",
+              textShadow:
+                "0 2px 6px rgba(0,0,0,0.95), 0 0 18px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6)",
+            }}
+          >
+            {studentName}의 몬스터 마을
+          </div>
+        </div>
+      )}
 
       {/* 토스트 */}
       {toast && (
@@ -149,5 +188,68 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
         }
       `}</style>
     </main>
+  );
+}
+
+function BuildingLabel({ name, isReady }: { name: string; isReady: boolean }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: -28,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: 16,
+        color: "#fff",
+        fontWeight: 500,
+        textShadow:
+          "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.7), 0 2px 4px rgba(0,0,0,0.5)",
+        letterSpacing: "0.3px",
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+      }}
+    >
+      {isReady && (
+        <span
+          style={{
+            color: "#80f080",
+            fontSize: "0.7em",
+            verticalAlign: "2px",
+            marginRight: 4,
+          }}
+        >
+          ●
+        </span>
+      )}
+      {name}
+    </div>
+  );
+}
+
+function LockBadge() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: -6,
+        right: -6,
+        width: 24,
+        height: 24,
+        borderRadius: "50%",
+        background: "rgba(0,0,0,0.8)",
+        border: "1.5px solid rgba(255,255,255,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 12,
+        lineHeight: 1,
+        zIndex: 2,
+        pointerEvents: "none",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+      }}
+    >
+      🔒
+    </div>
   );
 }
