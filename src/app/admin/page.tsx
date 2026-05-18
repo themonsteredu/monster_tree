@@ -142,6 +142,12 @@ export default async function AdminPage({
               나무이미지
             </Link>
             <Link
+              href="/admin/village"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              마을관리
+            </Link>
+            <Link
               href="/admin/reset"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >

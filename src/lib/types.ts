@@ -189,3 +189,29 @@ export type TreeStageImageConfig = {
   offsetX: number;
   offsetY: number;
 };
+
+// 몬스터 마을 — 배경/시즌 전역 설정 (단일 행).
+export type VillageSettings = {
+  id: string;
+  background_image: string | null;
+  season: string;
+  is_active: boolean;
+  updated_at: string;
+};
+
+// 몬스터 마을 — 건물 한 동.
+export type VillageBuilding = {
+  id: string;
+  building_key: string;
+  name: string;
+  image_url: string | null;
+  link: string;
+  position_top: string;
+  position_left: string | null;
+  position_right: string | null;
+  size: string;
+  display_order: number;
+  is_ready: boolean;
+  is_visible: boolean;
+  updated_at: string;
+};
