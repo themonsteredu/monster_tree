@@ -53,7 +53,7 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
           <div>
             <h2 className="text-sm font-semibold text-gray-900">건물 5종</h2>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              미리보기에서 건물을 <b>드래그</b>해서 위치, <b>우하단 핸들</b>로 크기를 조절하면 자동 저장돼요.
+              아래 <b>카드</b>에서 이미지 업로드/소개 문구를, <b>미리보기</b>에서 드래그·회전·크기 조절을 할 수 있어요.
             </p>
           </div>
           <button
@@ -65,16 +65,8 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
           </button>
         </div>
 
-        {showPreview && (
-          <InteractiveVillagePreview
-            settings={settings}
-            buildings={buildings}
-            onBuildingChange={onBuildingChanged}
-            onToast={setToast}
-          />
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+        {/* 카드 먼저 — 이미지 업로드 / 소개 / 위치 / 회전 / 오픈여부 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           {buildings.map((b) => (
             <BuildingCard
               key={b.id}
@@ -84,6 +76,19 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
             />
           ))}
         </div>
+
+        {/* 미리보기 — 드래그로 위치/크기/회전 조정 */}
+        {showPreview && (
+          <div>
+            <div className="text-[11px] font-semibold text-gray-500 mb-1">미리보기 (드래그로 정렬)</div>
+            <InteractiveVillagePreview
+              settings={settings}
+              buildings={buildings}
+              onBuildingChange={onBuildingChanged}
+              onToast={setToast}
+            />
+          </div>
+        )}
       </section>
 
       {toast && (
@@ -594,6 +599,31 @@ function InteractiveVillagePreview({
     Record<string, { top: number; left: number; size: number; rotation: number }>
   >({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const uploadInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+
+  const onPickFile = (b: VillageBuilding) => async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingKey(b.building_key);
+    try {
+      const fd = new FormData();
+      fd.set("buildingKey", b.building_key);
+      fd.set("file", file);
+      const r = await uploadBuildingImageAction(fd);
+      if (!r.ok) {
+        onToast(r.message);
+        return;
+      }
+      onBuildingChange({ ...b, image_url: r.url, updated_at: new Date().toISOString() });
+      onToast(`${b.name} 이미지를 업데이트했어요.`);
+    } finally {
+      setUploadingKey(null);
+    }
+  };
 
   const visible = useMemo(
     () => buildings.filter((b) => b.is_visible).sort((a, b) => a.display_order - b.display_order),
@@ -898,6 +928,30 @@ function InteractiveVillagePreview({
                     >
                       ↘
                     </button>
+
+                    {/* 빠른 업로드 — 좌하단 */}
+                    <button
+                      type="button"
+                      aria-label={`${b.name} 이미지 업로드`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        uploadInputRefs.current[b.building_key]?.click();
+                      }}
+                      className="absolute -left-2 -bottom-2 px-2 h-6 rounded-full bg-emerald-500 hover:bg-emerald-600 border-2 border-white shadow-md flex items-center justify-center text-[10px] text-white font-bold gap-1"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {uploadingKey === b.building_key ? "업로드중…" : "📁 이미지"}
+                    </button>
+                    <input
+                      ref={(el) => {
+                        uploadInputRefs.current[b.building_key] = el;
+                      }}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={onPickFile(b)}
+                    />
                   </>
                 )}
               </div>
