@@ -273,6 +273,14 @@ export type StudentYardItem = {
   placed_at: string;
 };
 
+// 마이룸 마당 글로벌 배경 — 관리자만 업로드, 모든 학생에게 동일 적용.
+export type YardSettings = {
+  id: string;
+  background_image: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
 // 마이룸 날씨/분위기 효과 타입.
 export type WeatherType =
   | "none"

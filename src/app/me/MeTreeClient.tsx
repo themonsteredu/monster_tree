@@ -10,7 +10,6 @@ import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePrel
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
-import { BackgroundEditSheet } from "@/features/garden/background/BackgroundEditSheet";
 import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
 import { MoodTicker } from "@/features/garden/mood/MoodTicker";
 import { WeatherEffect } from "@/features/garden/weather/WeatherEffect";
@@ -140,6 +139,7 @@ export function MeTreeClient({
   initialWeather = "none",
   initialDecorationItems = [],
   initialYardLayout = [],
+  yardBackgroundImage = null,
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -150,6 +150,7 @@ export function MeTreeClient({
   initialWeather?: import("@/lib/types").WeatherType;
   initialDecorationItems?: import("@/lib/types").DecorationItem[];
   initialYardLayout?: import("@/lib/types").StudentYardItem[];
+  yardBackgroundImage?: string | null;
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -162,7 +163,6 @@ export function MeTreeClient({
   const [claimError, setClaimError] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
-  const [bgSheetOpen, setBgSheetOpen] = useState(false);
   const [moodSheetOpen, setMoodSheetOpen] = useState(false);
   const [weatherSheetOpen, setWeatherSheetOpen] = useState(false);
   const [weather, setWeather] = useState<import("@/lib/types").WeatherType>(initialWeather);
@@ -391,7 +391,22 @@ export function MeTreeClient({
                 background: "#e8d8b8",
               }}
             >
-              <BackgroundCanvas config={currentBackground} rounded={20} />
+              {/* 마당 글로벌 배경 (관리자) — 설정돼 있으면 학생 본인 background 보다 우선. */}
+              {yardBackgroundImage ? (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    backgroundImage: `url(${yardBackgroundImage})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    borderRadius: 20,
+                  }}
+                />
+              ) : (
+                <BackgroundCanvas config={currentBackground} rounded={20} />
+              )}
 
               {/* 마당 소품 — 배경 위, 나무 아래 (편집 모드일 때는 DecorateMode 가 위에서 덮음) */}
               {!decorateMode && (
@@ -635,8 +650,8 @@ export function MeTreeClient({
               </div>
             </div>
 
-            {/* 액션 버튼 (텍스트만, Pretendard 13px/500) */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+            {/* 액션 버튼 (배경은 관리자만 — 학생 측 버튼 제거) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               <button
                 type="button"
                 onClick={() => setAvatarSheetOpen(true)}
@@ -644,14 +659,6 @@ export function MeTreeClient({
                 style={{ fontSize: 13, fontWeight: 500 }}
               >
                 아바타 꾸미기
-              </button>
-              <button
-                type="button"
-                onClick={() => setBgSheetOpen(true)}
-                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
-                style={{ fontSize: 13, fontWeight: 500 }}
-              >
-                배경 바꾸기
               </button>
               <button
                 type="button"
@@ -672,7 +679,7 @@ export function MeTreeClient({
               <button
                 type="button"
                 onClick={() => setDecorateMode(true)}
-                className="font-pretendard bg-amber-50 border border-amber-200 rounded-xl py-3 text-amber-800 hover:bg-amber-100 transition col-span-2 sm:col-span-1"
+                className="font-pretendard bg-amber-50 border border-amber-200 rounded-xl py-3 text-amber-800 hover:bg-amber-100 transition"
                 style={{ fontSize: 13, fontWeight: 700 }}
               >
                 🎨 마당 꾸미기
@@ -809,12 +816,6 @@ export function MeTreeClient({
         }}
       />
 
-      <BackgroundEditSheet
-        open={bgSheetOpen}
-        initial={currentBackground}
-        onClose={() => setBgSheetOpen(false)}
-        onSaved={(next) => setRow((prev) => (prev ? { ...prev, background: next } : prev))}
-      />
 
       <MoodEditSheet
         open={moodSheetOpen}
