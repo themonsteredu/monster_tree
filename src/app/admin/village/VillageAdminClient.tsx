@@ -182,7 +182,7 @@ function BackgroundSection({
     <section className="bg-white rounded-2xl border border-gray-100 p-4">
       <h2 className="text-sm font-semibold text-gray-900 mb-3">마을 배경</h2>
 
-      <div className="aspect-[16/10] w-full rounded-xl overflow-hidden bg-gradient-to-b from-slate-800 to-emerald-700 flex items-center justify-center mb-3">
+      <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-gradient-to-b from-slate-800 to-emerald-700 flex items-center justify-center mb-3">
         {settings?.background_image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -677,7 +677,7 @@ function InteractiveVillagePreview({
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="relative w-full aspect-[9/16] max-h-[560px] rounded-xl overflow-hidden border border-gray-200 select-none"
+        className="relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-gray-200 select-none"
         style={bgStyle}
         onClick={() => setSelectedId(null)}
       >
