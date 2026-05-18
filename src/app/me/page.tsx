@@ -43,6 +43,18 @@ export default async function MyTreePage() {
   let weather: WeatherType = 'none';
   let decorationItems: DecorationItem[] = [];
   let yardLayout: StudentYardItem[] = [];
+  let yardBackgroundImage: string | null = null;
+
+  {
+    // 마당 글로벌 배경 — 모든 학생 공통. anon read 가능.
+    const { data: yardSettings } = await sb
+      .from('yard_settings')
+      .select('background_image')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    yardBackgroundImage = (yardSettings?.background_image as string | null) ?? null;
+  }
 
   if (row) {
     const sbService = createSupabaseServiceClient();
@@ -115,6 +127,7 @@ export default async function MyTreePage() {
       initialWeather={weather}
       initialDecorationItems={decorationItems}
       initialYardLayout={yardLayout}
+      yardBackgroundImage={yardBackgroundImage}
     />
   );
 }
