@@ -1795,7 +1795,7 @@ function SceneActor({
           top: -naturalPx / 2,
           width: naturalPx,
           height: naturalPx,
-          transform: `scale(${scale})`,
+          transform: `scale(${scale * (layout.flipX ? -1 : 1)}, ${scale}) rotate(${layout.rotation ?? 0}deg)`,
           transformOrigin: "center",
         }}
       >
