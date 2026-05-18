@@ -338,3 +338,48 @@ export const WEATHER_LABEL: Record<WeatherType, { icon: string; name: string }> 
   stars: { icon: "⭐", name: "별밤" },
   autumn_leaves: { icon: "🍂", name: "단풍" },
 };
+
+// 몬스터 키우기 시스템 — 종별 마스터.
+export type MonsterSpecies = {
+  id: string;
+  name: string;
+  description: string;
+  display_order: number;
+  is_active: boolean;
+  hide_name: boolean; // 알 화면에서 이름 가리기
+  created_at: string;
+  updated_at: string;
+};
+
+// 몬스터 단계별 이미지 (한 종당 5단계 행).
+export type MonsterStageImage = {
+  id: string;
+  species_id: string;
+  stage: number; // 1~5
+  image_url: string | null;
+  stage_name: string;
+  required_exp: number;
+  updated_at: string;
+};
+
+// 학생이 키우는 몬스터.
+export type StudentMonster = {
+  id: string;
+  student_id: string;
+  species_id: string;
+  nickname: string;
+  current_exp: number;
+  current_stage: number; // 1~5
+  is_evolved: boolean;
+  selected_at: string;
+  evolved_at: string | null;
+};
+
+// 단계별 기본 이름/필요 EXP.
+export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requiredExp: number }> = [
+  { stage: 1, name: "알", requiredExp: 0 },
+  { stage: 2, name: "아기", requiredExp: 50 },
+  { stage: 3, name: "청소년", requiredExp: 150 },
+  { stage: 4, name: "성체", requiredExp: 300 },
+  { stage: 5, name: "최종 진화", requiredExp: 500 },
+];

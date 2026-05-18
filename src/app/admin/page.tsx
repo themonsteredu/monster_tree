@@ -160,6 +160,12 @@ export default async function AdminPage({
               마당배경
             </Link>
             <Link
+              href="/admin/monsters"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              몬스터종
+            </Link>
+            <Link
               href="/admin/reset"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >
