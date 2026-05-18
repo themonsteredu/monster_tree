@@ -320,11 +320,15 @@ export function DecorateMode({
         x: round1(sceneLayout.tree.x),
         y: round1(sceneLayout.tree.y),
         width: round1(sceneLayout.tree.width),
+        flipX: !!sceneLayout.tree.flipX,
+        rotation: round1(sceneLayout.tree.rotation ?? 0),
       },
       avatar: {
         x: round1(sceneLayout.avatar.x),
         y: round1(sceneLayout.avatar.y),
         width: round1(sceneLayout.avatar.width),
+        flipX: !!sceneLayout.avatar.flipX,
+        rotation: round1(sceneLayout.avatar.rotation ?? 0),
       },
     };
     const r = await onSave({ layout: cleaned, sceneLayout: cleanedScene });
@@ -560,7 +564,7 @@ export function DecorateMode({
         </div>
       )}
 
-      {/* 선택된 씬 액터(나무/아바타) 액션바 — 삭제/순서 변경 없음, 라벨만 */}
+      {/* 선택된 씬 액터(나무/아바타) 액션바 — 좌우반전 토글 + 회전 슬라이더 */}
       {selectedScene && (
         <div
           style={{
@@ -570,15 +574,71 @@ export function DecorateMode({
             transform: "translateX(-50%)",
             zIndex: 60,
             background: "rgba(17, 24, 39, 0.92)",
-            padding: "6px 12px",
-            borderRadius: 999,
+            padding: "8px 12px",
+            borderRadius: 16,
             boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
             color: "white",
             fontSize: 11,
             fontWeight: 700,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 220,
           }}
         >
-          {selectedScene === "tree" ? "🌳 나무 — 드래그 / ↘ 크기" : "🧍 아바타 — 드래그 / ↘ 크기"}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{selectedScene === "tree" ? "🌳 나무" : "🧍 아바타"}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSceneLayout((prev) => ({
+                  ...prev,
+                  [selectedScene]: {
+                    ...prev[selectedScene],
+                    flipX: !prev[selectedScene].flipX,
+                  },
+                }));
+              }}
+              className="bg-white/15 hover:bg-white/25 transition rounded-full px-3 py-1 text-xs font-semibold"
+            >
+              🔄 좌우반전 {sceneLayout[selectedScene].flipX ? "ON" : "OFF"}
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>회전</span>
+            <input
+              type="range"
+              min={-30}
+              max={30}
+              step={1}
+              value={Math.round(sceneLayout[selectedScene].rotation ?? 0)}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setSceneLayout((prev) => ({
+                  ...prev,
+                  [selectedScene]: { ...prev[selectedScene], rotation: v },
+                }));
+              }}
+              style={{ flex: 1, accentColor: "#f59e0b" }}
+            />
+            <span style={{ fontSize: 10, minWidth: 30, textAlign: "right" }}>
+              {Math.round(sceneLayout[selectedScene].rotation ?? 0)}°
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setSceneLayout((prev) => ({
+                  ...prev,
+                  [selectedScene]: { ...prev[selectedScene], rotation: 0 },
+                }));
+              }}
+              className="text-[10px] text-gray-300 hover:text-white"
+              title="0° 로 초기화"
+            >
+              ↺
+            </button>
+          </div>
         </div>
       )}
 
@@ -758,7 +818,7 @@ function SceneActorEditable({
           top: -naturalPx / 2,
           width: naturalPx,
           height: naturalPx,
-          transform: `scale(${scale})`,
+          transform: `scale(${scale * (layout.flipX ? -1 : 1)}, ${scale}) rotate(${layout.rotation ?? 0}deg)`,
           transformOrigin: "center",
           outline: selected ? "2px dashed #f59e0b" : "1px dashed rgba(255,255,255,0.4)",
           outlineOffset: 2,

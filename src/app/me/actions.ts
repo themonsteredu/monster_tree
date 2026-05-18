@@ -445,11 +445,17 @@ function validateYardItem(it: YardItemInput): boolean {
 function validateSceneItemLayout(v: unknown): v is SceneItemLayout {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return (
-    typeof o.x === "number" && Number.isFinite(o.x) && o.x >= -10 && o.x <= 110 &&
-    typeof o.y === "number" && Number.isFinite(o.y) && o.y >= -10 && o.y <= 110 &&
-    typeof o.width === "number" && Number.isFinite(o.width) && o.width >= 3 && o.width <= 200
-  );
+  if (typeof o.x !== "number" || !Number.isFinite(o.x) || o.x < -10 || o.x > 110) return false;
+  if (typeof o.y !== "number" || !Number.isFinite(o.y) || o.y < -10 || o.y > 110) return false;
+  if (typeof o.width !== "number" || !Number.isFinite(o.width) || o.width < 3 || o.width > 200) return false;
+  // flipX / rotation 은 선택적 — 있으면 타입/범위 검증.
+  if (o.flipX !== undefined && typeof o.flipX !== "boolean") return false;
+  if (o.rotation !== undefined) {
+    if (typeof o.rotation !== "number" || !Number.isFinite(o.rotation) || o.rotation < -30 || o.rotation > 30) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // 학생 본인의 마당 배치 + 씬 액터(나무·아바타) 레이아웃을 한 번에 교체.
