@@ -232,6 +232,7 @@ export function MeTreeClient({
   const effectiveScene = {
     tree: sceneLayout?.tree ?? DEFAULT_SCENE_LAYOUT.tree,
     avatar: sceneLayout?.avatar ?? DEFAULT_SCENE_LAYOUT.avatar,
+    monster: sceneLayout?.monster ?? DEFAULT_SCENE_LAYOUT.monster,
   };
 
   useEffect(() => {
@@ -502,8 +503,28 @@ export function MeTreeClient({
                       />
                     ) : null
                   }
+                  monsterNode={(() => {
+                    if (!initialMonster || !initialMonsterSpecies) return null;
+                    const pick = pickStageImage(initialMonsterStages, initialMonster.current_stage);
+                    if (!pick.url) return null;
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={pick.url}
+                        alt={initialMonster.nickname}
+                        draggable={false}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                          filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))",
+                        }}
+                      />
+                    );
+                  })()}
                   treeNaturalPx={TREE_NATURAL_PX}
                   avatarNaturalPx={AVATAR_NATURAL_PX}
+                  monsterNaturalPx={MONSTER_NATURAL_PX}
                   cqminPx={cqminPx}
                   onCancel={() => setDecorateMode(false)}
                   onSave={async ({ layout: next, sceneLayout: nextScene }) => {
@@ -700,6 +721,7 @@ export function MeTreeClient({
                       stages={initialMonsterStages}
                       cqminPx={cqminPx}
                       isActive
+                      layoutOverride={effectiveScene.monster}
                       justEvolved={!!justEvolved}
                     />
                   )}
@@ -1964,6 +1986,7 @@ function MonsterActor({
   stages,
   cqminPx,
   isActive = false,
+  layoutOverride,
   justEvolved = false,
   evolvedIndex = 0,
 }: {
@@ -1972,6 +1995,7 @@ function MonsterActor({
   stages: import("@/lib/types").MonsterStageImage[];
   cqminPx: number;
   isActive?: boolean;
+  layoutOverride?: import("@/lib/types").SceneItemLayout;
   justEvolved?: boolean;
   evolvedIndex?: number;
   evolvedTotal?: number;
@@ -1980,7 +2004,9 @@ function MonsterActor({
   if (!pick.url) {
     return null;
   }
-  const layout = isActive ? MONSTER_DEFAULT_LAYOUT : evolvedLayout(evolvedIndex);
+  const layout = isActive
+    ? (layoutOverride ?? MONSTER_DEFAULT_LAYOUT)
+    : evolvedLayout(evolvedIndex);
   const scale = cqminPx > 0 ? (layout.width * cqminPx) / MONSTER_NATURAL_PX : 1;
 
   return (
@@ -2003,7 +2029,7 @@ function MonsterActor({
           top: -MONSTER_NATURAL_PX / 2,
           width: MONSTER_NATURAL_PX,
           height: MONSTER_NATURAL_PX,
-          transform: `scale(${scale})`,
+          transform: `scale(${scale * (layout.flipX ? -1 : 1)}, ${scale}) rotate(${layout.rotation ?? 0}deg)`,
           transformOrigin: "center",
         }}
       >

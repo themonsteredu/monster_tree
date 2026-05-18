@@ -289,13 +289,15 @@ export type SceneItemLayout = {
 export type SceneLayout = {
   tree?: SceneItemLayout;
   avatar?: SceneItemLayout;
+  monster?: SceneItemLayout; // 활성 몬스터 (알/키우는 중)
 };
 
 // 학생이 한 번도 위치를 잡지 않았을 때의 기본값.
 // 마이룸 yard 안에 트리는 중앙-하단, 아바타는 그 우측에 약간 겹치게.
 export const DEFAULT_SCENE_LAYOUT: Required<SceneLayout> = {
-  tree:   { x: 45, y: 92, width: 55, flipX: false, rotation: 0 },
-  avatar: { x: 68, y: 95, width: 28, flipX: false, rotation: 0 },
+  tree:    { x: 45, y: 92, width: 55, flipX: false, rotation: 0 },
+  avatar:  { x: 68, y: 95, width: 28, flipX: false, rotation: 0 },
+  monster: { x: 28, y: 88, width: 22, flipX: false, rotation: 0 },
 };
 
 // 마이룸 마당 글로벌 배경 — 관리자만 업로드, 모든 학생에게 동일 적용.

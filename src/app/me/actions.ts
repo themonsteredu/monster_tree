@@ -556,6 +556,12 @@ export async function replaceYardLayoutAction(args: {
         }
         toStore.avatar = sl.avatar;
       }
+      if (sl.monster !== undefined) {
+        if (!validateSceneItemLayout(sl.monster)) {
+          return { ok: false as const, message: "몬스터 위치 값이 올바르지 않아요." };
+        }
+        toStore.monster = sl.monster;
+      }
       if (Object.keys(toStore).length === 0) toStore = null;
     }
     const { error: sceneErr } = await sb

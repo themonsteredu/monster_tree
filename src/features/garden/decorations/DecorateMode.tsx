@@ -22,7 +22,7 @@ import {
   DECORATION_CATEGORY_LABEL,
 } from "@/lib/types";
 
-type SceneActorKey = "tree" | "avatar";
+type SceneActorKey = "tree" | "avatar" | "monster";
 
 type EditableItem = StudentYardItem;
 
@@ -80,19 +80,27 @@ export function DecorateMode({
   initialSceneLayout,
   treeNode,
   avatarNode,
+  monsterNode,
   treeNaturalPx,
   avatarNaturalPx,
+  monsterNaturalPx,
   cqminPx,
   onSave,
   onCancel,
 }: {
   items: DecorationItem[];
   initialLayout: EditableItem[];
-  initialSceneLayout: { tree: SceneItemLayout; avatar: SceneItemLayout };
+  initialSceneLayout: {
+    tree: SceneItemLayout;
+    avatar: SceneItemLayout;
+    monster: SceneItemLayout;
+  };
   treeNode: React.ReactNode;
   avatarNode: React.ReactNode | null;
+  monsterNode: React.ReactNode | null;
   treeNaturalPx: number;
   avatarNaturalPx: number;
+  monsterNaturalPx: number;
   cqminPx: number;
   onSave: (args: {
     layout: EditableItem[];
@@ -102,7 +110,9 @@ export function DecorateMode({
 }) {
   const [layout, setLayout] = useState<EditableItem[]>(initialLayout);
   const [sceneLayout, setSceneLayout] = useState(initialSceneLayout);
-  const [selectedId, setSelectedId] = useState<string | "scene:tree" | "scene:avatar" | null>(null);
+  const [selectedId, setSelectedId] = useState<
+    string | "scene:tree" | "scene:avatar" | "scene:monster" | null
+  >(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [saving, setSaving] = useState(false);
@@ -239,7 +249,8 @@ export function DecorateMode({
 
     if (drag.target.type === "scene") {
       const key = drag.target.key;
-      const maxWidthByKey = key === "tree" ? 90 : 60; // 자연 크기 차이 반영
+      // 자연 크기 차이 반영 — 트리는 크게, 아바타/몬스터는 중간.
+      const maxWidthByKey = key === "tree" ? 90 : 60;
       setSceneLayout((prev) => {
         const cur = prev[key];
         if (drag.mode === "move") {
@@ -330,6 +341,13 @@ export function DecorateMode({
         flipX: !!sceneLayout.avatar.flipX,
         rotation: round1(sceneLayout.avatar.rotation ?? 0),
       },
+      monster: {
+        x: round1(sceneLayout.monster.x),
+        y: round1(sceneLayout.monster.y),
+        width: round1(sceneLayout.monster.width),
+        flipX: !!sceneLayout.monster.flipX,
+        rotation: round1(sceneLayout.monster.rotation ?? 0),
+      },
     };
     const r = await onSave({ layout: cleaned, sceneLayout: cleanedScene });
     setSaving(false);
@@ -346,7 +364,13 @@ export function DecorateMode({
       ? layout.find((l) => l.instance_id === selectedId) ?? null
       : null;
   const selectedScene: SceneActorKey | null =
-    selectedId === "scene:tree" ? "tree" : selectedId === "scene:avatar" ? "avatar" : null;
+    selectedId === "scene:tree"
+      ? "tree"
+      : selectedId === "scene:avatar"
+        ? "avatar"
+        : selectedId === "scene:monster"
+          ? "monster"
+          : null;
 
   return (
     <>
@@ -389,6 +413,22 @@ export function DecorateMode({
             onPointerCancel={handlePointerCancel}
           >
             {avatarNode}
+          </SceneActorEditable>
+        )}
+        {/* 씬 액터: 활성 몬스터 (있을 때만) */}
+        {monsterNode && (
+          <SceneActorEditable
+            actorKey="monster"
+            layout={sceneLayout.monster}
+            naturalPx={monsterNaturalPx}
+            cqminPx={cqminPx}
+            selected={selectedScene === "monster"}
+            onPointerDown={handleScenePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+          >
+            {monsterNode}
           </SceneActorEditable>
         )}
 
@@ -588,7 +628,13 @@ export function DecorateMode({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>{selectedScene === "tree" ? "🌳 나무" : "🧍 아바타"}</span>
+            <span>
+              {selectedScene === "tree"
+                ? "🌳 나무"
+                : selectedScene === "avatar"
+                  ? "🧍 아바타"
+                  : "🥚 몬스터"}
+            </span>
             <button
               type="button"
               onClick={() => {
