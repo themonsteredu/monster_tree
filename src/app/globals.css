@@ -218,3 +218,29 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ================================================================
+   씬 액터 미세 idle 애니메이션 — 살아있는 느낌.
+   - .scene-idle-bob : 아바타용. 위아래 호흡.
+   - .scene-tree-sway : 나무용. 살짝 좌우로 바람에 흔들림 (밑동 기준).
+   transform 만 애니메이션 → 60fps. 부모의 transform 과 충돌하지 않도록
+   내부 wrapper 에 적용한다 (MeTreeClient SceneActor 구조 참고).
+================================================================ */
+@keyframes scene-idle-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+.scene-idle-bob {
+  animation: scene-idle-bob 2.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes scene-tree-sway {
+  0%, 100% { transform: rotate(-1.5deg); }
+  50%      { transform: rotate(1.5deg); }
+}
+.scene-tree-sway {
+  animation: scene-tree-sway 4s ease-in-out infinite;
+  transform-origin: bottom center;
+  will-change: transform;
+}
