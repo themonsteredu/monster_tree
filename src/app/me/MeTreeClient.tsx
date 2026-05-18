@@ -683,11 +683,11 @@ export function MeTreeClient({
 
         <div className="mt-4 text-center">
           <a
-            href="https://www.themonster.kr/student"
+            href="/tree/me/village"
             className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
             style={{ fontSize: 13, fontWeight: 500 }}
           >
-            학생 홈으로
+            🏘️ 몬스터 마을로
           </a>
         </div>
       </div>
