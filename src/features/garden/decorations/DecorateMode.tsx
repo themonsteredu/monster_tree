@@ -781,8 +781,10 @@ function SceneActorEditable({
             onClick={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
+              // 트리/아바타는 보통 yard 하단에 배치되므로 핸들을 우상단으로
+              // (우하단으로 두면 yard overflow:hidden 에 잘리는 경우 많음).
               right: -10,
-              bottom: -10,
+              top: -10,
               width: 28,
               height: 28,
               borderRadius: "50%",
@@ -793,13 +795,13 @@ function SceneActorEditable({
               fontSize: 13,
               fontWeight: 700,
               touchAction: "none",
-              cursor: "nwse-resize",
+              cursor: "nesw-resize",
               // 핸들은 스케일 영향을 받지 않게 (역스케일)
               transform: `scale(${1 / Math.max(scale, 0.1)})`,
-              transformOrigin: "bottom right",
+              transformOrigin: "top right",
             }}
           >
-            ↘
+            ↗
           </button>
         )}
       </div>
