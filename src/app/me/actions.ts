@@ -417,3 +417,108 @@ export async function setWeatherAction(args: { weather: WeatherType }) {
   revalidatePath("/me");
   return { ok: true as const, weather: args.weather };
 }
+
+/* ============== 마이룸 마당 꾸미기 — 배치 일괄 교체 ============== */
+
+type YardItemInput = {
+  decorationItemId: string;
+  instanceId: string; // 클라이언트가 발급한 uuid (같은 아이템 여러 개 구분)
+  positionX: number;  // %
+  positionY: number;  // %
+  widthPercent: number; // %
+  rotation: number;   // deg
+  zIndex: number;
+};
+
+function validateYardItem(it: YardItemInput): boolean {
+  return (
+    typeof it.decorationItemId === "string" && it.decorationItemId.length > 0 &&
+    typeof it.instanceId === "string" && it.instanceId.length > 0 && it.instanceId.length <= 64 &&
+    Number.isFinite(it.positionX) && it.positionX >= -10 && it.positionX <= 110 &&
+    Number.isFinite(it.positionY) && it.positionY >= -10 && it.positionY <= 110 &&
+    Number.isFinite(it.widthPercent) && it.widthPercent > 0 && it.widthPercent <= 100 &&
+    Number.isFinite(it.rotation) && it.rotation >= -360 && it.rotation <= 360 &&
+    Number.isInteger(it.zIndex) && it.zIndex >= 0 && it.zIndex <= 9999
+  );
+}
+
+// 학생 본인의 마당 배치를 통째로 교체한다. (꾸미기 모드 "저장" 누를 때)
+// 기존 행 모두 삭제 후 새 배열 insert.
+export async function replaceYardLayoutAction(args: { items: YardItemInput[] }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  if (!Array.isArray(args.items)) {
+    return { ok: false as const, message: "잘못된 요청이에요." };
+  }
+  if (args.items.length > 200) {
+    return { ok: false as const, message: "한 화면에 둘 수 있는 소품 수를 초과했어요. (200개 이하)" };
+  }
+  for (const it of args.items) {
+    if (!validateYardItem(it)) {
+      return { ok: false as const, message: "소품 배치 값이 올바르지 않아요." };
+    }
+  }
+  // instance_id 중복 차단 (DB unique 제약과 충돌 방지)
+  const seen = new Set<string>();
+  for (const it of args.items) {
+    if (seen.has(it.instanceId)) {
+      return { ok: false as const, message: "중복된 instance_id 가 있어요." };
+    }
+    seen.add(it.instanceId);
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { data: row, error: selErr } = await sb
+    .from("garden_students")
+    .select("id")
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
+    .maybeSingle();
+  if (selErr) return { ok: false as const, message: `조회 실패: ${selErr.message}` };
+  if (!row?.id) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+  // 참조 무결성 — 등록된 (그리고 활성) 소품 id 만 허용.
+  const ids = Array.from(new Set(args.items.map((i) => i.decorationItemId)));
+  if (ids.length > 0) {
+    const { data: validItems } = await sb
+      .from("decoration_items")
+      .select("id")
+      .in("id", ids)
+      .eq("is_active", true);
+    const validIdSet = new Set((validItems ?? []).map((r) => r.id as string));
+    for (const id of ids) {
+      if (!validIdSet.has(id)) {
+        return { ok: false as const, message: "사용할 수 없는 소품이 포함됐어요." };
+      }
+    }
+  }
+
+  // 삭제 후 insert.
+  // (트랜잭션은 supabase-js 에서 노출 안 됨 — race 가능성 낮은 학생 본인 데이터라 수용.)
+  const { error: delErr } = await sb
+    .from("student_yard_layout")
+    .delete()
+    .eq("student_id", row.id);
+  if (delErr) return { ok: false as const, message: `삭제 실패: ${delErr.message}` };
+
+  if (args.items.length > 0) {
+    const rows = args.items.map((it) => ({
+      student_id: row.id,
+      decoration_item_id: it.decorationItemId,
+      instance_id: it.instanceId,
+      position_x: it.positionX,
+      position_y: it.positionY,
+      width_percent: it.widthPercent,
+      rotation: it.rotation,
+      z_index: it.zIndex,
+    }));
+    const { error: insErr } = await sb.from("student_yard_layout").insert(rows);
+    if (insErr) return { ok: false as const, message: `저장 실패: ${insErr.message}` };
+  }
+
+  revalidatePath("/me");
+  return { ok: true as const, count: args.items.length };
+}

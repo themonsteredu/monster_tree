@@ -13,7 +13,7 @@ import { redirect } from 'next/navigation';
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from '@/lib/student-jwt';
 import { createSupabaseServerAnonClient, createSupabaseServiceClient } from '@/lib/supabase/server';
 import { MeTreeClient } from './MeTreeClient';
-import type { WeatherType } from '@/lib/types';
+import type { WeatherType, DecorationItem, StudentYardItem } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -41,18 +41,36 @@ export default async function MyTreePage() {
   let harvests: Array<{ id: string; apples_count: number; harvested_at: string }> = [];
   let pendingPoints: Array<{ id: string; points: number; reason: string | null; created_at: string }> = [];
   let weather: WeatherType = 'none';
+  let decorationItems: DecorationItem[] = [];
+  let yardLayout: StudentYardItem[] = [];
 
   if (row) {
-    // 날씨 효과 설정 — service client (RLS service_role only). 없으면 'none'.
     const sbService = createSupabaseServiceClient();
-    const { data: weatherRow } = await sbService
-      .from('student_weather_setting')
-      .select('weather_type')
-      .eq('student_id', row.id)
-      .maybeSingle();
-    if (weatherRow?.weather_type) {
-      weather = weatherRow.weather_type as WeatherType;
+    const [weatherResult, itemsResult, layoutResult] = await Promise.all([
+      sbService
+        .from('student_weather_setting')
+        .select('weather_type')
+        .eq('student_id', row.id)
+        .maybeSingle(),
+      // 학생이 배치할 수 있는 모든 활성 소품 — 카테고리/생성순.
+      sbService
+        .from('decoration_items')
+        .select('id, name, image_url, category, price, default_width_percent, is_active, created_at, updated_at')
+        .eq('is_active', true)
+        .order('category', { ascending: true })
+        .order('created_at', { ascending: false }),
+      // 학생이 이미 배치해둔 소품 (z_index 순).
+      sbService
+        .from('student_yard_layout')
+        .select('id, student_id, decoration_item_id, instance_id, position_x, position_y, width_percent, rotation, z_index, placed_at')
+        .eq('student_id', row.id)
+        .order('z_index', { ascending: true }),
+    ]);
+    if (weatherResult.data?.weather_type) {
+      weather = weatherResult.data.weather_type as WeatherType;
     }
+    decorationItems = (itemsResult.data ?? []) as DecorationItem[];
+    yardLayout = (layoutResult.data ?? []) as StudentYardItem[];
   }
 
   if (row) {
@@ -95,6 +113,8 @@ export default async function MyTreePage() {
       initialPending={pendingPoints}
       initialTreeStages={treeStages ?? []}
       initialWeather={weather}
+      initialDecorationItems={decorationItems}
+      initialYardLayout={yardLayout}
     />
   );
 }

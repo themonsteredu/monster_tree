@@ -15,6 +15,8 @@ import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
 import { MoodTicker } from "@/features/garden/mood/MoodTicker";
 import { WeatherEffect } from "@/features/garden/weather/WeatherEffect";
 import { WeatherPickerSheet } from "@/features/garden/weather/WeatherPickerSheet";
+import { YardLayer } from "@/features/garden/decorations/YardLayer";
+import { DecorateMode } from "@/features/garden/decorations/DecorateMode";
 import { useTreeStages } from "@/features/garden/tree/useTreeStages";
 import {
   DEFAULT_AVATAR,
@@ -33,7 +35,7 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterMe } from "@/features/garden/effects/SprayWater";
 import { fireConfetti, firePtCelebration } from "@/features/garden/effects/confetti";
 import { useStudentRealtime } from "@/features/garden/hooks/useStudentRealtime";
-import { claimPointAction, resetAvatarAction } from "./actions";
+import { claimPointAction, resetAvatarAction, replaceYardLayoutAction } from "./actions";
 
 type Row = {
   id: string;
@@ -136,6 +138,8 @@ export function MeTreeClient({
   initialPending,
   initialTreeStages,
   initialWeather = "none",
+  initialDecorationItems = [],
+  initialYardLayout = [],
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -144,6 +148,8 @@ export function MeTreeClient({
   initialPending: PendingClaim[];
   initialTreeStages?: import("@/lib/types").GardenTreeStage[];
   initialWeather?: import("@/lib/types").WeatherType;
+  initialDecorationItems?: import("@/lib/types").DecorationItem[];
+  initialYardLayout?: import("@/lib/types").StudentYardItem[];
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -160,6 +166,8 @@ export function MeTreeClient({
   const [moodSheetOpen, setMoodSheetOpen] = useState(false);
   const [weatherSheetOpen, setWeatherSheetOpen] = useState(false);
   const [weather, setWeather] = useState<import("@/lib/types").WeatherType>(initialWeather);
+  const [decorateMode, setDecorateMode] = useState(false);
+  const [yardLayout, setYardLayout] = useState<import("@/lib/types").StudentYardItem[]>(initialYardLayout);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
@@ -385,8 +393,39 @@ export function MeTreeClient({
             >
               <BackgroundCanvas config={currentBackground} rounded={20} />
 
+              {/* 마당 소품 — 배경 위, 나무 아래 (편집 모드일 때는 DecorateMode 가 위에서 덮음) */}
+              {!decorateMode && (
+                <YardLayer items={initialDecorationItems} layout={yardLayout} />
+              )}
+
               {/* 날씨/분위기 효과 오버레이 — 배경 위 / 나무·아바타 아래 */}
               <WeatherEffect weather={weather} />
+
+              {/* 꾸미기 모드 — 마당 박스 내부의 모든 편집 UI */}
+              {decorateMode && (
+                <DecorateMode
+                  items={initialDecorationItems}
+                  initialLayout={yardLayout}
+                  onCancel={() => setDecorateMode(false)}
+                  onSave={async (next) => {
+                    const r = await replaceYardLayoutAction({
+                      items: next.map((l) => ({
+                        decorationItemId: l.decoration_item_id,
+                        instanceId: l.instance_id,
+                        positionX: l.position_x,
+                        positionY: l.position_y,
+                        widthPercent: l.width_percent,
+                        rotation: l.rotation ?? 0,
+                        zIndex: l.z_index,
+                      })),
+                    });
+                    if (!r.ok) return { ok: false, message: r.message };
+                    setYardLayout(next);
+                    setDecorateMode(false);
+                    return { ok: true };
+                  }}
+                />
+              )}
 
               {/* 이름 오버레이 (좌상단) */}
               <div
@@ -597,7 +636,7 @@ export function MeTreeClient({
             </div>
 
             {/* 액션 버튼 (텍스트만, Pretendard 13px/500) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
               <button
                 type="button"
                 onClick={() => setAvatarSheetOpen(true)}
@@ -629,6 +668,14 @@ export function MeTreeClient({
                 style={{ fontSize: 13, fontWeight: 500 }}
               >
                 ☁️ 분위기
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecorateMode(true)}
+                className="font-pretendard bg-amber-50 border border-amber-200 rounded-xl py-3 text-amber-800 hover:bg-amber-100 transition col-span-2 sm:col-span-1"
+                style={{ fontSize: 13, fontWeight: 700 }}
+              >
+                🎨 마당 꾸미기
               </button>
             </div>
 
