@@ -23,7 +23,7 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
   const [settings, setSettings] = useState<VillageSettings | null>(initialSettings);
   const [buildings, setBuildings] = useState<VillageBuilding[]>(initialBuildings);
   const [toast, setToast] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   useEffect(() => {
     if (!toast) return;
@@ -50,7 +50,12 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
 
       <section className="bg-white rounded-2xl border border-gray-100 p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-900">건물 5종</h2>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">건물 5종</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              미리보기에서 건물을 <b>드래그</b>해서 위치, <b>우하단 핸들</b>로 크기를 조절하면 자동 저장돼요.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => setShowPreview((v) => !v)}
@@ -61,7 +66,12 @@ export function VillageAdminClient({ initialSettings, initialBuildings }: Props)
         </div>
 
         {showPreview && (
-          <VillagePreview settings={settings} buildings={buildings} />
+          <InteractiveVillagePreview
+            settings={settings}
+            buildings={buildings}
+            onBuildingChange={onBuildingChanged}
+            onToast={setToast}
+          />
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -459,15 +469,59 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
-/* ============== 미리보기 ============== */
+/* ============== 인터랙티브 미리보기 (드래그 / 리사이즈) ============== */
 
-function VillagePreview({
+function parsePct(v: string | null | undefined): number {
+  if (v === null || v === undefined) return 0;
+  const s = String(v).trim().replace("%", "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+// 현재 저장된 위치를 left(%) 기준으로 정규화. right 만 있으면 left = 100 - right - size 로 환산.
+function effectiveLeft(b: VillageBuilding): number {
+  if (b.position_left) return parsePct(b.position_left);
+  if (b.position_right) return clamp(100 - parsePct(b.position_right) - parsePct(b.size), 0, 100);
+  return 50;
+}
+
+type DragState = {
+  buildingId: string;
+  mode: "move" | "resize";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startTop: number;
+  startLeft: number;
+  startSize: number;
+};
+
+function InteractiveVillagePreview({
   settings,
   buildings,
+  onBuildingChange,
+  onToast,
 }: {
   settings: VillageSettings | null;
   buildings: VillageBuilding[];
+  onBuildingChange: (b: VillageBuilding) => void;
+  onToast: (msg: string) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [transient, setTransient] = useState<
+    Record<string, { top: number; left: number; size: number }>
+  >({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const visible = useMemo(
     () => buildings.filter((b) => b.is_visible).sort((a, b) => a.display_order - b.display_order),
     [buildings],
@@ -479,42 +533,257 @@ function VillagePreview({
         backgroundSize: "cover",
         backgroundPosition: "center",
       }
-    : {
-        background: "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)",
-      };
+    : { background: "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)" };
+
+  const handlePointerDown = (
+    e: React.PointerEvent<HTMLElement>,
+    b: VillageBuilding,
+    mode: "move" | "resize",
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    setSelectedId(b.id);
+    setDrag({
+      buildingId: b.id,
+      mode,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startTop: parsePct(b.position_top),
+      startLeft: effectiveLeft(b),
+      startSize: parsePct(b.size),
+    });
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const dxPct = ((e.clientX - drag.startClientX) / rect.width) * 100;
+    const dyPct = ((e.clientY - drag.startClientY) / rect.height) * 100;
+
+    if (drag.mode === "move") {
+      const size = transient[drag.buildingId]?.size ?? drag.startSize;
+      const newLeft = clamp(drag.startLeft + dxPct, 0, Math.max(0, 100 - size));
+      const newTop = clamp(drag.startTop + dyPct, 0, 100);
+      setTransient((prev) => ({
+        ...prev,
+        [drag.buildingId]: { top: newTop, left: newLeft, size },
+      }));
+    } else {
+      // resize: 우하단 핸들 — dx 기반으로 너비 확대/축소.
+      const newSize = clamp(drag.startSize + dxPct, 5, 100 - drag.startLeft);
+      setTransient((prev) => ({
+        ...prev,
+        [drag.buildingId]: {
+          top: drag.startTop,
+          left: drag.startLeft,
+          size: newSize,
+        },
+      }));
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+
+    const tr = transient[drag.buildingId];
+    const targetId = drag.buildingId;
+    setDrag(null);
+
+    if (!tr) return;
+
+    const building = buildings.find((b) => b.id === targetId);
+    if (!building) return;
+
+    // 변화가 거의 없으면(0.5% 미만) 저장 생략 — 단순 탭 처리.
+    const noChange =
+      Math.abs(tr.top - parsePct(building.position_top)) < 0.5 &&
+      Math.abs(tr.left - effectiveLeft(building)) < 0.5 &&
+      Math.abs(tr.size - parsePct(building.size)) < 0.5;
+
+    if (noChange) {
+      setTransient((prev) => {
+        const next = { ...prev };
+        delete next[targetId];
+        return next;
+      });
+      return;
+    }
+
+    const positionTop = `${round1(tr.top)}%`;
+    const positionLeft = `${round1(tr.left)}%`;
+    const size = `${round1(tr.size)}%`;
+
+    (async () => {
+      const r = await updateBuildingAction({
+        buildingKey: building.building_key,
+        positionTop,
+        positionLeft,
+        positionRight: null, // 드래그 시에는 left 앵커로 통일.
+        size,
+      });
+      if (!r.ok) {
+        onToast(r.message);
+        // 실패하면 transient 만 제거 — 원래 좌표로 복귀.
+        setTransient((prev) => {
+          const next = { ...prev };
+          delete next[targetId];
+          return next;
+        });
+        return;
+      }
+      onBuildingChange({
+        ...building,
+        position_top: positionTop,
+        position_left: positionLeft,
+        position_right: null,
+        size,
+        updated_at: new Date().toISOString(),
+      });
+      setTransient((prev) => {
+        const next = { ...prev };
+        delete next[targetId];
+        return next;
+      });
+    })();
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const id = drag.buildingId;
+    setDrag(null);
+    setTransient((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const dragInfo = drag ? transient[drag.buildingId] : null;
+  const dragBuilding = drag ? buildings.find((b) => b.id === drag.buildingId) : null;
 
   return (
-    <div
-      className="relative w-full aspect-[9/16] max-h-[560px] rounded-xl overflow-hidden border border-gray-200"
-      style={bgStyle}
-    >
-      {visible.map((b) => {
-        const positionStyle: React.CSSProperties = {
-          position: "absolute",
-          top: b.position_top,
-          width: b.size,
-        };
-        if (b.position_left) positionStyle.left = b.position_left;
-        else if (b.position_right) positionStyle.right = b.position_right;
-        else positionStyle.left = "50%";
+    <div className="space-y-2">
+      <div
+        ref={containerRef}
+        className="relative w-full aspect-[9/16] max-h-[560px] rounded-xl overflow-hidden border border-gray-200 select-none"
+        style={bgStyle}
+        onClick={() => setSelectedId(null)}
+      >
+        {visible.map((b) => {
+          const t = transient[b.id];
+          const top = t ? `${t.top}%` : b.position_top;
+          const size = t ? `${t.size}%` : b.size;
 
-        return (
-          <div key={b.id} style={positionStyle} className="text-center">
-            {b.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={b.image_url} alt={b.name} className="w-full h-auto object-contain pointer-events-none" />
-            ) : (
-              <div className="w-full aspect-square bg-white/20 border border-white/40 rounded-xl flex items-center justify-center">
-                <span className="text-white text-xs">{b.name}</span>
+          const positionStyle: React.CSSProperties = {
+            position: "absolute",
+            top,
+            width: size,
+            touchAction: "none",
+            cursor: drag?.buildingId === b.id ? "grabbing" : "grab",
+          };
+
+          if (t) {
+            positionStyle.left = `${t.left}%`;
+          } else if (b.position_left) {
+            positionStyle.left = b.position_left;
+          } else if (b.position_right) {
+            positionStyle.right = b.position_right;
+          } else {
+            positionStyle.left = "50%";
+          }
+
+          const isSelected = selectedId === b.id;
+          const isDragging = drag?.buildingId === b.id;
+
+          return (
+            <div
+              key={b.id}
+              style={positionStyle}
+              className={[
+                "text-center group",
+                isSelected ? "z-30" : "z-10",
+              ].join(" ")}
+              onPointerDown={(e) => handlePointerDown(e, b, "move")}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedId(b.id);
+              }}
+            >
+              <div
+                className={[
+                  "relative w-full rounded-lg",
+                  isSelected
+                    ? "outline outline-2 outline-amber-400 outline-offset-2"
+                    : "outline outline-1 outline-white/30 outline-offset-1 opacity-95",
+                  isDragging ? "opacity-90" : "",
+                ].join(" ")}
+              >
+                {b.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={b.image_url}
+                    alt={b.name}
+                    draggable={false}
+                    className="w-full h-auto object-contain pointer-events-none"
+                  />
+                ) : (
+                  <div className="w-full aspect-square bg-white/20 border border-white/40 rounded-xl flex items-center justify-center">
+                    <span className="text-white text-xs px-2 text-center">{b.name}</span>
+                  </div>
+                )}
+
+                {/* 리사이즈 핸들 — 우하단 */}
+                {isSelected && (
+                  <button
+                    type="button"
+                    aria-label={`${b.name} 크기 조절`}
+                    onPointerDown={(e) => handlePointerDown(e, b, "resize")}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerCancel={handlePointerCancel}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute -right-2 -bottom-2 w-6 h-6 rounded-full bg-amber-400 border-2 border-white shadow-md flex items-center justify-center text-[10px] text-white font-bold"
+                    style={{ touchAction: "none", cursor: "nwse-resize" }}
+                  >
+                    ↘
+                  </button>
+                )}
               </div>
-            )}
-            <div className="mt-1 inline-block bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
-              {b.name}
-              {!b.is_ready && <span className="ml-1 text-amber-200">· 준비중</span>}
+              <div className="mt-1 inline-block bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full pointer-events-none">
+                {b.name}
+                {!b.is_ready && <span className="ml-1 text-amber-200">· 준비중</span>}
+              </div>
             </div>
+          );
+        })}
+
+        {/* 드래그 중 좌표 표시 */}
+        {drag && dragBuilding && dragInfo && (
+          <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-mono px-2 py-1 rounded pointer-events-none">
+            {dragBuilding.name} · top {round1(dragInfo.top)}% · left {round1(dragInfo.left)}% · size {round1(dragInfo.size)}%
           </div>
-        );
-      })}
+        )}
+      </div>
+
+      <p className="text-[11px] text-gray-500 leading-relaxed">
+        💡 건물을 <b>탭</b> → 노란 테두리 + 우하단 핸들 표시 → <b>드래그</b>로 이동, <b>핸들 드래그</b>로 크기 조절. 손을 떼면 자동 저장돼요.
+        드래그 후에는 left 기준으로 좌표가 통일됩니다.
+      </p>
     </div>
   );
 }
