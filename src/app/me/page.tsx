@@ -124,22 +124,36 @@ export default async function MyTreePage() {
     pendingPoints = pendingResult.data ?? [];
   }
 
-  // ============ 몬스터 — 활성 몬스터 fetch + 자동 부화 체크 ============
+  // ============ 몬스터 — 활성 + 진화 완료 fetch + 자동 부화 체크 ============
   let activeMonster: StudentMonster | null = null;
   let monsterSpecies: MonsterSpecies | null = null;
   let monsterStages: MonsterStageImage[] = [];
+  let evolvedMonsters: StudentMonster[] = [];
+  let speciesByIdAll: Record<string, MonsterSpecies> = {};
+  let stagesBySpeciesAll: Record<string, MonsterStageImage[]> = {};
+  // 이번 페이지 로드에서 진화가 일어났는지 — 클라이언트 축하 애니메이션용
+  let justEvolved: {
+    fromStage: number;
+    toStage: number;
+    nickname: string;
+    newStageName: string;
+  } | null = null;
 
   if (row) {
     const sbService = createSupabaseServiceClient();
-    const { data: monsterRow } = await sbService
+
+    // 본인 몬스터 전부 (활성 + 진화 완료)
+    const { data: allMonstersRaw } = await sbService
       .from('student_monsters')
       .select('id, student_id, species_id, nickname, current_exp, current_stage, is_evolved, selected_at, evolved_at')
       .eq('student_id', row.id)
-      .eq('is_evolved', false)
-      .maybeSingle();
+      .order('selected_at', { ascending: true });
+    const allMonsters = (allMonstersRaw ?? []) as StudentMonster[];
 
-    if (!monsterRow) {
-      // 활성 몬스터 없음 → 알 선택 페이지로 (단, 종이 1개라도 활성 + 1단계 이미지 있을 때만 강제)
+    const activeRaw = allMonsters.find((m) => !m.is_evolved) ?? null;
+
+    if (!activeRaw) {
+      // 활성 몬스터 없음 → 알 선택 페이지로 (종이 1개라도 활성 + 1단계 이미지 있을 때만)
       const { data: anyEgg } = await sbService
         .from('monster_stage_images')
         .select('species_id, monster_species!inner(is_active)')
@@ -152,9 +166,9 @@ export default async function MyTreePage() {
         redirect('/me/onboarding');
       }
     } else {
-      activeMonster = monsterRow as StudentMonster;
+      activeMonster = activeRaw;
 
-      // 몬스터의 종 + 단계 이미지 5개
+      // 활성 몬스터의 종 + 단계 이미지
       const [{ data: speciesRow }, { data: stagesRows }] = await Promise.all([
         sbService
           .from('monster_species')
@@ -171,6 +185,7 @@ export default async function MyTreePage() {
       monsterStages = (stagesRows ?? []) as MonsterStageImage[];
 
       // 자동 부화: current_exp 와 image_url 둘 다 충족하는 최고 단계로.
+      const fromStage = activeMonster.current_stage;
       const targetStage = (() => {
         let best = activeMonster.current_stage;
         for (const s of monsterStages) {
@@ -181,7 +196,7 @@ export default async function MyTreePage() {
         return best;
       })();
 
-      if (targetStage > activeMonster.current_stage) {
+      if (targetStage > fromStage) {
         const reachedFinal = targetStage >= 5;
         const patch: Record<string, unknown> = {
           current_stage: targetStage,
@@ -191,11 +206,61 @@ export default async function MyTreePage() {
           patch.evolved_at = new Date().toISOString();
         }
         await sbService.from('student_monsters').update(patch).eq('id', activeMonster.id);
-        // 로컬 상태 갱신
-        activeMonster = { ...activeMonster, current_stage: targetStage, ...(reachedFinal ? { is_evolved: true, evolved_at: new Date().toISOString() } : {}) };
-        // 5단계 도달 → 활성 몬스터 사라짐 → 알 선택 페이지로
+
+        // 진화 축하 정보 (5단계도 마찬가지 — onboarding redirect 전엔 못 띄우니, 5단계 도달은 onboarding 헤더에서 처리됨)
+        const newStageName =
+          monsterStages.find((s) => s.stage === targetStage)?.stage_name ?? `${targetStage}단계`;
+
+        // 5단계 도달 → 활성 사라짐 → 알 선택 페이지로 (축하는 거기서)
         if (reachedFinal) {
           redirect('/me/onboarding');
+        }
+
+        // 5단계 미만 진화 — 클라이언트에서 축하 애니메이션
+        justEvolved = {
+          fromStage,
+          toStage: targetStage,
+          nickname: activeMonster.nickname,
+          newStageName,
+        };
+        // 로컬 상태 갱신
+        activeMonster = { ...activeMonster, current_stage: targetStage };
+      }
+    }
+
+    // 진화 완료 몬스터들 (마이룸에 전시)
+    evolvedMonsters = allMonsters.filter((m) => m.is_evolved);
+
+    // 진화한 몬스터들의 종 + 단계 이미지 일괄 fetch (활성 몬스터 종은 위에서 이미 가져옴 → 중복 회피)
+    if (evolvedMonsters.length > 0) {
+      const evolvedSpeciesIds = Array.from(
+        new Set(evolvedMonsters.map((m) => m.species_id)),
+      ).filter((id) => id !== activeMonster?.species_id);
+
+      if (monsterSpecies) {
+        speciesByIdAll[monsterSpecies.id] = monsterSpecies;
+        stagesBySpeciesAll[monsterSpecies.id] = monsterStages;
+      }
+      if (evolvedSpeciesIds.length > 0) {
+        const [{ data: spRows }, { data: stRows }] = await Promise.all([
+          sbService
+            .from('monster_species')
+            .select('id, name, description, display_order, is_active, hide_name, created_at, updated_at')
+            .in('id', evolvedSpeciesIds),
+          sbService
+            .from('monster_stage_images')
+            .select('id, species_id, stage, image_url, stage_name, required_exp, updated_at')
+            .in('species_id', evolvedSpeciesIds),
+        ]);
+        for (const sp of (spRows ?? []) as MonsterSpecies[]) speciesByIdAll[sp.id] = sp;
+        for (const st of (stRows ?? []) as MonsterStageImage[]) {
+          const arr = stagesBySpeciesAll[st.species_id] ?? [];
+          arr.push(st);
+          stagesBySpeciesAll[st.species_id] = arr;
+        }
+        // 각 종 단계 정렬
+        for (const sid of Object.keys(stagesBySpeciesAll)) {
+          stagesBySpeciesAll[sid].sort((a, b) => a.stage - b.stage);
         }
       }
     }
@@ -217,6 +282,10 @@ export default async function MyTreePage() {
       initialMonster={activeMonster}
       initialMonsterSpecies={monsterSpecies}
       initialMonsterStages={monsterStages}
+      initialEvolvedMonsters={evolvedMonsters}
+      initialMonsterSpeciesById={speciesByIdAll}
+      initialMonsterStagesBySpecies={stagesBySpeciesAll}
+      justEvolved={justEvolved}
     />
   );
 }

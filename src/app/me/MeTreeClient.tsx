@@ -150,6 +150,10 @@ export function MeTreeClient({
   initialMonster = null,
   initialMonsterSpecies = null,
   initialMonsterStages = [],
+  initialEvolvedMonsters = [],
+  initialMonsterSpeciesById = {},
+  initialMonsterStagesBySpecies = {},
+  justEvolved = null,
 }: {
   initialRow: Row | null;
   studentName: string;
@@ -165,6 +169,15 @@ export function MeTreeClient({
   initialMonster?: import("@/lib/types").StudentMonster | null;
   initialMonsterSpecies?: import("@/lib/types").MonsterSpecies | null;
   initialMonsterStages?: import("@/lib/types").MonsterStageImage[];
+  initialEvolvedMonsters?: import("@/lib/types").StudentMonster[];
+  initialMonsterSpeciesById?: Record<string, import("@/lib/types").MonsterSpecies>;
+  initialMonsterStagesBySpecies?: Record<string, import("@/lib/types").MonsterStageImage[]>;
+  justEvolved?: {
+    fromStage: number;
+    toStage: number;
+    nickname: string;
+    newStageName: string;
+  } | null;
 }) {
   const [row, setRow] = useState<Row | null>(initialRow);
   const [now, setNow] = useState<Date | null>(null);
@@ -183,7 +196,17 @@ export function MeTreeClient({
   const [decorateMode, setDecorateMode] = useState(false);
   const [yardLayout, setYardLayout] = useState<import("@/lib/types").StudentYardItem[]>(initialYardLayout);
   const [sceneLayout, setSceneLayout] = useState<import("@/lib/types").SceneLayout | null>(initialSceneLayout);
+  const [evolutionBanner, setEvolutionBanner] = useState<typeof justEvolved>(justEvolved);
   const prevStageRef = useRef<number>(initialRow?.current_stage ?? 1);
+
+  // 몬스터 진화 시 축하 — confetti + 모달 (자동 닫힘 4s)
+  useEffect(() => {
+    if (!justEvolved) return;
+    fireConfetti(true, 0.45);
+    const t = window.setTimeout(() => setEvolutionBanner(null), 4500);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
@@ -651,13 +674,33 @@ export function MeTreeClient({
                     </SceneActor>
                   )}
 
-                  {/* 몬스터 (있을 때) */}
+                  {/* 진화 완료 몬스터들 — 자동 배치 (뒤편 작은 크기) */}
+                  {initialEvolvedMonsters.map((em, idx) => {
+                    const sp = initialMonsterSpeciesById[em.species_id];
+                    const stages = initialMonsterStagesBySpecies[em.species_id] ?? [];
+                    if (!sp) return null;
+                    return (
+                      <MonsterActor
+                        key={em.id}
+                        monster={em}
+                        species={sp}
+                        stages={stages}
+                        cqminPx={cqminPx}
+                        evolvedIndex={idx}
+                        evolvedTotal={initialEvolvedMonsters.length}
+                      />
+                    );
+                  })}
+
+                  {/* 활성 몬스터 (있을 때) — 진화 직후면 glow */}
                   {initialMonster && initialMonsterSpecies && (
                     <MonsterActor
                       monster={initialMonster}
                       species={initialMonsterSpecies}
                       stages={initialMonsterStages}
                       cqminPx={cqminPx}
+                      isActive
+                      justEvolved={!!justEvolved}
                     />
                   )}
                 </>
@@ -901,6 +944,37 @@ export function MeTreeClient({
         onClose={() => setMoodSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, mood_text: next } : prev))}
       />
+
+      {/* 몬스터 진화 축하 모달 */}
+      {evolutionBanner && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55"
+          onClick={() => setEvolutionBanner(null)}
+        >
+          <div
+            className="bg-white rounded-3xl px-8 py-7 max-w-xs text-center shadow-2xl scene-evolution-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-5xl mb-3 scene-evolution-bounce">🎉✨</div>
+            <h2 className="font-pretendard text-xl font-extrabold text-amber-800 mb-2">
+              진화!
+            </h2>
+            <p className="text-sm text-gray-700 font-pretendard leading-relaxed">
+              <strong>{evolutionBanner.nickname}</strong>이(가)
+              <br />
+              <span className="text-amber-700 font-bold">{evolutionBanner.newStageName}</span>
+              {"이(가) 되었어요!"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setEvolutionBanner(null)}
+              className="mt-5 w-full font-pretendard text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl py-2.5 transition"
+            >
+              계속 키우기
+            </button>
+          </div>
+        </div>
+      )}
 
       <WeatherPickerSheet
         open={weatherSheetOpen}
@@ -1874,22 +1948,39 @@ function pickStageImage(
   return { url: "", isFallback: true, targetStageName: cur?.stage_name ?? null };
 }
 
+// 진화 완료 몬스터 자동 배치: 윗줄에 가로로 분산 (최대 5칸, 넘으면 다음 줄).
+function evolvedLayout(index: number): import("@/lib/types").SceneItemLayout {
+  const colsPerRow = 5;
+  const col = index % colsPerRow;
+  const rowIdx = Math.floor(index / colsPerRow);
+  const x = 14 + col * 18; // 14, 32, 50, 68, 86
+  const y = 68 + rowIdx * 12; // 68, 80, ...
+  return { x, y, width: 14 };
+}
+
 function MonsterActor({
   monster,
   species,
   stages,
   cqminPx,
+  isActive = false,
+  justEvolved = false,
+  evolvedIndex = 0,
 }: {
   monster: import("@/lib/types").StudentMonster;
   species: import("@/lib/types").MonsterSpecies;
   stages: import("@/lib/types").MonsterStageImage[];
   cqminPx: number;
+  isActive?: boolean;
+  justEvolved?: boolean;
+  evolvedIndex?: number;
+  evolvedTotal?: number;
 }) {
   const pick = pickStageImage(stages, monster.current_stage);
   if (!pick.url) {
-    return null; // 1단계 이미지조차 없으면 그냥 숨김 (있을 수 없는 케이스지만 방어)
+    return null;
   }
-  const layout = MONSTER_DEFAULT_LAYOUT;
+  const layout = isActive ? MONSTER_DEFAULT_LAYOUT : evolvedLayout(evolvedIndex);
   const scale = cqminPx > 0 ? (layout.width * cqminPx) / MONSTER_NATURAL_PX : 1;
 
   return (
@@ -1900,8 +1991,10 @@ function MonsterActor({
         top: `${layout.y}%`,
         width: 0,
         height: 0,
-        zIndex: 4,
+        // 활성 몬스터가 앞, 진화 완료 몬스터는 뒤 (z 낮게)
+        zIndex: isActive ? 4 : 2,
       }}
+      className={justEvolved ? "scene-evolution-glow" : undefined}
     >
       <div
         style={{
