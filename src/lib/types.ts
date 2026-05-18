@@ -210,6 +210,7 @@ export type VillageBuilding = {
   position_left: string | null;
   position_right: string | null;
   size: string;
+  rotation: number; // 도(°), 시계방향 +. 0 = 회전 없음.
   display_order: number;
   is_ready: boolean;
   is_visible: boolean;
