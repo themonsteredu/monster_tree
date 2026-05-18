@@ -244,3 +244,35 @@ body {
   transform-origin: bottom center;
   will-change: transform;
 }
+
+/* ================================================================
+   몬스터 진화 축하 — 빛나는 글로우 / 모달 팝업 / 이모지 바운스.
+================================================================ */
+@keyframes scene-evolution-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(252, 211, 77, 0.7)) drop-shadow(0 0 16px rgba(245, 158, 11, 0.5)); }
+  50%      { filter: drop-shadow(0 0 16px rgba(252, 211, 77, 1.0)) drop-shadow(0 0 32px rgba(245, 158, 11, 0.85)); }
+}
+.scene-evolution-glow {
+  animation: scene-evolution-glow 1s ease-in-out 4;
+  /* 4번 반복 후 자동 종료 (4 × 1s = 4초) */
+}
+
+@keyframes scene-evolution-pop {
+  0%   { transform: scale(0.7); opacity: 0; }
+  60%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.scene-evolution-pop {
+  animation: scene-evolution-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+@keyframes scene-evolution-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-8px) rotate(-6deg); }
+  50%      { transform: translateY(0) rotate(0deg); }
+  75%      { transform: translateY(-4px) rotate(6deg); }
+}
+.scene-evolution-bounce {
+  animation: scene-evolution-bounce 1s ease-in-out infinite;
+  display: inline-block;
+}
