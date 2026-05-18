@@ -380,16 +380,17 @@ export function MeTreeClient({
           </>
         ) : (
           <>
-            {/* === 씬 영역 (상단 70%) === */}
+            {/* === 씬 영역 — 세로 1:1, 가로 16:9 적응. 자식 cqmin 단위 활성화 === */}
             <div
+              className="aspect-square landscape:aspect-[16/9]"
               style={{
                 position: "relative",
                 borderRadius: 20,
                 overflow: "hidden",
-                aspectRatio: "1 / 1",
                 marginBottom: 12,
                 background: "#e8d8b8",
-              }}
+                containerType: "size",
+              } as React.CSSProperties}
             >
               {/* 마당 글로벌 배경 (관리자) — 설정돼 있으면 학생 본인 background 보다 우선. */}
               {yardBackgroundImage ? (
