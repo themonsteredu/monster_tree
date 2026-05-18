@@ -2,10 +2,11 @@
 
 // 몬스터 마을 학생 화면.
 // - 배경 16:9 위에 건물을 절대좌표로 배치 (좌표는 % 기반, 회전 적용).
-// - is_ready=true 인 건물은 link 이동, false 면 자물쇠 + 어두운 필터 + 토스트.
+// - 항상 보이는 라벨은 없음. 마우스 hover / 터치 시 말풍선으로 이름+소개 표시.
+// - is_ready=false 면 자물쇠 뱃지 + 어두운 필터.
 // - 첫 진입 시 환영 메시지가 떴다가 1.5s 뒤 fade-out.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VillageBuilding, VillageSettings } from "@/lib/types";
 
@@ -16,11 +17,16 @@ type Props = {
   totalPoints: number;
 };
 
+// 마우스 leave 후 hover 해제 / 터치 종료 후 자동 닫힘 시간.
+const TOUCH_TIP_LINGER_MS = 1600;
+
 export function VillageClient({ settings, buildings, studentName, totalPoints }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [welcomeFading, setWelcomeFading] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -38,10 +44,39 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
   const visible = useMemo(
     () => buildings.filter((b) => b.is_visible),
     [buildings],
   );
+
+  const showTip = (id: string) => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setHoveredId(id);
+  };
+
+  const hideTip = (delayMs: number) => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    if (delayMs <= 0) {
+      setHoveredId(null);
+    } else {
+      hideTimerRef.current = window.setTimeout(() => {
+        setHoveredId(null);
+        hideTimerRef.current = null;
+      }, delayMs);
+    }
+  };
 
   const onBuildingClick = (b: VillageBuilding) => {
     if (b.is_ready) {
@@ -69,7 +104,7 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
 
   return (
     <main className="fixed inset-0 bg-black overflow-hidden text-white flex items-center justify-center">
-      {/* 상단 우측 — 학생 이름 + 포인트만 유지 (좌측 타이틀 제거) */}
+      {/* 상단 우측 — 학생 이름 + 포인트 */}
       <header className="absolute top-0 right-0 z-30 px-4 pt-3 pointer-events-none">
         <div className="bg-black/55 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-2 pointer-events-auto">
           <span className="text-white/90">{studentName}</span>
@@ -90,17 +125,26 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
           else positionStyle.left = "50%";
 
           const locked = !b.is_ready;
+          const isHovered = hoveredId === b.id;
 
           return (
             <button
               key={b.id}
               type="button"
               onClick={() => onBuildingClick(b)}
+              onPointerEnter={() => showTip(b.id)}
+              onPointerLeave={(e) => {
+                hideTip(e.pointerType === "mouse" ? 0 : TOUCH_TIP_LINGER_MS);
+              }}
+              onPointerCancel={() => hideTip(0)}
               style={positionStyle}
-              className="group focus:outline-none active:scale-95"
+              className={[
+                "group focus:outline-none active:scale-95",
+                isHovered ? "z-30" : "z-10",
+              ].join(" ")}
               aria-label={`${b.name}${locked ? " (준비 중)" : ""}`}
             >
-              {/* 회전 적용 영역 — 이미지만 회전, 자물쇠/라벨은 미회전 */}
+              {/* 회전 영역 — 이미지만 회전, 뱃지/말풍선은 정자세 */}
               <div
                 className="relative w-full transition-transform group-hover:scale-105 group-active:scale-95"
                 style={{ transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined }}
@@ -129,11 +173,14 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
                 )}
               </div>
 
-              {/* 자물쇠 뱃지 — 우상단, 회전 영향 받지 않음 */}
               {locked && <LockBadge />}
 
-              {/* 라벨 — 건물 아래 중앙, 회전 영향 받지 않음 */}
-              <BuildingLabel name={b.name} isReady={b.is_ready} />
+              <Tooltip
+                name={b.name}
+                description={b.description}
+                isReady={b.is_ready}
+                visible={isHovered}
+              />
             </button>
           );
         })}
@@ -191,37 +238,92 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
   );
 }
 
-function BuildingLabel({ name, isReady }: { name: string; isReady: boolean }) {
+function Tooltip({
+  name,
+  description,
+  isReady,
+  visible,
+}: {
+  name: string;
+  description: string;
+  isReady: boolean;
+  visible: boolean;
+}) {
   return (
     <div
+      role="tooltip"
+      aria-hidden={!visible}
       style={{
         position: "absolute",
-        bottom: -28,
+        bottom: "calc(100% + 10px)",
         left: "50%",
-        transform: "translateX(-50%)",
-        fontSize: 16,
-        color: "#fff",
-        fontWeight: 500,
-        textShadow:
-          "0 1px 3px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.7), 0 2px 4px rgba(0,0,0,0.5)",
-        letterSpacing: "0.3px",
-        whiteSpace: "nowrap",
+        transform: visible
+          ? "translate(-50%, 0) scale(1)"
+          : "translate(-50%, 6px) scale(0.96)",
+        opacity: visible ? 1 : 0,
+        transition: "opacity 180ms ease-out, transform 180ms ease-out",
         pointerEvents: "none",
+        minWidth: 140,
+        maxWidth: 240,
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: "rgba(255, 255, 255, 0.97)",
+        color: "#1a1a1a",
+        textAlign: "center",
+        boxShadow:
+          "0 10px 30px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.25)",
+        zIndex: 20,
       }}
     >
-      {isReady && (
-        <span
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: 1.2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        {isReady && (
+          <span style={{ color: "#16a34a", fontSize: 10 }} aria-hidden>
+            ●
+          </span>
+        )}
+        <span>{name}</span>
+      </div>
+      {description && (
+        <div
           style={{
-            color: "#80f080",
-            fontSize: "0.7em",
-            verticalAlign: "2px",
-            marginRight: 4,
+            marginTop: 4,
+            fontSize: 12,
+            fontWeight: 500,
+            lineHeight: 1.4,
+            color: "rgba(0,0,0,0.7)",
+            whiteSpace: "normal",
+            wordBreak: "keep-all",
           }}
         >
-          ●
-        </span>
+          {description}
+        </div>
       )}
-      {name}
+      {/* 화살표 — 말풍선 아래쪽 가운데 */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: "100%",
+          left: "50%",
+          marginLeft: -7,
+          width: 0,
+          height: 0,
+          borderLeft: "7px solid transparent",
+          borderRight: "7px solid transparent",
+          borderTop: "7px solid rgba(255,255,255,0.97)",
+          filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.15))",
+        }}
+      />
     </div>
   );
 }

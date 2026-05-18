@@ -261,6 +261,7 @@ function BuildingCard({
   const [positionRight, setPositionRight] = useState(building.position_right ?? "");
   const [size, setSize] = useState(building.size);
   const [rotation, setRotation] = useState<number>(building.rotation ?? 0);
+  const [description, setDescription] = useState<string>(building.description ?? "");
   const [isReady, setIsReady] = useState(building.is_ready);
   const [isVisible, setIsVisible] = useState(building.is_visible);
   const [pending, startTransition] = useTransition();
@@ -272,9 +273,10 @@ function BuildingCard({
     setPositionRight(building.position_right ?? "");
     setSize(building.size);
     setRotation(building.rotation ?? 0);
+    setDescription(building.description ?? "");
     setIsReady(building.is_ready);
     setIsVisible(building.is_visible);
-  }, [building.id, building.position_top, building.position_left, building.position_right, building.size, building.rotation, building.is_ready, building.is_visible]);
+  }, [building.id, building.position_top, building.position_left, building.position_right, building.size, building.rotation, building.description, building.is_ready, building.is_visible]);
 
   const dirty =
     positionTop !== building.position_top ||
@@ -282,6 +284,7 @@ function BuildingCard({
     (positionRight || "") !== (building.position_right ?? "") ||
     size !== building.size ||
     Math.abs(rotation - (building.rotation ?? 0)) >= 0.5 ||
+    description.trim() !== (building.description ?? "").trim() ||
     isReady !== building.is_ready ||
     isVisible !== building.is_visible;
 
@@ -326,6 +329,7 @@ function BuildingCard({
         positionRight: positionRight || null,
         size,
         rotation,
+        description,
         isReady,
         isVisible,
       });
@@ -340,6 +344,7 @@ function BuildingCard({
         position_right: positionRight || null,
         size,
         rotation,
+        description: description.trim(),
         is_ready: isReady,
         is_visible: isVisible,
         updated_at: new Date().toISOString(),
@@ -438,6 +443,20 @@ function BuildingCard({
           />
           <span className="text-[11px] text-gray-500">°</span>
         </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 mb-1">
+          <span>말풍선 소개 (description)</span>
+          <span className="text-gray-400">{description.length} / 200</span>
+        </div>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value.slice(0, 200))}
+          rows={2}
+          placeholder="학생 화면에서 건물 위에 마우스/손가락을 올리면 보일 짧은 소개"
+          className="w-full px-2 py-1.5 rounded-md border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none leading-snug"
+        />
       </div>
 
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1">

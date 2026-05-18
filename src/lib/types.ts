@@ -211,6 +211,7 @@ export type VillageBuilding = {
   position_right: string | null;
   size: string;
   rotation: number; // 도(°), 시계방향 +. 0 = 회전 없음.
+  description: string; // 학생 화면 hover 시 말풍선 내용. 빈 문자열이면 이름만 표시.
   display_order: number;
   is_ready: boolean;
   is_visible: boolean;

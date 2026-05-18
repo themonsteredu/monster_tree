@@ -220,6 +220,7 @@ export async function updateBuildingAction(args: {
   positionRight?: string | null;
   size?: string | null;
   rotation?: number;
+  description?: string;
   isReady?: boolean;
   isVisible?: boolean;
 }) {
@@ -262,6 +263,10 @@ export async function updateBuildingAction(args: {
     if (r > 180) r -= 360;
     if (r <= -180) r += 360;
     patch.rotation = Math.round(r * 10) / 10;
+  }
+  if (typeof args.description === "string") {
+    const d = args.description.trim().slice(0, 200);
+    patch.description = d;
   }
   if (typeof args.isReady === "boolean") patch.is_ready = args.isReady;
   if (typeof args.isVisible === "boolean") patch.is_visible = args.isVisible;
