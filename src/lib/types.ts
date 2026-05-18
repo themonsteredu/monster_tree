@@ -217,3 +217,58 @@ export type VillageBuilding = {
   is_visible: boolean;
   updated_at: string;
 };
+
+// 마이룸 마당 꾸미기 — 소품 카테고리.
+export type DecorationCategory = "insect" | "flower" | "furniture" | "plant" | "misc";
+
+export const DECORATION_CATEGORIES: DecorationCategory[] = [
+  "insect",
+  "flower",
+  "furniture",
+  "plant",
+  "misc",
+];
+
+export const DECORATION_CATEGORY_LABEL: Record<DecorationCategory, string> = {
+  insect: "곤충",
+  flower: "꽃",
+  furniture: "가구",
+  plant: "식물",
+  misc: "기타",
+};
+
+// 소품 마스터 — 관리자가 등록한 꾸미기 아이템.
+export type DecorationItem = {
+  id: string;
+  name: string;
+  image_url: string;
+  category: DecorationCategory;
+  price: number;
+  default_width_percent: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+// 학생 보유 소품.
+export type StudentDecoration = {
+  id: string;
+  student_id: string;
+  decoration_item_id: string;
+  quantity: number;
+  acquired_at: string;
+};
+
+// 학생 마당 배치 인스턴스.
+export type StudentYardItem = {
+  id: string;
+  student_id: string;
+  decoration_item_id: string;
+  instance_id: string;
+  position_x: number; // 마당 너비 대비 %, 0~100
+  position_y: number; // 마당 세로 대비 %, 0~100
+  width_percent: number; // 마당 너비 대비 %
+  rotation: number; // 도(°)
+  z_index: number;
+  placed_at: string;
+};

@@ -148,6 +148,12 @@ export default async function AdminPage({
               마을관리
             </Link>
             <Link
+              href="/admin/decorations"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              마당소품
+            </Link>
+            <Link
               href="/admin/reset"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >
