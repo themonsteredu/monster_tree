@@ -84,11 +84,11 @@ export default async function AdminVillagePreviewPage({
         totalPoints={0}
         previewMode
         previewLinkOverrides={{
-          // 학생 라우트 대신 admin 관리 라우트로 이동.
-          // ?branch= 를 명시 전달해 cookie 누락 시에도 정상 동작.
+          // 우체통: 학생 건의함 화면을 그대로 보여주는 admin 미리보기로 이동.
+          // 거기서 우측 하단 floating 버튼으로 /admin/suggest 관리 페이지로 점프.
           mailbox: branchId
-            ? `/admin/suggest?branch=${encodeURIComponent(branchId)}`
-            : "/admin/suggest",
+            ? `/admin/suggest-preview?branch=${encodeURIComponent(branchId)}`
+            : "/admin/suggest-preview",
           // quiz / shop / game 은 admin 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
         }}
       />
