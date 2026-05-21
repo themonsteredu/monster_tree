@@ -1,8 +1,9 @@
 "use client";
 
-// 학생 건의함 — 칠판에 포스트잇을 붙이는 비주얼. 같은 지점 학생들이 서로 글을 공유.
-// 본인 글에는 수정/삭제 가능. 익명 글은 다른 학생에게 이름 마스킹.
-// previewMode/adminLink prop: 관리자 미리보기에서 학생 화면을 보여줄 때 사용.
+// 학생 건의함 — 칠판에 포스트잇을 붙이는 비주얼.
+// student 모드: 같은 지점 친구들과 공유. 본인 글은 수정/삭제 가능.
+// previewMode: 관리자가 학생 화면을 그냥 미리보기 (제출/수정/삭제 차단).
+// adminMode: 관리자가 학생 화면 그대로 보면서 각 쪽지에 인라인 관리 (답장/상태/삭제/차단).
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { useState, useTransition } from "react";
 import {
   SUGGESTION_BODY_MAX,
   SUGGESTION_CATEGORY_LABELS,
+  SUGGESTION_REPLY_MAX,
   SUGGESTION_STATUS_LABELS,
   SUGGESTION_TITLE_MAX,
   type SuggestionBlock,
@@ -21,13 +23,20 @@ import {
   editSuggestionAction,
   submitSuggestionAction,
 } from "./actions";
+import {
+  blockStudentAction,
+  deleteSuggestionAction as adminDeleteSuggestionAction,
+  replyToSuggestionAction,
+  unblockStudentAction,
+  updateSuggestionStatusAction,
+} from "../../admin/suggest/actions";
 
-// 서버에서 가공해서 내려준 view 모델. student_id 는 비공개로 빼고 is_mine 으로만 표현.
 export type SuggestionView = {
   id: string;
   is_mine: boolean;
   is_anonymous: boolean;
-  // 익명 + 남의 글이면 빈 문자열로 마스킹.
+  // 학생 모드: 익명 + 남의 글이면 빈 문자열로 마스킹.
+  // admin 모드: 항상 실제 작성자 이름.
   student_name_snapshot: string;
   category: SuggestionCategory;
   title: string;
@@ -37,9 +46,15 @@ export type SuggestionView = {
   replied_at: string | null;
   created_at: string;
   updated_at: string;
+  // adminMode 전용 — 학생 차단 액션에 필요.
+  admin_student_id?: string | null;
 };
 
+export type AdminStudentInfo = { name: string; className: string | null };
+export type AdminBlockInfo = { reason: string | null; blockedUntil: string | null };
+
 const CATEGORIES: SuggestionCategory[] = ["praise", "suggestion", "complaint", "etc"];
+const STATUSES: SuggestionStatus[] = ["received", "reviewing", "done"];
 
 const POSTIT_COLORS: Record<
   SuggestionCategory,
@@ -77,7 +92,12 @@ type Props = {
   suggestions: SuggestionView[];
   activeBlock: SuggestionBlock | null;
   previewMode?: boolean;
+  adminMode?: boolean;
+  // 관리 리스트 페이지로 가는 floating 링크. preview/admin 양쪽에서 사용.
   adminLink?: string;
+  // adminMode 전용 — student_id → 학생 정보 / 활성 차단 정보.
+  adminStudentInfo?: Record<string, AdminStudentInfo>;
+  adminBlockInfo?: Record<string, AdminBlockInfo>;
 };
 
 export function SuggestClient({
@@ -85,9 +105,14 @@ export function SuggestClient({
   suggestions,
   activeBlock,
   previewMode = false,
+  adminMode = false,
   adminLink,
+  adminStudentInfo,
+  adminBlockInfo,
 }: Props) {
   const router = useRouter();
+
+  // 학생용 폼 상태
   const [category, setCategory] = useState<SuggestionCategory>("suggestion");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -96,7 +121,7 @@ export function SuggestClient({
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // 인라인 수정 상태 — id 기준 단일 편집.
+  // 학생용 인라인 수정
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCategory, setEditCategory] = useState<SuggestionCategory>("suggestion");
   const [editTitle, setEditTitle] = useState("");
@@ -104,17 +129,34 @@ export function SuggestClient({
   const [editAnon, setEditAnon] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const disabled = !!activeBlock || pending || previewMode;
-  const disabledEdit = !!activeBlock || pending || previewMode;
+  // adminMode 답장 입력 (id → draft)
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  // adminMode 차단 모달
+  const [blockTarget, setBlockTarget] = useState<{
+    studentId: string;
+    name: string;
+  } | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockDuration, setBlockDuration] = useState<"1" | "7" | "30" | "perm">(
+    "7",
+  );
+
+  const disabled = !!activeBlock || pending || previewMode || adminMode;
+  const disabledEdit = !!activeBlock || pending || previewMode || adminMode;
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2400);
   };
 
+  // ===== 학생 액션들 =====
   const onSubmit = () => {
-    if (previewMode) {
-      showToast("미리보기 모드에서는 제출되지 않아요.");
+    if (previewMode || adminMode) {
+      showToast(
+        adminMode
+          ? "관리자 모드에서는 학생 글을 작성할 수 없어요."
+          : "미리보기 모드에서는 제출되지 않아요.",
+      );
       return;
     }
     setError(null);
@@ -159,10 +201,6 @@ export function SuggestClient({
   };
 
   const submitEdit = (id: string) => {
-    if (previewMode) {
-      showToast("미리보기 모드에서는 수정되지 않아요.");
-      return;
-    }
     setEditError(null);
     if (!editTitle.trim()) {
       setEditError("제목을 입력해주세요.");
@@ -191,10 +229,6 @@ export function SuggestClient({
   };
 
   const onDelete = (id: string) => {
-    if (previewMode) {
-      showToast("미리보기 모드에서는 삭제되지 않아요.");
-      return;
-    }
     if (!confirm("이 쪽지를 정말 떼어낼까요? 되돌릴 수 없어요.")) return;
     startTransition(async () => {
       const res = await deleteSuggestionAction({ id });
@@ -208,6 +242,100 @@ export function SuggestClient({
     });
   };
 
+  // ===== 관리자 액션들 =====
+  const setReplyDraft = (id: string, text: string) =>
+    setReplyDrafts((m) => ({ ...m, [id]: text }));
+
+  const onReply = (id: string, currentReply: string | null) => {
+    const draft = (replyDrafts[id] ?? currentReply ?? "").trim();
+    if (!draft) {
+      showToast("답장 내용을 입력해주세요.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await replyToSuggestionAction({ id, reply: draft, status: "done" });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast("답장을 저장했어요 💬");
+      setReplyDrafts((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      router.refresh();
+    });
+  };
+
+  const onChangeStatus = (id: string, next: SuggestionStatus) => {
+    startTransition(async () => {
+      const res = await updateSuggestionStatusAction({ id, status: next });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const onAdminDelete = (id: string) => {
+    if (!confirm("이 쪽지를 정말 삭제할까요?")) return;
+    startTransition(async () => {
+      const res = await adminDeleteSuggestionAction(id);
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast("쪽지를 삭제했어요 🗑️");
+      router.refresh();
+    });
+  };
+
+  const openBlockModal = (studentId: string, name: string) => {
+    setBlockTarget({ studentId, name });
+    setBlockReason("");
+    setBlockDuration("7");
+  };
+
+  const submitBlock = () => {
+    if (!blockTarget) return;
+    const days =
+      blockDuration === "perm" ? null : parseInt(blockDuration, 10);
+    startTransition(async () => {
+      const res = await blockStudentAction({
+        studentId: blockTarget.studentId,
+        reason: blockReason.trim() || null,
+        durationDays: days,
+      });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast(`${blockTarget.name} 학생 건의함을 제한했어요`);
+      setBlockTarget(null);
+      router.refresh();
+    });
+  };
+
+  const onUnblock = (studentId: string, name: string) => {
+    if (!confirm(`${name} 학생의 건의함 제한을 해제할까요?`)) return;
+    startTransition(async () => {
+      const res = await unblockStudentAction(studentId);
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast(`${name} 학생 제한을 해제했어요`);
+      router.refresh();
+    });
+  };
+
+  // 학생 폼은 학생 모드에서만 노출 (preview/admin 에서는 숨김).
+  const showStudentForm = !previewMode && !adminMode;
+  // 안내문구도 학생 모드에서만.
+  const showStudentNotice = !adminMode;
+
   return (
     <main
       className="min-h-screen pb-24 relative"
@@ -219,10 +347,10 @@ export function SuggestClient({
       <header className="sticky top-0 z-30 bg-white/70 backdrop-blur border-b border-amber-200/50">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link
-            href="/me/village"
+            href={adminMode ? "/admin" : "/me/village"}
             className="shrink-0 text-sm text-amber-900 hover:text-amber-700 hover:bg-amber-100/70 rounded-lg px-3 py-1.5 transition"
           >
-            ← 마을
+            ← {adminMode ? "관리" : "마을"}
           </Link>
           <h1 className="text-lg font-semibold text-amber-900">건의 우체통 📮</h1>
           {previewMode && (
@@ -230,23 +358,28 @@ export function SuggestClient({
               미리보기
             </span>
           )}
+          {adminMode && (
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-medium">
+              관리자 모드
+            </span>
+          )}
         </div>
       </header>
 
-      {previewMode && adminLink && (
+      {/* 리스트형 관리 페이지로 가는 floating 버튼 — preview / admin 양쪽에서 노출 */}
+      {(previewMode || adminMode) && adminLink && (
         <div className="fixed bottom-6 right-6 z-40">
           <Link
             href={adminLink}
             className="inline-flex items-center gap-2 px-4 py-3 rounded-full bg-gray-900 text-white shadow-2xl hover:bg-gray-800 transition text-sm font-semibold"
           >
-            <span>관리 페이지로</span>
+            <span>리스트 관리</span>
             <span aria-hidden>→</span>
           </Link>
         </div>
       )}
 
       <div className="max-w-3xl mx-auto px-3 sm:px-6 py-6">
-        {/* 칠판 */}
         <div
           className="rounded-2xl p-3 sm:p-4 shadow-2xl"
           style={{
@@ -270,7 +403,6 @@ export function SuggestClient({
               }}
             />
 
-            {/* 분필 타이틀 */}
             <div className="relative text-center mb-3">
               <div
                 className="text-white text-2xl sm:text-3xl font-extrabold tracking-wide"
@@ -292,20 +424,30 @@ export function SuggestClient({
               </div>
             </div>
 
-            {/* 칠판 안내문 — 욕설/장난 금지 */}
-            <div
-              className="relative mx-auto max-w-xl text-center mb-6 px-4 py-2 rounded-lg border border-white/25 bg-white/5"
-              style={{
-                fontFamily: "'Gaegu','Nanum Pen Script',cursive",
-              }}
-            >
-              <div className="text-white/90 text-base sm:text-lg leading-snug">
-                🐣 친구들도 다 같이 보는 공간이에요!
+            {showStudentNotice && (
+              <div
+                className="relative mx-auto max-w-xl text-center mb-6 px-4 py-2 rounded-lg border border-white/25 bg-white/5"
+                style={{ fontFamily: "'Gaegu','Nanum Pen Script',cursive" }}
+              >
+                <div className="text-white/90 text-base sm:text-lg leading-snug">
+                  🐣 친구들도 다 같이 보는 공간이에요!
+                </div>
+                <div className="text-white/75 text-sm sm:text-base leading-snug mt-0.5">
+                  욕설이나 장난치는 곳이 아니에요. 마음을 담아 적어주세요 💌
+                </div>
               </div>
-              <div className="text-white/75 text-sm sm:text-base leading-snug mt-0.5">
-                욕설이나 장난치는 곳이 아니에요. 마음을 담아 적어주세요 💌
+            )}
+
+            {adminMode && (
+              <div className="relative mx-auto max-w-xl text-center mb-6 px-4 py-3 rounded-lg border border-rose-300/40 bg-rose-900/30">
+                <div
+                  className="text-rose-100 text-sm sm:text-base"
+                  style={{ fontFamily: "'Gaegu',cursive" }}
+                >
+                  🔧 각 쪽지 아래의 컨트롤로 답장/상태/삭제/차단을 처리하세요.
+                </div>
               </div>
-            </div>
+            )}
 
             {activeBlock && (
               <div
@@ -328,140 +470,137 @@ export function SuggestClient({
               </div>
             )}
 
-            {/* 입력 포스트잇 */}
-            <div className="relative mx-auto max-w-xl">
-              <div
-                className={`relative p-5 sm:p-6 rounded-sm shadow-2xl ${tiltFor(0)}`}
-                style={{
-                  background:
-                    "linear-gradient(180deg, #fff7a8 0%, #ffe97a 100%)",
-                  boxShadow:
-                    "0 10px 25px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
-                }}
-              >
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-24 h-5 bg-amber-100/90 -rotate-1 shadow-md" />
-
-                <div className="mb-4">
-                  <div
-                    className="text-xs font-bold text-amber-900 mb-2"
-                    style={{ fontFamily: "'Gaegu',cursive" }}
-                  >
-                    어떤 이야기인가요?
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {CATEGORIES.map((c) => {
-                      const active = category === c;
-                      const col = POSTIT_COLORS[c];
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => setCategory(c)}
-                          className={`px-3 py-1.5 rounded-md text-sm border-2 transition shadow-sm ${
-                            active
-                              ? `${col.bg} ${col.text} border-amber-900/30 font-bold ring-2 ${col.ring}`
-                              : "bg-white/70 text-gray-600 border-amber-900/10 hover:bg-white"
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          {SUGGESTION_CATEGORY_LABELS[c]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label
-                    className="block text-xs font-bold text-amber-900 mb-1"
-                    style={{ fontFamily: "'Gaegu',cursive" }}
-                  >
-                    제목
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    maxLength={SUGGESTION_TITLE_MAX}
-                    disabled={disabled}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="짧게 한 줄로!"
-                    className="w-full px-3 py-2 rounded-md bg-white/70 border-b-2 border-amber-900/40 focus:outline-none focus:bg-white focus:border-amber-900 disabled:bg-white/40 text-amber-950 placeholder:text-amber-900/40"
-                    style={{ fontFamily: "'Gaegu',cursive", fontSize: "1.05rem" }}
-                  />
-                  <div className="text-right text-[11px] text-amber-900/60 mt-0.5">
-                    {title.length}/{SUGGESTION_TITLE_MAX}
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label
-                    className="block text-xs font-bold text-amber-900 mb-1"
-                    style={{ fontFamily: "'Gaegu',cursive" }}
-                  >
-                    내용
-                  </label>
-                  <textarea
-                    value={body}
-                    maxLength={SUGGESTION_BODY_MAX}
-                    disabled={disabled}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="자세한 이야기를 적어주세요"
-                    rows={6}
-                    className="w-full px-3 py-2 rounded-md bg-white/60 focus:outline-none focus:bg-white disabled:bg-white/40 resize-none text-amber-950 placeholder:text-amber-900/40"
-                    style={{
-                      fontFamily: "'Gaegu',cursive",
-                      fontSize: "1.05rem",
-                      lineHeight: "1.9rem",
-                      backgroundImage:
-                        "repeating-linear-gradient(transparent 0 calc(1.9rem - 1px), rgba(120,80,30,0.25) calc(1.9rem - 1px) 1.9rem)",
-                      backgroundAttachment: "local",
-                    }}
-                  />
-                  <div className="text-right text-[11px] text-amber-900/60 mt-0.5">
-                    {body.length}/{SUGGESTION_BODY_MAX}
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 text-sm text-amber-900 mb-4 select-none">
-                  <input
-                    type="checkbox"
-                    checked={isAnonymous}
-                    disabled={disabled}
-                    onChange={(e) => setIsAnonymous(e.target.checked)}
-                    className="rounded border-amber-700/40 disabled:opacity-50"
-                  />
-                  <span style={{ fontFamily: "'Gaegu',cursive" }}>
-                    익명으로 붙이기 (이름이 가려져요)
-                  </span>
-                </label>
-
-                {error && (
-                  <div className="mb-3 text-sm text-rose-700 bg-rose-100 border border-rose-200 rounded-md px-3 py-2">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={onSubmit}
-                  disabled={disabled}
-                  className="w-full py-3 rounded-md bg-amber-700 hover:bg-amber-800 text-white font-bold transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md"
+            {showStudentForm && (
+              <div className="relative mx-auto max-w-xl">
+                <div
+                  className={`relative p-5 sm:p-6 rounded-sm shadow-2xl ${tiltFor(0)}`}
                   style={{
-                    fontFamily: "'Gaegu',cursive",
-                    fontSize: "1.1rem",
-                    letterSpacing: "0.05em",
+                    background:
+                      "linear-gradient(180deg, #fff7a8 0%, #ffe97a 100%)",
+                    boxShadow:
+                      "0 10px 25px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
                   }}
                 >
-                  {previewMode
-                    ? "미리보기 모드"
-                    : pending
-                      ? "붙이는 중..."
-                      : "📌 칠판에 붙이기"}
-                </button>
-              </div>
-            </div>
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-24 h-5 bg-amber-100/90 -rotate-1 shadow-md" />
 
-            {/* 칠판에 붙은 모든 쪽지 (본인 + 다른 친구들) */}
+                  <div className="mb-4">
+                    <div
+                      className="text-xs font-bold text-amber-900 mb-2"
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                    >
+                      어떤 이야기인가요?
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {CATEGORIES.map((c) => {
+                        const active = category === c;
+                        const col = POSTIT_COLORS[c];
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => setCategory(c)}
+                            className={`px-3 py-1.5 rounded-md text-sm border-2 transition shadow-sm ${
+                              active
+                                ? `${col.bg} ${col.text} border-amber-900/30 font-bold ring-2 ${col.ring}`
+                                : "bg-white/70 text-gray-600 border-amber-900/10 hover:bg-white"
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            {SUGGESTION_CATEGORY_LABELS[c]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label
+                      className="block text-xs font-bold text-amber-900 mb-1"
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                    >
+                      제목
+                    </label>
+                    <input
+                      type="text"
+                      value={title}
+                      maxLength={SUGGESTION_TITLE_MAX}
+                      disabled={disabled}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="짧게 한 줄로!"
+                      className="w-full px-3 py-2 rounded-md bg-white/70 border-b-2 border-amber-900/40 focus:outline-none focus:bg-white focus:border-amber-900 disabled:bg-white/40 text-amber-950 placeholder:text-amber-900/40"
+                      style={{ fontFamily: "'Gaegu',cursive", fontSize: "1.05rem" }}
+                    />
+                    <div className="text-right text-[11px] text-amber-900/60 mt-0.5">
+                      {title.length}/{SUGGESTION_TITLE_MAX}
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label
+                      className="block text-xs font-bold text-amber-900 mb-1"
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                    >
+                      내용
+                    </label>
+                    <textarea
+                      value={body}
+                      maxLength={SUGGESTION_BODY_MAX}
+                      disabled={disabled}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder="자세한 이야기를 적어주세요"
+                      rows={6}
+                      className="w-full px-3 py-2 rounded-md bg-white/60 focus:outline-none focus:bg-white disabled:bg-white/40 resize-none text-amber-950 placeholder:text-amber-900/40"
+                      style={{
+                        fontFamily: "'Gaegu',cursive",
+                        fontSize: "1.05rem",
+                        lineHeight: "1.9rem",
+                        backgroundImage:
+                          "repeating-linear-gradient(transparent 0 calc(1.9rem - 1px), rgba(120,80,30,0.25) calc(1.9rem - 1px) 1.9rem)",
+                        backgroundAttachment: "local",
+                      }}
+                    />
+                    <div className="text-right text-[11px] text-amber-900/60 mt-0.5">
+                      {body.length}/{SUGGESTION_BODY_MAX}
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm text-amber-900 mb-4 select-none">
+                    <input
+                      type="checkbox"
+                      checked={isAnonymous}
+                      disabled={disabled}
+                      onChange={(e) => setIsAnonymous(e.target.checked)}
+                      className="rounded border-amber-700/40 disabled:opacity-50"
+                    />
+                    <span style={{ fontFamily: "'Gaegu',cursive" }}>
+                      익명으로 붙이기 (이름이 가려져요)
+                    </span>
+                  </label>
+
+                  {error && (
+                    <div className="mb-3 text-sm text-rose-700 bg-rose-100 border border-rose-200 rounded-md px-3 py-2">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={onSubmit}
+                    disabled={disabled}
+                    className="w-full py-3 rounded-md bg-amber-700 hover:bg-amber-800 text-white font-bold transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md"
+                    style={{
+                      fontFamily: "'Gaegu',cursive",
+                      fontSize: "1.1rem",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    {pending ? "붙이는 중..." : "📌 칠판에 붙이기"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 쪽지 목록 */}
             <div className="relative mt-10">
               <div
                 className="text-white/90 text-base sm:text-lg font-bold text-center mb-4"
@@ -470,7 +609,7 @@ export function SuggestClient({
                   textShadow: "0 0 2px rgba(255,255,255,0.3)",
                 }}
               >
-                — 우리 학원 친구들의 쪽지{" "}
+                — {adminMode ? "지점의 모든 쪽지" : "우리 학원 친구들의 쪽지"}{" "}
                 {suggestions.length > 0 && `(${suggestions.length})`} —
               </div>
 
@@ -479,7 +618,9 @@ export function SuggestClient({
                   className="text-center text-white/60 text-sm py-6"
                   style={{ fontFamily: "'Gaegu',cursive" }}
                 >
-                  아직 붙인 쪽지가 없어요. 첫 번째로 붙여보세요!
+                  {adminMode
+                    ? "아직 붙은 쪽지가 없어요."
+                    : "아직 붙인 쪽지가 없어요. 첫 번째로 붙여보세요!"}
                 </div>
               ) : (
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
@@ -490,13 +631,21 @@ export function SuggestClient({
                         new Date(s.created_at).getTime() >
                       2000;
                     const isEditing = editingId === s.id;
-                    const authorLabel = s.is_anonymous
-                      ? s.is_mine
-                        ? "익명 (나)"
-                        : "익명"
-                      : s.is_mine
-                        ? `${s.student_name_snapshot} (나)`
-                        : s.student_name_snapshot;
+                    const studentBlocked =
+                      adminMode && s.admin_student_id
+                        ? adminBlockInfo?.[s.admin_student_id] ?? null
+                        : null;
+                    const authorLabel = adminMode
+                      ? s.is_anonymous
+                        ? `${s.student_name_snapshot} (익명 제출)`
+                        : s.student_name_snapshot
+                      : s.is_anonymous
+                        ? s.is_mine
+                          ? "익명 (나)"
+                          : "익명"
+                        : s.is_mine
+                          ? `${s.student_name_snapshot} (나)`
+                          : s.student_name_snapshot;
 
                     return (
                       <li
@@ -510,7 +659,6 @@ export function SuggestClient({
                           fontFamily: "'Gaegu','Nanum Pen Script',cursive",
                         }}
                       >
-                        {/* 압정 */}
                         <div
                           className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md"
                           style={{
@@ -536,6 +684,11 @@ export function SuggestClient({
                               {wasEdited && (
                                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/50 opacity-80">
                                   수정됨
+                                </span>
+                              )}
+                              {adminMode && studentBlocked && (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-700 text-white font-bold">
+                                  차단됨
                                 </span>
                               )}
                             </div>
@@ -565,13 +718,13 @@ export function SuggestClient({
                               </div>
                             )}
 
-                            {/* 본인 쪽지에만 수정/삭제 버튼 노출 */}
-                            {s.is_mine && (
+                            {/* 학생 모드: 본인 쪽지 수정/삭제 */}
+                            {!adminMode && s.is_mine && (
                               <div className="mt-3 flex gap-2">
                                 <button
                                   type="button"
                                   onClick={() => startEdit(s)}
-                                  disabled={disabledEdit}
+                                  disabled={!!activeBlock || pending || previewMode}
                                   className="flex-1 py-1.5 rounded-md bg-white/80 hover:bg-white text-amber-900 text-sm font-bold border border-amber-900/20 shadow-sm disabled:opacity-50"
                                   style={{ fontFamily: "'Gaegu',cursive" }}
                                 >
@@ -580,7 +733,7 @@ export function SuggestClient({
                                 <button
                                   type="button"
                                   onClick={() => onDelete(s.id)}
-                                  disabled={disabledEdit}
+                                  disabled={!!activeBlock || pending || previewMode}
                                   className="flex-1 py-1.5 rounded-md bg-rose-200/90 hover:bg-rose-300 text-rose-900 text-sm font-bold border border-rose-700/30 shadow-sm disabled:opacity-50"
                                   style={{ fontFamily: "'Gaegu',cursive" }}
                                 >
@@ -588,11 +741,129 @@ export function SuggestClient({
                                 </button>
                               </div>
                             )}
+
+                            {/* 관리자 모드: 인라인 관리 컨트롤 */}
+                            {adminMode && (
+                              <div className="mt-3 pt-3 border-t border-amber-900/20 space-y-2">
+                                {/* 상태 변경 */}
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="text-[11px] font-bold opacity-80"
+                                    style={{ fontFamily: "'Gaegu',cursive" }}
+                                  >
+                                    상태
+                                  </span>
+                                  {STATUSES.map((st) => {
+                                    const active = s.status === st;
+                                    return (
+                                      <button
+                                        key={st}
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() => onChangeStatus(s.id, st)}
+                                        className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                                          active
+                                            ? `${STATUS_COLORS[st]} border-amber-900/40`
+                                            : "bg-white/40 text-amber-900/70 border-amber-900/20 hover:bg-white/70"
+                                        }`}
+                                      >
+                                        {SUGGESTION_STATUS_LABELS[st]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* 답장 */}
+                                <div>
+                                  <textarea
+                                    value={replyDrafts[s.id] ?? s.reply ?? ""}
+                                    maxLength={SUGGESTION_REPLY_MAX}
+                                    onChange={(e) =>
+                                      setReplyDraft(s.id, e.target.value)
+                                    }
+                                    placeholder="학생에게 보낼 답장…"
+                                    rows={2}
+                                    disabled={pending}
+                                    className="w-full text-[14px] px-2 py-1.5 rounded-md bg-white/80 text-amber-950 focus:outline-none focus:bg-white resize-none"
+                                    style={{
+                                      fontFamily: "'Gaegu',cursive",
+                                      lineHeight: "1.5rem",
+                                    }}
+                                  />
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={() => onReply(s.id, s.reply)}
+                                    className="flex-1 min-w-[80px] py-1.5 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-sm font-bold disabled:opacity-50"
+                                    style={{ fontFamily: "'Gaegu',cursive" }}
+                                  >
+                                    💬 답장
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={() => onAdminDelete(s.id)}
+                                    className="flex-1 min-w-[60px] py-1.5 rounded-md bg-rose-200 hover:bg-rose-300 text-rose-900 text-sm font-bold border border-rose-700/30 disabled:opacity-50"
+                                    style={{ fontFamily: "'Gaegu',cursive" }}
+                                  >
+                                    🗑️ 삭제
+                                  </button>
+                                  {s.admin_student_id ? (
+                                    studentBlocked ? (
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          onUnblock(
+                                            s.admin_student_id!,
+                                            adminStudentInfo?.[s.admin_student_id!]
+                                              ?.name ?? s.student_name_snapshot,
+                                          )
+                                        }
+                                        className="flex-1 min-w-[80px] py-1.5 rounded-md bg-emerald-200 hover:bg-emerald-300 text-emerald-900 text-sm font-bold border border-emerald-700/30 disabled:opacity-50"
+                                        style={{ fontFamily: "'Gaegu',cursive" }}
+                                      >
+                                        🔓 해제
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          openBlockModal(
+                                            s.admin_student_id!,
+                                            adminStudentInfo?.[s.admin_student_id!]
+                                              ?.name ?? s.student_name_snapshot,
+                                          )
+                                        }
+                                        className="flex-1 min-w-[60px] py-1.5 rounded-md bg-gray-800 hover:bg-gray-900 text-white text-sm font-bold disabled:opacity-50"
+                                        style={{ fontFamily: "'Gaegu',cursive" }}
+                                      >
+                                        🚫 차단
+                                      </button>
+                                    )
+                                  ) : null}
+                                </div>
+
+                                {studentBlocked && (
+                                  <div className="text-[11px] text-rose-700 bg-rose-50 rounded px-2 py-1">
+                                    {studentBlocked.reason &&
+                                      `사유: ${studentBlocked.reason} · `}
+                                    {studentBlocked.blockedUntil
+                                      ? `해제 예정: ${formatDate(studentBlocked.blockedUntil)}`
+                                      : "영구 제한"}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </>
                         )}
 
-                        {/* 수정 폼 */}
-                        {isEditing && (
+                        {/* 학생 모드 인라인 수정 */}
+                        {isEditing && !adminMode && (
                           <div className="space-y-2">
                             <div className="text-xs font-bold opacity-80 mb-1">
                               ✏️ 쪽지 수정 중
@@ -701,6 +972,70 @@ export function SuggestClient({
           />
         </div>
       </div>
+
+      {/* 차단 모달 */}
+      {blockTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
+              🚫 {blockTarget.name} 건의함 제한
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              제한 기간 동안 이 학생은 새 글을 쓸 수 없어요. (기존 글은 유지)
+            </p>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              사유 (선택)
+            </label>
+            <input
+              type="text"
+              value={blockReason}
+              onChange={(e) => setBlockReason(e.target.value)}
+              placeholder="예: 반복적인 부적절한 표현"
+              className="w-full px-3 py-2 mb-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+            />
+            <div className="text-xs font-medium text-gray-700 mb-2">기간</div>
+            <div className="grid grid-cols-4 gap-2 mb-5">
+              {([
+                ["1", "1일"],
+                ["7", "7일"],
+                ["30", "30일"],
+                ["perm", "영구"],
+              ] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setBlockDuration(v)}
+                  className={`py-2 rounded-lg text-sm font-medium border transition ${
+                    blockDuration === v
+                      ? "bg-amber-500 text-white border-amber-600"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setBlockTarget(null)}
+                disabled={pending}
+                className="flex-1 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={submitBlock}
+                disabled={pending}
+                className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50"
+              >
+                제한하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-gray-900 text-white text-sm shadow-lg">
