@@ -65,7 +65,7 @@ export default async function AdminSuggestPreviewPage({
       sb
         .from("garden_suggestions")
         .select(
-          "id, branch_id, student_id, student_name_snapshot, is_anonymous, category, title, body, status, reply, replied_at, created_at, updated_at",
+          "id, branch_id, student_id, student_name_snapshot, is_anonymous, visibility, category, title, body, status, reply, replied_at, created_at, updated_at",
         )
         .eq("branch_id", branchId)
         .order("created_at", { ascending: false })
@@ -111,6 +111,7 @@ export default async function AdminSuggestPreviewPage({
     id: s.id,
     is_mine: false,
     is_anonymous: !!s.is_anonymous,
+    visibility: s.visibility ?? "public",
     student_name_snapshot: s.student_name_snapshot,
     category: s.category,
     title: s.title,

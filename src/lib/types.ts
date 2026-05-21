@@ -389,6 +389,8 @@ export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requir
 // 건의함 (Suggestion Mailbox)
 export type SuggestionCategory = "praise" | "suggestion" | "complaint" | "etc";
 export type SuggestionStatus = "received" | "reviewing" | "done";
+// public: 다른 학생도 본문을 볼 수 있음. private: 관리자에게만 본문 노출 (다른 학생은 접힌 종이만).
+export type SuggestionVisibility = "public" | "private";
 
 export const SUGGESTION_CATEGORY_LABELS: Record<SuggestionCategory, string> = {
   praise: "칭찬",
@@ -413,6 +415,7 @@ export type GardenSuggestion = {
   student_id: string | null;
   student_name_snapshot: string;
   is_anonymous: boolean;
+  visibility: SuggestionVisibility;
   category: SuggestionCategory;
   title: string;
   body: string;

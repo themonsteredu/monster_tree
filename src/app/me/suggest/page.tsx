@@ -35,7 +35,7 @@ export default async function SuggestPage() {
     sbSvc
       .from("garden_suggestions")
       .select(
-        "id, branch_id, student_id, student_name_snapshot, is_anonymous, category, title, body, status, reply, replied_at, created_at, updated_at",
+        "id, branch_id, student_id, student_name_snapshot, is_anonymous, visibility, category, title, body, status, reply, replied_at, created_at, updated_at",
       )
       .eq("branch_id", payload!.branchId)
       .order("created_at", { ascending: false })
@@ -54,35 +54,23 @@ export default async function SuggestPage() {
   const suggestions: SuggestionView[] = ((rows ?? []) as GardenSuggestion[]).map(
     (s) => {
       const isMine = !!studentId && s.student_id === studentId;
-      // 남의 글이면 본문/답장/이름을 서버에서 아예 비워 보낸다 (privacy).
-      // 학생 화면에서는 "쪽지 도착" 사실 + 카테고리 + 날짜만 보이게 된다.
-      if (!isMine) {
-        return {
-          id: s.id,
-          is_mine: false,
-          is_anonymous: !!s.is_anonymous,
-          student_name_snapshot: "",
-          category: s.category,
-          title: "",
-          body: "",
-          status: s.status,
-          reply: null,
-          replied_at: null,
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-        };
-      }
+      const visibility = s.visibility ?? "public";
+      // 비공개 글 + 남의 글이면 본문/답장/이름을 서버에서 아예 비워서 전달 (privacy).
+      // 공개 글은 익명 처리만 하고 본문은 노출 (다른 학생도 읽을 수 있음).
+      const hideContent = !isMine && visibility === "private";
+      const maskName = !isMine && s.is_anonymous;
       return {
         id: s.id,
-        is_mine: true,
+        is_mine: isMine,
         is_anonymous: !!s.is_anonymous,
-        student_name_snapshot: s.student_name_snapshot,
+        visibility,
+        student_name_snapshot: hideContent || maskName ? "" : s.student_name_snapshot,
         category: s.category,
-        title: s.title,
-        body: s.body,
+        title: hideContent ? "" : s.title,
+        body: hideContent ? "" : s.body,
         status: s.status,
-        reply: s.reply,
-        replied_at: s.replied_at,
+        reply: hideContent ? null : s.reply,
+        replied_at: hideContent ? null : s.replied_at,
         created_at: s.created_at,
         updated_at: s.updated_at,
       };

@@ -17,6 +17,7 @@ import {
   type SuggestionBlock,
   type SuggestionCategory,
   type SuggestionStatus,
+  type SuggestionVisibility,
 } from "@/lib/types";
 import {
   deleteSuggestionAction,
@@ -35,6 +36,8 @@ export type SuggestionView = {
   id: string;
   is_mine: boolean;
   is_anonymous: boolean;
+  // 'public' (다른 학생도 본문 볼 수 있음) / 'private' (관리자만).
+  visibility: SuggestionVisibility;
   // 학생 모드: 익명 + 남의 글이면 빈 문자열로 마스킹.
   // admin 모드: 항상 실제 작성자 이름.
   student_name_snapshot: string;
@@ -117,6 +120,8 @@ export function SuggestClient({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
+  // 공개 여부 — 기본은 public (다른 친구들도 보임). off → private (선생님만).
+  const [isPublic, setIsPublic] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -127,6 +132,7 @@ export function SuggestClient({
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editAnon, setEditAnon] = useState(false);
+  const [editPublic, setEditPublic] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
 
   // 펼친 쪽지 id 집합. 기본은 모두 접힌 상태.
@@ -186,6 +192,7 @@ export function SuggestClient({
         title: title.trim(),
         body: body.trim(),
         isAnonymous,
+        visibility: isPublic ? "public" : "private",
       });
       if (!res.ok) {
         setError(res.message);
@@ -204,6 +211,7 @@ export function SuggestClient({
     setEditTitle(s.title);
     setEditBody(s.body);
     setEditAnon(s.is_anonymous);
+    setEditPublic(s.visibility !== "private");
     setEditError(null);
   };
 
@@ -229,6 +237,7 @@ export function SuggestClient({
         title: editTitle.trim(),
         body: editBody.trim(),
         isAnonymous: editAnon,
+        visibility: editPublic ? "public" : "private",
       });
       if (!res.ok) {
         setEditError(res.message);
@@ -357,7 +366,7 @@ export function SuggestClient({
       }}
     >
       <header className="sticky top-0 z-30 bg-white/70 backdrop-blur border-b border-amber-200/50">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link
             href={adminMode ? "/admin" : "/me/village"}
             className="shrink-0 text-sm text-amber-900 hover:text-amber-700 hover:bg-amber-100/70 rounded-lg px-3 py-1.5 transition"
@@ -391,7 +400,7 @@ export function SuggestClient({
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto px-3 sm:px-6 py-6">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-6">
         <div
           className="rounded-2xl p-3 sm:p-4 shadow-2xl"
           style={{
@@ -576,15 +585,64 @@ export function SuggestClient({
                     </div>
                   </div>
 
+                  {/* 공개 / 비공개 토글 */}
+                  <div className="mb-3 rounded-md bg-white/60 p-2.5 border border-amber-900/15">
+                    <div
+                      className="text-xs font-bold text-amber-900 mb-2"
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                    >
+                      누가 볼 수 있어요?
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setIsPublic(true)}
+                        className={`flex-1 px-3 py-2 rounded-md text-sm border-2 transition ${
+                          isPublic
+                            ? "bg-amber-200 text-amber-900 border-amber-700 font-bold"
+                            : "bg-white/70 text-amber-900/60 border-amber-900/15"
+                        } disabled:opacity-50`}
+                        style={{ fontFamily: "'Gaegu',cursive" }}
+                      >
+                        👀 친구들도 보기
+                      </button>
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setIsPublic(false)}
+                        className={`flex-1 px-3 py-2 rounded-md text-sm border-2 transition ${
+                          !isPublic
+                            ? "bg-rose-200 text-rose-900 border-rose-700 font-bold"
+                            : "bg-white/70 text-amber-900/60 border-amber-900/15"
+                        } disabled:opacity-50`}
+                        style={{ fontFamily: "'Gaegu',cursive" }}
+                      >
+                        🔒 선생님만 (비밀)
+                      </button>
+                    </div>
+                    <div
+                      className="text-[11px] text-amber-900/70 mt-1.5"
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                    >
+                      {isPublic
+                        ? "친구들이 펼친 쪽지로 같이 볼 수 있어요."
+                        : "다른 친구들은 접힌 쪽지만 보여요. 선생님만 펼쳐서 봐요."}
+                    </div>
+                  </div>
+
                   <label className="flex items-center gap-2 text-sm text-amber-900 mb-4 select-none">
                     <input
                       type="checkbox"
                       checked={isAnonymous}
-                      disabled={disabled}
+                      disabled={disabled || !isPublic}
                       onChange={(e) => setIsAnonymous(e.target.checked)}
                       className="rounded border-amber-700/40 disabled:opacity-50"
                     />
-                    <span style={{ fontFamily: "'Gaegu',cursive" }}>
+                    <span
+                      style={{ fontFamily: "'Gaegu',cursive" }}
+                      className={!isPublic ? "opacity-50" : ""}
+                    >
                       익명으로 붙이기 (이름이 가려져요)
                     </span>
                   </label>
@@ -635,8 +693,15 @@ export function SuggestClient({
                     : "아직 붙인 쪽지가 없어요. 첫 번째로 붙여보세요!"}
                 </div>
               ) : (
-                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
+                <ul
+                  className={`grid ${
+                    suggestions.length > 30
+                      ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3"
+                      : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5"
+                  }`}
+                >
                   {suggestions.map((s, i) => {
+                    const isDense = suggestions.length > 30;
                     const col = POSTIT_COLORS[s.category];
                     const wasEdited =
                       new Date(s.updated_at).getTime() -
@@ -658,119 +723,164 @@ export function SuggestClient({
                         : s.is_mine
                           ? `${s.student_name_snapshot} (나)`
                           : s.student_name_snapshot;
-                    // 본인 글이거나 관리자만 펼칠 수 있음. 다른 학생 글은 영구 접힘 상태.
+                    // 공개 글은 항상 펼쳐서 표시. 비밀 글은 접힌 종이로 표시하고
+                    // 본인 또는 관리자만 탭해서 펼칠 수 있다.
+                    const isPublicPost = s.visibility !== "private";
                     const canOpen = s.is_mine || adminMode;
-                    const expanded = canOpen && isExpanded(s.id);
+                    const expanded = isPublicPost || (canOpen && isExpanded(s.id));
+                    // dense 모드에서는 카드가 살짝 겹치고 hover/펼침 시 위로.
+                    const denseClass = isDense
+                      ? "scale-[0.9] -my-1 hover:z-30 focus-within:z-30"
+                      : "";
 
                     return (
                       <li
                         key={s.id}
-                        className="relative"
-                        style={{ fontFamily: "'Gaegu','Nanum Pen Script',cursive" }}
+                        className={`relative ${denseClass}`}
+                        style={{
+                          fontFamily: "'Gaegu','Nanum Pen Script',cursive",
+                          zIndex: isDense ? (suggestions.length - i) : undefined,
+                        }}
                       >
                         {!expanded ? (
-                          // === 접힌 종이 카드 ===
+                          // === 접힌 종이 카드 (private) ===
+                          // 실제 반으로 접힌 종이 느낌: 위/아래 색조가 다르고
+                          // 가운데 fold line 에 그림자, 우측하단 모서리 peel.
                           <button
                             type="button"
                             onClick={
                               canOpen ? () => toggleExpand(s.id) : undefined
                             }
                             disabled={!canOpen}
-                            className={`relative w-full text-left ${tiltFor(i + 1)} ${col.bg} ${col.text} rounded-sm p-3 shadow-lg overflow-hidden ${
+                            className={`relative w-full text-left ${tiltFor(i + 1)} rounded-sm shadow-lg overflow-hidden ${
                               canOpen
                                 ? "cursor-pointer hover:brightness-105 transition"
                                 : "cursor-default"
                             } ${s.is_mine ? "ring-2 ring-amber-700/40" : ""}`}
                             style={{
                               boxShadow:
-                                "0 8px 20px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
-                              minHeight: "150px",
-                              // 가로 접힘 선 (가운데)
-                              backgroundImage:
-                                "linear-gradient(180deg, transparent 0%, transparent 49.5%, rgba(0,0,0,0.12) 50%, transparent 50.5%, transparent 100%)",
+                                "0 10px 22px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.2)",
+                              minHeight: isDense ? "120px" : "170px",
                             }}
                           >
+                            {/* 위 절반 — 종이 앞면 (밝음) */}
                             <div
-                              className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md"
+                              className={`absolute top-0 left-0 right-0 ${col.bg}`}
+                              style={{ height: "50%" }}
+                            />
+                            {/* 아래 절반 — 접혀서 살짝 어두운 톤 */}
+                            <div
+                              className={`absolute bottom-0 left-0 right-0 ${col.bg}`}
+                              style={{
+                                height: "50%",
+                                filter: "brightness(0.85) saturate(1.1)",
+                              }}
+                            />
+                            {/* 가운데 fold line — 진한 그림자로 접힌 느낌 */}
+                            <div
+                              className="absolute left-0 right-0"
+                              style={{
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                height: "8px",
+                                background:
+                                  "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.18) 30%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.18) 70%, transparent 100%)",
+                                pointerEvents: "none",
+                              }}
+                            />
+                            {/* fold line 위쪽에 살짝 하이라이트 (종이 윗부분의 입체감) */}
+                            <div
+                              className="absolute left-0 right-0"
+                              style={{
+                                top: "calc(50% - 3px)",
+                                height: "1px",
+                                background: "rgba(255,255,255,0.4)",
+                                pointerEvents: "none",
+                              }}
+                            />
+
+                            {/* 압정 */}
+                            <div
+                              className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md z-10"
                               style={{
                                 boxShadow:
                                   "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
                               }}
                             />
-                            {/* 우측 하단 종이 접힘 */}
+
+                            {/* 우측 하단 종이 모서리 peel */}
                             <div
-                              className="absolute bottom-0 right-0"
+                              className="absolute bottom-0 right-0 pointer-events-none"
                               style={{
                                 width: 0,
                                 height: 0,
                                 borderStyle: "solid",
                                 borderWidth: "0 0 22px 22px",
                                 borderColor:
-                                  "transparent transparent rgba(0,0,0,0.2) transparent",
+                                  "transparent transparent rgba(0,0,0,0.25) transparent",
                               }}
                             />
                             <div
-                              className="absolute bottom-0 right-0"
+                              className="absolute bottom-0 right-0 pointer-events-none"
                               style={{
                                 width: 0,
                                 height: 0,
                                 borderStyle: "solid",
                                 borderWidth: "0 0 18px 18px",
                                 borderColor:
-                                  "transparent transparent rgba(255,255,255,0.55) transparent",
+                                  "transparent transparent rgba(255,255,255,0.6) transparent",
                               }}
                             />
 
-                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                              <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/70 font-bold">
-                                {SUGGESTION_CATEGORY_LABELS[s.category]}
-                              </span>
-                              {canOpen && (
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${STATUS_COLORS[s.status]}`}
-                                >
-                                  {SUGGESTION_STATUS_LABELS[s.status]}
+                            {/* 내용 — 위쪽 영역에만 배치 (접힌 종이 윗면 느낌) */}
+                            <div className={`relative ${col.text} px-3 pt-3 pb-1`}>
+                              <div className="flex flex-wrap items-center gap-1 mb-1">
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/70 font-bold">
+                                  {SUGGESTION_CATEGORY_LABELS[s.category]}
                                 </span>
-                              )}
-                              {adminMode && (
-                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/60">
-                                  ✍ {authorLabel}
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-700 text-white font-bold">
+                                  🔒 비밀
                                 </span>
-                              )}
-                              {adminMode && studentBlocked && (
-                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-700 text-white font-bold">
-                                  차단됨
-                                </span>
+                                {adminMode && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/60">
+                                    ✍ {authorLabel}
+                                  </span>
+                                )}
+                                {adminMode && studentBlocked && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-700 text-white font-bold">
+                                    차단됨
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-2xl text-center mt-1">✉️</div>
+                              {canOpen ? (
+                                <div className="text-sm sm:text-base font-extrabold text-center leading-snug line-clamp-1 px-1 mt-0.5">
+                                  {s.title || "비밀 쪽지"}
+                                </div>
+                              ) : (
+                                <div className="text-sm font-bold text-center leading-snug mt-0.5">
+                                  비밀 쪽지가 도착했어요
+                                </div>
                               )}
                             </div>
 
-                            <div className="text-center mt-1 mb-1">
-                              <div className="text-3xl">✉️</div>
+                            {/* 아래쪽 영역 — 접힌 부분 (간단한 메타만) */}
+                            <div
+                              className={`absolute bottom-0 left-0 right-0 ${col.text} px-3 pb-2 pt-1`}
+                            >
+                              <div className="text-[10px] text-center opacity-70">
+                                {formatDate(s.created_at)}
+                              </div>
+                              {canOpen ? (
+                                <div className="text-[10px] text-center opacity-90 mt-0.5 font-bold">
+                                  ✦ 탭하여 펼치기 ✦
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-center opacity-60 mt-0.5 italic">
+                                  선생님만 볼 수 있어요 🔒
+                                </div>
+                              )}
                             </div>
-
-                            {canOpen ? (
-                              <div className="text-base sm:text-lg font-extrabold text-center leading-snug break-words line-clamp-2 px-2">
-                                {s.title || "쪽지"}
-                              </div>
-                            ) : (
-                              <div className="text-base font-bold text-center leading-snug opacity-90">
-                                건의가 도착했어요
-                              </div>
-                            )}
-
-                            <div className="text-[11px] text-center opacity-70 mt-2">
-                              {formatDate(s.created_at)}
-                            </div>
-
-                            {canOpen ? (
-                              <div className="text-[11px] text-center opacity-80 mt-2 font-bold">
-                                ✦ 탭하여 펼치기 ✦
-                              </div>
-                            ) : (
-                              <div className="text-[11px] text-center opacity-60 mt-2 italic">
-                                내용은 본인만 볼 수 있어요 🔒
-                              </div>
-                            )}
                           </button>
                         ) : (
                           // === 펼친 상태 (원래 포스트잇) ===
@@ -805,6 +915,11 @@ export function SuggestClient({
                               <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/60">
                                 ✍ {authorLabel}
                               </span>
+                              {!isPublicPost && (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-700 text-white font-bold">
+                                  🔒 비밀
+                                </span>
+                              )}
                               {wasEdited && (
                                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/50 opacity-80">
                                   수정됨
@@ -1040,15 +1155,46 @@ export function SuggestClient({
                               }}
                               placeholder="내용"
                             />
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                disabled={disabledEdit}
+                                onClick={() => setEditPublic(true)}
+                                className={`flex-1 px-2 py-1 rounded text-xs border ${
+                                  editPublic
+                                    ? "bg-amber-200 text-amber-900 border-amber-700 font-bold"
+                                    : "bg-white/60 text-amber-900/60 border-amber-900/20"
+                                }`}
+                                style={{ fontFamily: "'Gaegu',cursive" }}
+                              >
+                                👀 친구들도
+                              </button>
+                              <button
+                                type="button"
+                                disabled={disabledEdit}
+                                onClick={() => setEditPublic(false)}
+                                className={`flex-1 px-2 py-1 rounded text-xs border ${
+                                  !editPublic
+                                    ? "bg-rose-200 text-rose-900 border-rose-700 font-bold"
+                                    : "bg-white/60 text-amber-900/60 border-amber-900/20"
+                                }`}
+                                style={{ fontFamily: "'Gaegu',cursive" }}
+                              >
+                                🔒 비밀
+                              </button>
+                            </div>
                             <label className="flex items-center gap-2 text-xs">
                               <input
                                 type="checkbox"
                                 checked={editAnon}
-                                disabled={disabledEdit}
+                                disabled={disabledEdit || !editPublic}
                                 onChange={(e) => setEditAnon(e.target.checked)}
                                 className="rounded"
                               />
-                              <span style={{ fontFamily: "'Gaegu',cursive" }}>
+                              <span
+                                className={!editPublic ? "opacity-50" : ""}
+                                style={{ fontFamily: "'Gaegu',cursive" }}
+                              >
                                 익명
                               </span>
                             </label>
@@ -1080,14 +1226,17 @@ export function SuggestClient({
                           </div>
                         )}
 
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(s.id)}
-                              className="mt-3 w-full py-1.5 rounded-md bg-white/60 hover:bg-white/80 text-amber-900 text-xs font-bold border border-amber-900/20 transition"
-                              style={{ fontFamily: "'Gaegu',cursive" }}
-                            >
-                              ↑ 접기
-                            </button>
+                            {/* 접기 버튼은 비밀 글에만 노출 (공개 글은 항상 펼쳐짐) */}
+                            {!isPublicPost && canOpen && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(s.id)}
+                                className="mt-3 w-full py-1.5 rounded-md bg-white/60 hover:bg-white/80 text-amber-900 text-xs font-bold border border-amber-900/20 transition"
+                                style={{ fontFamily: "'Gaegu',cursive" }}
+                              >
+                                ↑ 접어두기
+                              </button>
+                            )}
                           </div>
                         )}
                       </li>

@@ -15,6 +15,7 @@ import {
   SUGGESTION_BODY_MAX,
   SUGGESTION_TITLE_MAX,
   type SuggestionCategory,
+  type SuggestionVisibility,
 } from "@/lib/types";
 
 const ALLOWED_CATEGORIES: SuggestionCategory[] = [
@@ -23,6 +24,14 @@ const ALLOWED_CATEGORIES: SuggestionCategory[] = [
   "complaint",
   "etc",
 ];
+
+const ALLOWED_VISIBILITY: SuggestionVisibility[] = ["public", "private"];
+
+function normalizeVisibility(v: unknown): SuggestionVisibility {
+  return ALLOWED_VISIBILITY.includes(v as SuggestionVisibility)
+    ? (v as SuggestionVisibility)
+    : "public";
+}
 
 export type SubmitResult =
   | { ok: true }
@@ -106,6 +115,7 @@ export async function submitSuggestionAction(input: {
   title: string;
   body: string;
   isAnonymous: boolean;
+  visibility?: string;
 }): Promise<SubmitResult> {
   const me = await resolveCurrentStudent();
   if (!me) return { ok: false, message: "로그인이 필요해요." };
@@ -121,6 +131,7 @@ export async function submitSuggestionAction(input: {
     student_id: me.student.id,
     student_name_snapshot: me.payload.name,
     is_anonymous: !!input.isAnonymous,
+    visibility: normalizeVisibility(input.visibility),
     category: valid.category,
     title: valid.title,
     body: valid.body,
@@ -140,6 +151,7 @@ export async function editSuggestionAction(input: {
   title: string;
   body: string;
   isAnonymous: boolean;
+  visibility?: string;
 }): Promise<SubmitResult> {
   const me = await resolveCurrentStudent();
   if (!me) return { ok: false, message: "로그인이 필요해요." };
@@ -173,6 +185,7 @@ export async function editSuggestionAction(input: {
       title: valid.title,
       body: valid.body,
       is_anonymous: !!input.isAnonymous,
+      visibility: normalizeVisibility(input.visibility),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
