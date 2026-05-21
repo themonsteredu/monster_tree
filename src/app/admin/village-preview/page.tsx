@@ -84,12 +84,19 @@ export default async function AdminVillagePreviewPage({
         totalPoints={0}
         previewMode
         previewLinkOverrides={{
-          // 우체통: 학생 건의함 화면을 그대로 보여주는 admin 미리보기로 이동.
-          // 거기서 우측 하단 floating 버튼으로 /admin/suggest 관리 페이지로 점프.
+          // 우체통: 학생 건의함 미리보기 → 우상단 '관리 페이지' 버튼으로 /admin/suggest 점프.
           mailbox: branchId
             ? `/admin/suggest-preview?branch=${encodeURIComponent(branchId)}`
             : "/admin/suggest-preview",
-          // quiz / shop / game 은 admin 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
+          // 퀴즈센터: 학생 퀴즈 미리보기 (스텁) → '관리 페이지' 버튼으로 /admin/quiz-center 점프.
+          quiz: branchId
+            ? `/admin/quiz-center-preview?branch=${encodeURIComponent(branchId)}`
+            : "/admin/quiz-center-preview",
+          // 게임센터: 학생 게임 미리보기 (스텁) → '관리 페이지' 버튼으로 /admin/game-center 점프.
+          game: branchId
+            ? `/admin/game-center-preview?branch=${encodeURIComponent(branchId)}`
+            : "/admin/game-center-preview",
+          // 상점(shop) 은 admin 미리보기 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
         }}
       />
     </div>
