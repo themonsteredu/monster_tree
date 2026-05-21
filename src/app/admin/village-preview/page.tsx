@@ -64,7 +64,7 @@ export default async function AdminVillagePreviewPage({
               관리자 미리보기
             </span>
             <span className="text-amber-800 truncate">
-              학생 화면과 동일하게 보이지만, 건물 클릭으로는 이동하지 않을 수 있어요
+              건물을 클릭하면 학생 화면 대신 관리자 페이지로 이동해요
               {branchName ? ` · ${branchName}` : ""}
             </span>
           </div>
@@ -82,6 +82,12 @@ export default async function AdminVillagePreviewPage({
         buildings={buildings}
         studentName="관리자"
         totalPoints={0}
+        previewMode
+        previewLinkOverrides={{
+          // 학생 라우트 대신 admin 관리 라우트로 이동.
+          mailbox: "/admin/suggest",
+          // quiz / shop / game 은 admin 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
+        }}
       />
     </div>
   );
