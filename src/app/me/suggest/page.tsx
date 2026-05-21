@@ -54,12 +54,29 @@ export default async function SuggestPage() {
   const suggestions: SuggestionView[] = ((rows ?? []) as GardenSuggestion[]).map(
     (s) => {
       const isMine = !!studentId && s.student_id === studentId;
+      // 남의 글이면 본문/답장/이름을 서버에서 아예 비워 보낸다 (privacy).
+      // 학생 화면에서는 "쪽지 도착" 사실 + 카테고리 + 날짜만 보이게 된다.
+      if (!isMine) {
+        return {
+          id: s.id,
+          is_mine: false,
+          is_anonymous: !!s.is_anonymous,
+          student_name_snapshot: "",
+          category: s.category,
+          title: "",
+          body: "",
+          status: s.status,
+          reply: null,
+          replied_at: null,
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+        };
+      }
       return {
         id: s.id,
-        is_mine: isMine,
+        is_mine: true,
         is_anonymous: !!s.is_anonymous,
-        student_name_snapshot:
-          s.is_anonymous && !isMine ? "" : s.student_name_snapshot,
+        student_name_snapshot: s.student_name_snapshot,
         category: s.category,
         title: s.title,
         body: s.body,

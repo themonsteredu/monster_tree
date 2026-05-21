@@ -129,6 +129,18 @@ export function SuggestClient({
   const [editAnon, setEditAnon] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // 펼친 쪽지 id 집합. 기본은 모두 접힌 상태.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const isExpanded = (id: string) => expandedIds.has(id);
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // adminMode 답장 입력 (id → draft)
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   // adminMode 차단 모달
@@ -646,28 +658,140 @@ export function SuggestClient({
                         : s.is_mine
                           ? `${s.student_name_snapshot} (나)`
                           : s.student_name_snapshot;
+                    // 본인 글이거나 관리자만 펼칠 수 있음. 다른 학생 글은 영구 접힘 상태.
+                    const canOpen = s.is_mine || adminMode;
+                    const expanded = canOpen && isExpanded(s.id);
 
                     return (
                       <li
                         key={s.id}
-                        className={`relative ${isEditing ? "rotate-0" : tiltFor(i + 1)} ${col.bg} ${col.text} rounded-sm p-4 shadow-xl ${
-                          s.is_mine ? "ring-2 ring-amber-700/40" : ""
-                        }`}
-                        style={{
-                          boxShadow:
-                            "0 8px 20px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
-                          fontFamily: "'Gaegu','Nanum Pen Script',cursive",
-                        }}
+                        className="relative"
+                        style={{ fontFamily: "'Gaegu','Nanum Pen Script',cursive" }}
                       >
-                        <div
-                          className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md"
-                          style={{
-                            boxShadow:
-                              "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
-                          }}
-                        />
+                        {!expanded ? (
+                          // === 접힌 종이 카드 ===
+                          <button
+                            type="button"
+                            onClick={
+                              canOpen ? () => toggleExpand(s.id) : undefined
+                            }
+                            disabled={!canOpen}
+                            className={`relative w-full text-left ${tiltFor(i + 1)} ${col.bg} ${col.text} rounded-sm p-3 shadow-lg overflow-hidden ${
+                              canOpen
+                                ? "cursor-pointer hover:brightness-105 transition"
+                                : "cursor-default"
+                            } ${s.is_mine ? "ring-2 ring-amber-700/40" : ""}`}
+                            style={{
+                              boxShadow:
+                                "0 8px 20px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
+                              minHeight: "150px",
+                              // 가로 접힘 선 (가운데)
+                              backgroundImage:
+                                "linear-gradient(180deg, transparent 0%, transparent 49.5%, rgba(0,0,0,0.12) 50%, transparent 50.5%, transparent 100%)",
+                            }}
+                          >
+                            <div
+                              className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md"
+                              style={{
+                                boxShadow:
+                                  "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
+                              }}
+                            />
+                            {/* 우측 하단 종이 접힘 */}
+                            <div
+                              className="absolute bottom-0 right-0"
+                              style={{
+                                width: 0,
+                                height: 0,
+                                borderStyle: "solid",
+                                borderWidth: "0 0 22px 22px",
+                                borderColor:
+                                  "transparent transparent rgba(0,0,0,0.2) transparent",
+                              }}
+                            />
+                            <div
+                              className="absolute bottom-0 right-0"
+                              style={{
+                                width: 0,
+                                height: 0,
+                                borderStyle: "solid",
+                                borderWidth: "0 0 18px 18px",
+                                borderColor:
+                                  "transparent transparent rgba(255,255,255,0.55) transparent",
+                              }}
+                            />
 
-                        {!isEditing && (
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                              <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/70 font-bold">
+                                {SUGGESTION_CATEGORY_LABELS[s.category]}
+                              </span>
+                              {canOpen && (
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${STATUS_COLORS[s.status]}`}
+                                >
+                                  {SUGGESTION_STATUS_LABELS[s.status]}
+                                </span>
+                              )}
+                              {adminMode && (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/60">
+                                  ✍ {authorLabel}
+                                </span>
+                              )}
+                              {adminMode && studentBlocked && (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-700 text-white font-bold">
+                                  차단됨
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-center mt-1 mb-1">
+                              <div className="text-3xl">✉️</div>
+                            </div>
+
+                            {canOpen ? (
+                              <div className="text-base sm:text-lg font-extrabold text-center leading-snug break-words line-clamp-2 px-2">
+                                {s.title || "쪽지"}
+                              </div>
+                            ) : (
+                              <div className="text-base font-bold text-center leading-snug opacity-90">
+                                건의가 도착했어요
+                              </div>
+                            )}
+
+                            <div className="text-[11px] text-center opacity-70 mt-2">
+                              {formatDate(s.created_at)}
+                            </div>
+
+                            {canOpen ? (
+                              <div className="text-[11px] text-center opacity-80 mt-2 font-bold">
+                                ✦ 탭하여 펼치기 ✦
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-center opacity-60 mt-2 italic">
+                                내용은 본인만 볼 수 있어요 🔒
+                              </div>
+                            )}
+                          </button>
+                        ) : (
+                          // === 펼친 상태 (원래 포스트잇) ===
+                          <div
+                            className={`relative ${isEditing ? "rotate-0" : tiltFor(i + 1)} ${col.bg} ${col.text} rounded-sm p-4 shadow-xl ${
+                              s.is_mine ? "ring-2 ring-amber-700/40" : ""
+                            }`}
+                            style={{
+                              boxShadow:
+                                "0 8px 20px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
+                            }}
+                          >
+                            <div
+                              className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-red-500 shadow-md"
+                              style={{
+                                boxShadow:
+                                  "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
+                              }}
+                            />
+
+                            {!isEditing && (
                           <>
                             <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                               <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/70 font-bold">
@@ -953,6 +1077,17 @@ export function SuggestClient({
                                 취소
                               </button>
                             </div>
+                          </div>
+                        )}
+
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(s.id)}
+                              className="mt-3 w-full py-1.5 rounded-md bg-white/60 hover:bg-white/80 text-amber-900 text-xs font-bold border border-amber-900/20 transition"
+                              style={{ fontFamily: "'Gaegu',cursive" }}
+                            >
+                              ↑ 접기
+                            </button>
                           </div>
                         )}
                       </li>
