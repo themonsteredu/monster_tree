@@ -45,6 +45,13 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css"
         />
+        {/* 손글씨 느낌 폰트 — 학생 건의함 칠판/포스트잇용 */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Pen+Script&display=swap"
+        />
         {/* iOS / 안드로이드 홈화면 아이콘 — basePath 포함 명시 */}
         <link rel="apple-touch-icon" href="/tree/icons/monster-symbol.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/tree/icons/monster-symbol.png" />

@@ -385,3 +385,53 @@ export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requir
   { stage: 4, name: "성체", requiredExp: 300 },
   { stage: 5, name: "최종 진화", requiredExp: 500 },
 ];
+
+// 건의함 (Suggestion Mailbox)
+export type SuggestionCategory = "praise" | "suggestion" | "complaint" | "etc";
+export type SuggestionStatus = "received" | "reviewing" | "done";
+// public: 다른 학생도 본문을 볼 수 있음. private: 관리자에게만 본문 노출 (다른 학생은 접힌 종이만).
+export type SuggestionVisibility = "public" | "private";
+
+export const SUGGESTION_CATEGORY_LABELS: Record<SuggestionCategory, string> = {
+  praise: "칭찬",
+  suggestion: "건의",
+  complaint: "불편",
+  etc: "기타",
+};
+
+export const SUGGESTION_STATUS_LABELS: Record<SuggestionStatus, string> = {
+  received: "접수",
+  reviewing: "검토중",
+  done: "완료",
+};
+
+export const SUGGESTION_TITLE_MAX = 60;
+export const SUGGESTION_BODY_MAX = 1000;
+export const SUGGESTION_REPLY_MAX = 1000;
+
+export type GardenSuggestion = {
+  id: string;
+  branch_id: string;
+  student_id: string | null;
+  student_name_snapshot: string;
+  is_anonymous: boolean;
+  visibility: SuggestionVisibility;
+  category: SuggestionCategory;
+  title: string;
+  body: string;
+  status: SuggestionStatus;
+  reply: string | null;
+  replied_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SuggestionBlock = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  reason: string | null;
+  blocked_at: string;
+  blocked_until: string | null;
+  blocked_by: string | null;
+};

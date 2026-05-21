@@ -4,6 +4,7 @@
 // 초기 데이터는 서버에서 SSR 으로 주입하고,
 // 이후 useStudentRealtime 훅으로 점수/단계/사과/대기열 변화를 반영한다.
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
@@ -899,13 +900,13 @@ export function MeTreeClient({
         )}
 
         <div className="mt-4 text-center">
-          <a
-            href="/tree/me/village"
+          <Link
+            href="/me/village"
             className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
             style={{ fontSize: 13, fontWeight: 500 }}
           >
             🏘️ 몬스터 마을로
-          </a>
+          </Link>
         </div>
       </div>
 

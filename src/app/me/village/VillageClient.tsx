@@ -15,12 +15,23 @@ type Props = {
   buildings: VillageBuilding[];
   studentName: string;
   totalPoints: number;
+  // 관리자 미리보기 모드: 학생 라우트 대신 building_key → admin 라우트로 매핑.
+  // 매핑이 없는 건물은 안내 토스트만 띄움.
+  previewMode?: boolean;
+  previewLinkOverrides?: Record<string, string>;
 };
 
 // 마우스 leave 후 hover 해제 / 터치 종료 후 자동 닫힘 시간.
 const TOUCH_TIP_LINGER_MS = 1600;
 
-export function VillageClient({ settings, buildings, studentName, totalPoints }: Props) {
+export function VillageClient({
+  settings,
+  buildings,
+  studentName,
+  totalPoints,
+  previewMode = false,
+  previewLinkOverrides,
+}: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(true);
@@ -79,6 +90,17 @@ export function VillageClient({ settings, buildings, studentName, totalPoints }:
   };
 
   const onBuildingClick = (b: VillageBuilding) => {
+    if (previewMode) {
+      const adminLink = previewLinkOverrides?.[b.building_key];
+      if (adminLink) {
+        router.push(adminLink);
+        return;
+      }
+      setToast(
+        `${b.name} — 관리자 미리보기에서는 학생 화면으로 이동하지 않아요`,
+      );
+      return;
+    }
     if (b.is_ready) {
       router.push(b.link);
       return;
