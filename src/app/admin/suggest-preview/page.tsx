@@ -48,7 +48,7 @@ export default async function AdminSuggestPreviewPage({
       </div>
       <SuggestClient
         studentName={displayName}
-        mySuggestions={[]}
+        suggestions={[]}
         activeBlock={null}
         previewMode
         adminLink={adminLink}
