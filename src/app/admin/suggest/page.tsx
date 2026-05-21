@@ -1,8 +1,8 @@
 // /admin/suggest — 관리자용 건의함 관리.
 // 현 지점의 건의글 + 제한된 학생 목록 SSR.
+// branch 는 쿠키 우선, 없으면 ?branch= 쿼리 fallback (cookie path 이슈 우회).
 
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
 import { getMonsterSiteUrl } from "@/lib/monster-site";
@@ -17,7 +17,7 @@ export const revalidate = 0;
 export default async function AdminSuggestPage({
   searchParams,
 }: {
-  searchParams: { key?: string };
+  searchParams: { key?: string; branch?: string };
 }) {
   if (!isAdminAuthenticated(searchParams.key)) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
@@ -31,11 +31,39 @@ export default async function AdminSuggestPage({
     );
   }
 
-  const branchId = getAdminBranchId();
+  // 1) 쿠키 우선, 없으면 쿼리 fallback. 이 우회로 cookie path / basePath
+  //    이슈로 인한 select-branch 무한 redirect 방지.
+  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
   const branchName = getAdminBranchName();
   const monsterUrl = getMonsterSiteUrl();
+
   if (!branchId) {
-    redirect("/admin/select-branch");
+    return (
+      <main className="min-h-screen bg-gray-50 px-4 py-10">
+        <div className="max-w-md mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">
+            지점이 선택되지 않았어요
+          </h1>
+          <p className="text-sm text-gray-500 mb-5">
+            건의함은 지점별로 분리되어 있어요. 먼저 지점을 선택해주세요.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Link
+              href="/admin/select-branch"
+              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium"
+            >
+              지점 선택하기
+            </Link>
+            <Link
+              href="/admin"
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50"
+            >
+              관리 홈
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   const sb = createSupabaseServerAnonClient();

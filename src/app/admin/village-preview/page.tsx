@@ -3,7 +3,6 @@
 // 건의함처럼 is_ready=false 건물 클릭 시 토스트가 뜨는지 등 동작 확인용.
 
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
 import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
 import type { VillageBuilding, VillageSettings } from "@/lib/types";
@@ -17,7 +16,7 @@ export const revalidate = 0;
 export default async function AdminVillagePreviewPage({
   searchParams,
 }: {
-  searchParams: { key?: string };
+  searchParams: { key?: string; branch?: string };
 }) {
   if (!isAdminAuthenticated(searchParams.key)) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
@@ -31,9 +30,10 @@ export default async function AdminVillagePreviewPage({
     );
   }
 
-  const branchId = getAdminBranchId();
+  // village_settings / village_buildings 는 글로벌이라 사실 branchId 없이도 보여줄 수 있다.
+  // 단 미리보기에서 admin 라우트로 이동 시 cookie 가 없을 때를 대비해 ?branch= 로 위임.
+  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
   const branchName = getAdminBranchName();
-  if (!branchId) redirect("/admin/select-branch");
 
   const sb = createSupabaseServerAnonClient();
   const [{ data: settingsRow }, { data: buildingRows }] = await Promise.all([
@@ -85,7 +85,10 @@ export default async function AdminVillagePreviewPage({
         previewMode
         previewLinkOverrides={{
           // 학생 라우트 대신 admin 관리 라우트로 이동.
-          mailbox: "/admin/suggest",
+          // ?branch= 를 명시 전달해 cookie 누락 시에도 정상 동작.
+          mailbox: branchId
+            ? `/admin/suggest?branch=${encodeURIComponent(branchId)}`
+            : "/admin/suggest",
           // quiz / shop / game 은 admin 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
         }}
       />
