@@ -178,6 +178,13 @@ export default async function AdminPage({
               학기리셋
             </Link>
             <Link
+              href="/me/village"
+              target="_blank"
+              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
+            >
+              마을 ↗
+            </Link>
+            <Link
               href={`/?branch=${encodeURIComponent(branchId!)}`}
               target="_blank"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
