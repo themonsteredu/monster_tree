@@ -386,6 +386,43 @@ export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requir
   { stage: 5, name: "최종 진화", requiredExp: 500 },
 ];
 
+// 게임센터 — 한 판 기록.
+export type GamePlay = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  game_type: string;
+  score: number;
+  exp_earned: number;
+  played_at: string;
+};
+
+// 게임센터 — 월간 베스트 (지점/게임/월 단위, student×game×month UNIQUE).
+export type GameRanking = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  game_type: string;
+  best_score: number;
+  month: string; // 'YYYY-MM' (KST)
+  reward_exp: number;
+  rank: number | null;
+  updated_at: string;
+};
+
+// 하루 플레이 횟수 상한 (학생당, 게임당).
+export const DAILY_PLAY_LIMIT = 5;
+
+// 단계별 fallback 이모지 — monster_stage_images.image_url 이 비어있을 때만 사용.
+// 관리자가 이미지를 업로드하면 그쪽이 우선.
+export const STAGE_FALLBACK_EMOJI: Record<number, string> = {
+  1: "🥚",
+  2: "🥚",
+  3: "🐣",
+  4: "🐾",
+  5: "🔥",
+};
+
 // 건의함 (Suggestion Mailbox)
 export type SuggestionCategory = "praise" | "suggestion" | "complaint" | "etc";
 export type SuggestionStatus = "received" | "reviewing" | "done";
