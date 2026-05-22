@@ -4,7 +4,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
-import { getMonsterSiteUrl } from "@/lib/monster-site";
 import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
@@ -57,7 +56,6 @@ export default async function GardenAdminPage({
 
   const branchId = getAdminBranchId();
   const branchName = getAdminBranchName();
-  const monsterUrl = getMonsterSiteUrl();
 
   if (!branchId) {
     redirect("/admin/select-branch");
@@ -102,13 +100,13 @@ export default async function GardenAdminPage({
     <main className="min-h-screen pb-32 bg-gray-50">
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
         <div className="max-w-5xl mx-auto px-4 pt-3 pb-2 flex items-center gap-3">
-          <a
-            href={monsterUrl}
+          <Link
+            href={branchId ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}` : "/admin/village-preview"}
             className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-            aria-label="monster-site 지점 관리자 페이지로"
+            aria-label="몬스터마을 미리보기로"
           >
-            ← 본사
-          </a>
+            ← 몬스터마을
+          </Link>
           <div className="min-w-0 flex items-baseline gap-2">
             <h1 className="text-lg font-semibold text-gray-900 truncate leading-tight">사과정원 관리</h1>
             {branchName && (
@@ -143,12 +141,6 @@ export default async function GardenAdminPage({
               나무이미지
             </Link>
             <Link
-              href="/admin/village"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              마을관리
-            </Link>
-            <Link
               href="/admin/decorations"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >
@@ -167,23 +159,10 @@ export default async function GardenAdminPage({
               몬스터종
             </Link>
             <Link
-              href="/admin/suggest"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              건의함
-            </Link>
-            <Link
               href="/admin/reset"
               className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
             >
               학기리셋
-            </Link>
-            <Link
-              href="/admin/village-preview"
-              target="_blank"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              마을보기 ↗
             </Link>
             <Link
               href={`/?branch=${encodeURIComponent(branchId!)}`}

@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { getAdminBranchId } from "@/lib/branch";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -11,10 +12,15 @@ export const revalidate = 0;
 export default async function QuizCenterPage({
   searchParams,
 }: {
-  searchParams: { key?: string };
+  searchParams: { key?: string; branch?: string };
 }) {
   const authed = isAdminAuthenticated(searchParams.key);
   if (!authed) return <LoginForm initialKey={searchParams.key ?? ""} />;
+
+  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const villageHref = branchId
+    ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}`
+    : "/admin/village-preview";
 
   return (
     <main className="min-h-screen p-6 bg-gray-50">
@@ -22,10 +28,10 @@ export default async function QuizCenterPage({
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-gray-900">🧩 퀴즈센터</h1>
           <Link
-            href="/admin/garden"
+            href={villageHref}
             className="text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
           >
-            ← 사과정원
+            ← 몬스터마을
           </Link>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">

@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { getAdminBranchId } from "@/lib/branch";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
 import { VillageAdminClient } from "./VillageAdminClient";
@@ -14,7 +15,7 @@ export const revalidate = 0;
 export default async function VillageAdminPage({
   searchParams,
 }: {
-  searchParams: { key?: string };
+  searchParams: { key?: string; branch?: string };
 }) {
   if (!isAdminAuthenticated(searchParams.key)) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
@@ -47,15 +48,20 @@ export default async function VillageAdminPage({
   const settings: VillageSettings | null = (settingsRow as VillageSettings | null) ?? null;
   const buildings: VillageBuilding[] = (buildingsRows ?? []) as VillageBuilding[];
 
+  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const villageHref = branchId
+    ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}`
+    : "/admin/village-preview";
+
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
           <Link
-            href="/admin"
+            href={villageHref}
             className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
           >
-            ← 관리
+            ← 몬스터마을
           </Link>
           <h1 className="text-lg font-semibold text-gray-900 truncate">마을 관리</h1>
         </div>
