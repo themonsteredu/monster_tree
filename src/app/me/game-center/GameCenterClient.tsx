@@ -129,16 +129,7 @@ export function GameCenterClient({
             >
               🎮
             </span>
-            <h1
-              className="text-3xl font-extrabold tracking-tight text-white"
-              style={{
-                // 그라데이션 텍스트는 background-clip:text 로 인해 서브픽셀 AA 가
-                // 깨져 흐려진다. 솔리드 컬러 + 다단 text-shadow 로 글로우 표현 →
-                // 텍스트는 선명하게 유지하면서 네온 분위기는 그대로.
-                textShadow:
-                  "0 0 8px rgba(244,114,182,0.75), 0 0 22px rgba(168,85,247,0.55), 0 2px 4px rgba(0,0,0,0.6)",
-              }}
-            >
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">
               게임센터
             </h1>
           </div>
