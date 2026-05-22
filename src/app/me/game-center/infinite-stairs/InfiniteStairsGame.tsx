@@ -22,6 +22,7 @@ import {
   recordInfiniteStairsPlayAction,
   type InfiniteStairsResult,
 } from "../actions";
+import { GameAudio } from "./bgm";
 
 type Side = "L" | "R";
 type Phase = "ready" | "playing" | "over";
@@ -60,16 +61,28 @@ export function InfiniteStairsGame({
   const [result, setResult] = useState<InfiniteStairsResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState<"none" | "good" | "bad">("none");
+  const [climbing, setClimbing] = useState(false);
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const [muted, setMuted] = useState(false);
 
   // 클로저 문제 회피 — 타이머/이벤트 콜백에서 최신값 읽기
   const scoreRef = useRef(0);
   const stairsRef = useRef<Side[]>(stairs);
   const phaseRef = useRef<Phase>(phase);
+  const climbingRef = useRef(false);
+  const comboRef = useRef(0);
+  const maxComboRef = useRef(0);
 
   const timeoutRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const climbAnimRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
   const durationRef = useRef<number>(INITIAL_TIMER_MS);
+  const audioRef = useRef<GameAudio | null>(null);
+  if (audioRef.current === null && typeof window !== "undefined") {
+    audioRef.current = new GameAudio();
+  }
 
   useEffect(() => {
     stairsRef.current = stairs;
@@ -87,11 +100,17 @@ export function InfiniteStairsGame({
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    if (climbAnimRef.current !== null) {
+      window.clearTimeout(climbAnimRef.current);
+      climbAnimRef.current = null;
+    }
   }, []);
 
   const submitResult = useCallback(
     async (finalScore: number) => {
       clearTimers();
+      audioRef.current?.stopBgm();
+      audioRef.current?.sfxGameOver();
       setSubmitting(true);
       try {
         const res = await recordInfiniteStairsPlayAction({
@@ -141,20 +160,29 @@ export function InfiniteStairsGame({
 
   const startGame = useCallback(() => {
     scoreRef.current = 0;
+    comboRef.current = 0;
+    maxComboRef.current = 0;
     setScore(0);
+    setCombo(0);
+    setMaxCombo(0);
     const initial = makeStairs();
     stairsRef.current = initial;
     setStairs(initial);
     setResult(null);
     setFlash("none");
+    setClimbing(false);
+    climbingRef.current = false;
     setPhase("playing");
     phaseRef.current = "playing";
+    // BGM 시작 — startGame 은 사용자 탭 핸들러에서 호출되므로 autoplay 정책 통과.
+    audioRef.current?.startBgm();
     startTurnTimer(INITIAL_TIMER_MS);
   }, [startTurnTimer]);
 
   const handleInput = useCallback(
     (side: Side) => {
       if (phaseRef.current !== "playing") return;
+      if (climbingRef.current) return; // climb 애니메이션 중 입력 잠금
       const expected = stairsRef.current[1];
 
       if (side !== expected) {
@@ -164,23 +192,55 @@ export function InfiniteStairsGame({
         return;
       }
 
-      // 정답
-      const newScore = scoreRef.current + 1;
-      scoreRef.current = newScore;
-      setScore(newScore);
+      // === 정답 처리 ===
+      audioRef.current?.sfxStep();
 
-      const newStairs = [...stairsRef.current.slice(1), randomSide()];
-      stairsRef.current = newStairs;
-      setStairs(newStairs);
+      // 콤보 — 타이머가 50% 이상 남았을 때 탭하면 콤보 증가, 아니면 0 으로 리셋.
+      const elapsed = performance.now() - startedAtRef.current;
+      const remainingRatio =
+        durationRef.current > 0
+          ? 1 - elapsed / durationRef.current
+          : 0;
+      const fast = remainingRatio > 0.5;
+      const newCombo = fast ? comboRef.current + 1 : 0;
+      comboRef.current = newCombo;
+      setCombo(newCombo);
+      if (newCombo > maxComboRef.current) {
+        maxComboRef.current = newCombo;
+        setMaxCombo(newCombo);
+      }
+      if (fast && newCombo >= 3 && newCombo % 3 === 0) {
+        audioRef.current?.sfxCombo(newCombo);
+      }
 
+      // climb 애니메이션 시작 — 100ms 후 큐 시프트
+      climbingRef.current = true;
+      setClimbing(true);
       setFlash("good");
       window.setTimeout(() => setFlash("none"), 90);
 
-      const nextDuration = Math.max(
-        MIN_TIMER_MS,
-        INITIAL_TIMER_MS - newScore * TIMER_STEP_MS,
-      );
-      startTurnTimer(nextDuration);
+      climbAnimRef.current = window.setTimeout(() => {
+        const newScore = scoreRef.current + 1;
+        scoreRef.current = newScore;
+        setScore(newScore);
+
+        const newStairs = [
+          ...stairsRef.current.slice(1),
+          randomSide(),
+        ];
+        stairsRef.current = newStairs;
+        setStairs(newStairs);
+
+        climbingRef.current = false;
+        setClimbing(false);
+
+        const nextDuration = Math.max(
+          MIN_TIMER_MS,
+          INITIAL_TIMER_MS - newScore * TIMER_STEP_MS,
+        );
+        startTurnTimer(nextDuration);
+        climbAnimRef.current = null;
+      }, 110);
     },
     [startTurnTimer, submitResult],
   );
@@ -206,8 +266,20 @@ export function InfiniteStairsGame({
     return () => window.removeEventListener("keydown", onKey);
   }, [handleInput, startGame]);
 
-  // unmount cleanup
-  useEffect(() => clearTimers, [clearTimers]);
+  // unmount cleanup — 타이머 + 오디오 정리
+  useEffect(() => {
+    return () => {
+      clearTimers();
+      audioRef.current?.dispose();
+      audioRef.current = null;
+    };
+  }, [clearTimers]);
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    audioRef.current?.setMuted(next);
+  };
 
   const timerRatio =
     maxTimerMs > 0 ? Math.max(0, Math.min(1, timerMs / maxTimerMs)) : 0;
@@ -262,23 +334,33 @@ export function InfiniteStairsGame({
           >
             ← 나가기
           </Link>
-          <div className="text-right">
-            <div className="text-[11px] uppercase tracking-widest text-white/45">
-              SCORE
-            </div>
-            <motion.div
-              key={score}
-              initial={{ scale: 1.25, color: "#fde68a" }}
-              animate={{ scale: 1, color: "#ffffff" }}
-              transition={{ duration: 0.2 }}
-              className="text-4xl font-extrabold leading-none tracking-tight"
-              style={{
-                textShadow:
-                  "0 2px 8px rgba(0,0,0,0.55), 0 0 14px rgba(244,114,182,0.35)",
-              }}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={muted ? "소리 켜기" : "소리 끄기"}
+              className="rounded-full border border-white/15 bg-black/40 px-2.5 py-1.5 text-base backdrop-blur-sm"
             >
-              {score}
-            </motion.div>
+              {muted ? "🔇" : "🔊"}
+            </button>
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-widest text-white/45">
+                SCORE
+              </div>
+              <motion.div
+                key={score}
+                initial={{ scale: 1.25, color: "#fde68a" }}
+                animate={{ scale: 1, color: "#ffffff" }}
+                transition={{ duration: 0.2 }}
+                className="text-4xl font-extrabold leading-none tracking-tight"
+                style={{
+                  textShadow:
+                    "0 2px 8px rgba(0,0,0,0.55), 0 0 14px rgba(244,114,182,0.35)",
+                }}
+              >
+                {score}
+              </motion.div>
+            </div>
           </div>
         </div>
         {/* 타이머 바 */}
@@ -305,10 +387,41 @@ export function InfiniteStairsGame({
         <StairColumn
           stairs={stairs}
           score={score}
+          climbing={climbing}
           avatarConfig={avatarConfig}
           galleryPositions={galleryPositions}
         />
       </div>
+
+      {/* 콤보 표시 — 3 이상일 때만 */}
+      <AnimatePresence>
+        {combo >= 3 && phase === "playing" && (
+          <motion.div
+            key={`combo-${combo}`}
+            initial={{ scale: 0.6, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ type: "spring", stiffness: 380, damping: 20 }}
+            className="pointer-events-none absolute left-1/2 top-[28%] z-30 -translate-x-1/2 text-center"
+          >
+            <div
+              className="text-xs font-bold uppercase tracking-widest text-yellow-200/90"
+              style={{ textShadow: "0 0 8px rgba(0,0,0,0.6)" }}
+            >
+              COMBO
+            </div>
+            <div
+              className="text-5xl font-extrabold leading-none text-yellow-200"
+              style={{
+                textShadow:
+                  "0 0 10px rgba(251,191,36,0.7), 0 4px 10px rgba(0,0,0,0.65), 0 0 22px rgba(244,63,94,0.4)",
+              }}
+            >
+              ×{combo}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 좌/우 탭 영역 + 화살표 인디케이터 (하단 25% 영역 살짝 틴트) */}
       <button
@@ -406,6 +519,7 @@ export function InfiniteStairsGame({
             result={result}
             submitting={submitting}
             score={score}
+            maxCombo={maxCombo}
             monsterNickname={monsterNickname}
             onRetry={remainingBefore > 1 ? startGame : null}
             onHome={() => router.push("/me/game-center")}
@@ -422,42 +536,54 @@ export function InfiniteStairsGame({
 function StairColumn({
   stairs,
   score,
+  climbing,
   avatarConfig,
   galleryPositions,
 }: {
   stairs: Side[];
   score: number;
+  climbing: boolean;
   avatarConfig: AvatarConfig | null;
   galleryPositions: Record<string, import("@/lib/types").AvatarGalleryItemPosition>;
 }) {
   const visible = stairs.slice(0, 9);
   const stairBottomStartPct = 16;
   const stairStepPct = 9;
-  const charSide = stairs[0];
+  // climbing 중에는 캐릭터가 다음 계단(stairs[1]) 쪽에 서 있어야 함.
+  const charSide = climbing ? stairs[1] : stairs[0];
 
   return (
     <div className="absolute inset-0">
-      {visible.map((side, i) => {
-        const bottom = stairBottomStartPct + i * stairStepPct;
-        // 거리감 — 위로 갈수록 약간 작게 + 흐리게 (원근).
-        const scale = Math.max(0.78, 1 - i * 0.03);
-        const opacity = Math.max(0.42, 1 - i * 0.07);
-        return (
-          <div
-            key={`stair-${i}-${side}`}
-            className="absolute h-[8%] w-[42%]"
-            style={{
-              bottom: `${bottom}%`,
-              ...(side === "L" ? { left: "6%" } : { right: "6%" }),
-              opacity,
-              transform: `scale(${scale})`,
-              transformOrigin: side === "L" ? "left bottom" : "right bottom",
-            }}
-          >
-            <Stair side={side} />
-          </div>
-        );
-      })}
+      {/* 계단 컨테이너 — climbing 중에는 한 칸만큼 아래로 평행이동(스크롤 다운) */}
+      <motion.div
+        className="absolute inset-0"
+        animate={{ y: climbing ? `${stairStepPct}%` : "0%" }}
+        transition={{
+          duration: climbing ? 0.11 : 0, // 복귀는 즉시(snap)
+          ease: "easeOut",
+        }}
+      >
+        {visible.map((side, i) => {
+          const bottom = stairBottomStartPct + i * stairStepPct;
+          const scale = Math.max(0.78, 1 - i * 0.03);
+          const opacity = Math.max(0.42, 1 - i * 0.07);
+          return (
+            <div
+              key={`stair-${i}-${side}`}
+              className="absolute h-[8%] w-[42%]"
+              style={{
+                bottom: `${bottom}%`,
+                ...(side === "L" ? { left: "6%" } : { right: "6%" }),
+                opacity,
+                transform: `scale(${scale})`,
+                transformOrigin: side === "L" ? "left bottom" : "right bottom",
+              }}
+            >
+              <Stair side={side} />
+            </div>
+          );
+        })}
+      </motion.div>
 
       {/* 캐릭터 — 가장 아래 계단 위 */}
       <motion.div
@@ -574,6 +700,7 @@ function ResultOverlay({
   result,
   submitting,
   score,
+  maxCombo,
   monsterNickname,
   onRetry,
   onHome,
@@ -582,6 +709,7 @@ function ResultOverlay({
   result: InfiniteStairsResult | null;
   submitting: boolean;
   score: number;
+  maxCombo: number;
   monsterNickname: string;
   onRetry: (() => void) | null;
   onHome: () => void;
@@ -638,6 +766,13 @@ function ResultOverlay({
               <span className="text-white/40">·</span>
               <span className="text-white/65">총 {result.newExp}</span>
             </div>
+
+            {maxCombo >= 3 && (
+              <div className="mt-2 flex items-center justify-center gap-2 text-sm text-yellow-200">
+                <span aria-hidden>🔥</span>
+                <span className="font-bold">최고 콤보 ×{maxCombo}</span>
+              </div>
+            )}
 
             {stageUp && !isFinal && (
               <div className="mt-3 rounded-lg border border-pink-300/30 bg-pink-500/15 px-3 py-2 text-sm font-bold text-pink-200">
