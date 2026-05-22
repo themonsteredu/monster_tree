@@ -15,6 +15,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
+import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
+import type { AvatarConfig } from "@/lib/types";
 import {
   recordInfiniteStairsPlayAction,
   type InfiniteStairsResult,
@@ -38,18 +41,17 @@ function makeStairs(): Side[] {
 
 type Props = {
   remainingBefore: number;
-  characterImageUrl: string | null;
-  characterFallback: string;
+  avatarConfig: AvatarConfig | null;
   monsterNickname: string;
 };
 
 export function InfiniteStairsGame({
   remainingBefore,
-  characterImageUrl,
-  characterFallback,
+  avatarConfig,
   monsterNickname,
 }: Props) {
   const router = useRouter();
+  const galleryPositions = useGalleryPositions();
   const [phase, setPhase] = useState<Phase>("ready");
   const [score, setScore] = useState(0);
   const [stairs, setStairs] = useState<Side[]>(() => makeStairs());
@@ -233,6 +235,22 @@ export function InfiniteStairsGame({
         touchAction: "manipulation",
       }}
     >
+      {/* Jua 폰트 */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Jua&display=swap"
+      />
+
+      {/* 원거리 nebula 글로우 — 깊이감 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background:
+            "radial-gradient(40% 30% at 25% 30%, rgba(168,85,247,0.25) 0%, transparent 70%)," +
+            "radial-gradient(35% 25% at 80% 65%, rgba(244,114,182,0.18) 0%, transparent 70%)",
+        }}
+      />
       <Stars />
 
       {/* 점수 + 타이머 (상단) */}
@@ -245,17 +263,38 @@ export function InfiniteStairsGame({
             ← 나가기
           </Link>
           <div className="text-right">
-            <div className="text-[11px] text-white/55">점수</div>
-            <div className="text-3xl font-extrabold leading-none tracking-tight text-white">
-              {score}
+            <div className="text-[11px] uppercase tracking-widest text-white/45">
+              SCORE
             </div>
+            <motion.div
+              key={score}
+              initial={{ scale: 1.25, color: "#fde68a" }}
+              animate={{ scale: 1, color: "#ffffff" }}
+              transition={{ duration: 0.2 }}
+              className="text-4xl font-extrabold leading-none tracking-tight"
+              style={{
+                textShadow:
+                  "0 2px 8px rgba(0,0,0,0.55), 0 0 14px rgba(244,114,182,0.35)",
+              }}
+            >
+              {score}
+            </motion.div>
           </div>
         </div>
         {/* 타이머 바 */}
-        <div className="mx-auto mt-3 h-2 w-full max-w-md overflow-hidden rounded-full bg-white/10">
+        <div
+          className="mx-auto mt-3 h-2 w-full max-w-md overflow-hidden rounded-full bg-white/10"
+          style={{ boxShadow: "0 0 1px rgba(255,255,255,0.1) inset" }}
+        >
           <motion.div
             className={`h-full rounded-full bg-gradient-to-r ${timerColor}`}
-            style={{ width: `${timerRatio * 100}%` }}
+            style={{
+              width: `${timerRatio * 100}%`,
+              boxShadow:
+                timerRatio < 0.25
+                  ? "0 0 14px rgba(244,63,94,0.8)"
+                  : "0 0 8px rgba(168,85,247,0.5)",
+            }}
             transition={{ duration: 0 }}
           />
         </div>
@@ -265,43 +304,64 @@ export function InfiniteStairsGame({
       <div className="absolute inset-0 z-10">
         <StairColumn
           stairs={stairs}
-          characterImageUrl={characterImageUrl}
-          characterFallback={characterFallback}
+          score={score}
+          avatarConfig={avatarConfig}
+          galleryPositions={galleryPositions}
         />
       </div>
 
-      {/* 좌/우 탭 영역 + 화살표 인디케이터 */}
+      {/* 좌/우 탭 영역 + 화살표 인디케이터 (하단 25% 영역 살짝 틴트) */}
       <button
         type="button"
         aria-label="왼쪽"
-        className="absolute left-0 top-0 z-20 h-full w-1/2"
+        className="group absolute left-0 top-0 z-20 h-full w-1/2"
         onPointerDown={(e) => {
           e.preventDefault();
           handleInput("L");
         }}
+        style={{
+          background:
+            "linear-gradient(to top, rgba(168,85,247,0.12) 0%, transparent 22%)",
+        }}
       >
-        <span
-          className="pointer-events-none absolute bottom-6 left-6 text-4xl text-white/35"
+        <motion.span
+          className="pointer-events-none absolute bottom-7 left-7 text-5xl text-white/45"
           aria-hidden
+          animate={{ x: [0, -4, 0], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          style={{
+            textShadow:
+              "0 0 12px rgba(168,85,247,0.6), 0 2px 6px rgba(0,0,0,0.7)",
+          }}
         >
           ◀
-        </span>
+        </motion.span>
       </button>
       <button
         type="button"
         aria-label="오른쪽"
-        className="absolute right-0 top-0 z-20 h-full w-1/2"
+        className="group absolute right-0 top-0 z-20 h-full w-1/2"
         onPointerDown={(e) => {
           e.preventDefault();
           handleInput("R");
         }}
+        style={{
+          background:
+            "linear-gradient(to top, rgba(236,72,153,0.12) 0%, transparent 22%)",
+        }}
       >
-        <span
-          className="pointer-events-none absolute bottom-6 right-6 text-4xl text-white/35"
+        <motion.span
+          className="pointer-events-none absolute bottom-7 right-7 text-5xl text-white/45"
           aria-hidden
+          animate={{ x: [0, 4, 0], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          style={{
+            textShadow:
+              "0 0 12px rgba(236,72,153,0.6), 0 2px 6px rgba(0,0,0,0.7)",
+          }}
         >
           ▶
-        </span>
+        </motion.span>
       </button>
 
       {/* 플래시 오버레이 */}
@@ -361,50 +421,40 @@ export function InfiniteStairsGame({
 
 function StairColumn({
   stairs,
-  characterImageUrl,
-  characterFallback,
+  score,
+  avatarConfig,
+  galleryPositions,
 }: {
   stairs: Side[];
-  characterImageUrl: string | null;
-  characterFallback: string;
+  score: number;
+  avatarConfig: AvatarConfig | null;
+  galleryPositions: Record<string, import("@/lib/types").AvatarGalleryItemPosition>;
 }) {
-  // 계단을 화면 아래쪽부터 위로 쌓는다. stairs[0] = 가장 아래 (캐릭터 위치).
-  // 화면 높이 대비 % 로 배치 → 어떤 단말에서도 비율 유지.
-  // 보이는 계단은 9개 (10번째는 큐 끝 — 보이지 않음, 다음에 올라올 자리).
   const visible = stairs.slice(0, 9);
-  const stairBottomStartPct = 18; // 가장 아래 계단의 화면 하단으로부터 %
-  const stairStepPct = 9; // 한 계단당 위로 올라가는 %
+  const stairBottomStartPct = 16;
+  const stairStepPct = 9;
   const charSide = stairs[0];
 
   return (
     <div className="absolute inset-0">
       {visible.map((side, i) => {
         const bottom = stairBottomStartPct + i * stairStepPct;
-        // 가장 아래 계단을 가장 진하게, 위로 갈수록 살짝 흐리게 — 깊이감.
-        const opacity = Math.max(0.35, 1 - i * 0.06);
+        // 거리감 — 위로 갈수록 약간 작게 + 흐리게 (원근).
+        const scale = Math.max(0.78, 1 - i * 0.03);
+        const opacity = Math.max(0.42, 1 - i * 0.07);
         return (
           <div
             key={`stair-${i}-${side}`}
-            className="absolute h-[7%] w-[44%]"
+            className="absolute h-[8%] w-[42%]"
             style={{
               bottom: `${bottom}%`,
-              ...(side === "L"
-                ? { left: "6%" }
-                : { right: "6%" }),
+              ...(side === "L" ? { left: "6%" } : { right: "6%" }),
               opacity,
+              transform: `scale(${scale})`,
+              transformOrigin: side === "L" ? "left bottom" : "right bottom",
             }}
           >
-            <div
-              className="h-full w-full rounded-xl border border-white/15"
-              style={{
-                background:
-                  side === "L"
-                    ? "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)"
-                    : "linear-gradient(180deg, #f0abfc 0%, #c026d3 100%)",
-                boxShadow:
-                  "0 6px 12px rgba(0,0,0,0.35), 0 0 16px rgba(168,85,247,0.25) inset",
-              }}
-            />
+            <Stair side={side} />
           </div>
         );
       })}
@@ -413,45 +463,107 @@ function StairColumn({
       <motion.div
         className="absolute"
         animate={{
-          // 캐릭터의 좌/우 위치는 stairs[0] 에 따라 결정. 두 위치 사이 fade-swap.
-          left: charSide === "L" ? "13%" : "auto",
-          right: charSide === "R" ? "13%" : "auto",
+          left: charSide === "L" ? "11%" : "auto",
+          right: charSide === "R" ? "11%" : "auto",
         }}
-        transition={{ duration: 0.08 }}
-        style={{
-          bottom: `${stairBottomStartPct + 7}%`,
-        }}
+        transition={{ duration: 0.1 }}
+        style={{ bottom: `${stairBottomStartPct + 8}%` }}
       >
+        {/* 점프 효과 — score 변할 때마다 살짝 위로 튀어오름 */}
         <motion.div
-          animate={{ y: [0, -3, 0] }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-          className="flex h-16 w-16 items-center justify-center"
+          key={score}
+          initial={{ y: -10, scale: 0.95 }}
+          animate={{ y: [0, -4, 0] }}
+          transition={{
+            y: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
+            scale: { duration: 0.15 },
+          }}
+          className="relative flex h-20 w-20 items-end justify-center"
         >
-          {characterImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={characterImageUrl}
-              alt=""
-              draggable={false}
-              className="h-16 w-16 object-contain"
+          {/* 캐릭터 그림자 */}
+          <div
+            aria-hidden
+            className="absolute -bottom-2 left-1/2 h-2 w-12 -translate-x-1/2 rounded-full bg-black/55 blur-sm"
+          />
+          {avatarConfig ? (
+            <div
               style={{
                 filter:
-                  "drop-shadow(0 6px 12px rgba(0,0,0,0.55)) drop-shadow(0 0 14px rgba(244,114,182,0.4))",
+                  "drop-shadow(0 8px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 18px rgba(244,114,182,0.35))",
               }}
-            />
+            >
+              <AvatarFigurePreloaded
+                config={avatarConfig}
+                size={80}
+                galleryPositions={galleryPositions}
+              />
+            </div>
           ) : (
             <span
-              className="text-5xl"
+              className="text-5xl leading-none"
               style={{
                 filter:
                   "drop-shadow(0 6px 12px rgba(0,0,0,0.55)) drop-shadow(0 0 14px rgba(244,114,182,0.4))",
               }}
             >
-              {characterFallback}
+              🏃
             </span>
           )}
         </motion.div>
       </motion.div>
+    </div>
+  );
+}
+
+// 입체감 있는 계단 블록 — 윗면 + 측면 + 정면 + 하이라이트 + 그림자.
+function Stair({ side }: { side: Side }) {
+  const topColor =
+    side === "L"
+      ? "linear-gradient(180deg, #d8b4fe 0%, #a855f7 70%, #7c3aed 100%)"
+      : "linear-gradient(180deg, #fbcfe8 0%, #ec4899 60%, #be185d 100%)";
+  const sideColor =
+    side === "L"
+      ? "linear-gradient(180deg, #6d28d9 0%, #4c1d95 100%)"
+      : "linear-gradient(180deg, #9d174d 0%, #500724 100%)";
+
+  return (
+    <div className="relative h-full w-full">
+      {/* 측면 (depth) — 계단 뒤쪽 살짝 두꺼운 느낌 */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-[55%] rounded-b-xl"
+        style={{
+          background: sideColor,
+          transform: "translateY(20%)",
+          filter: "blur(0.5px)",
+        }}
+      />
+      {/* 윗면 — 계단 본체 */}
+      <div
+        className="absolute inset-0 rounded-xl border border-white/20"
+        style={{
+          background: topColor,
+          boxShadow:
+            "0 8px 16px rgba(0,0,0,0.45), 0 0 24px rgba(168,85,247,0.2)",
+        }}
+      >
+        {/* 위쪽 하이라이트 라인 */}
+        <div
+          aria-hidden
+          className="absolute inset-x-2 top-1 h-[2px] rounded-full"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.7) 50%, transparent 100%)",
+          }}
+        />
+        {/* 작은 별 장식 — 가운데 살짝 */}
+        <span
+          aria-hidden
+          className="absolute right-3 top-1.5 text-[10px] text-white/45"
+        >
+          ✦
+        </span>
+      </div>
     </div>
   );
 }

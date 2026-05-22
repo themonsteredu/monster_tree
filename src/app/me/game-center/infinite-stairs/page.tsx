@@ -4,10 +4,13 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import {
+  createSupabaseServerAnonClient,
+  createSupabaseServiceClient,
+} from "@/lib/supabase/server";
 import {
   DAILY_PLAY_LIMIT,
-  STAGE_FALLBACK_EMOJI,
+  type AvatarConfig,
   type StudentMonster,
 } from "@/lib/types";
 import { InfiniteStairsGame } from "./InfiniteStairsGame";
@@ -23,16 +26,18 @@ export default async function InfiniteStairsPage() {
   if (!payload) redirect("https://www.themonster.kr/login");
 
   const sb = createSupabaseServiceClient();
+  const sbAnon = createSupabaseServerAnonClient();
 
-  const { data: studentRow } = await sb
+  const { data: studentRow } = await sbAnon
     .from("garden_students")
-    .select("id")
+    .select("id, avatar")
     .eq("branch_id", payload.branchId)
     .eq("external_student_id", payload.studentLocalId)
     .maybeSingle();
 
   if (!studentRow?.id) redirect("/me/village");
   const studentId = studentRow.id as string;
+  const avatarConfig = (studentRow.avatar as AvatarConfig | null) ?? null;
 
   // 활성 몬스터 없으면 알 선택 페이지로
   const { data: activeRaw } = await sb
@@ -55,22 +60,10 @@ export default async function InfiniteStairsPage() {
     typeof todayCountRaw === "number" ? todayCountRaw : 0;
   if (todayCount >= DAILY_PLAY_LIMIT) redirect("/me/game-center");
 
-  // 캐릭터 이모지 — 활성 몬스터의 현재 단계 이미지 또는 fallback 이모지
-  const { data: stageRow } = await sb
-    .from("monster_stage_images")
-    .select("image_url")
-    .eq("species_id", activeMonster.species_id)
-    .eq("stage", activeMonster.current_stage)
-    .maybeSingle();
-  const characterImageUrl = (stageRow?.image_url as string | null) ?? null;
-  const characterFallback =
-    STAGE_FALLBACK_EMOJI[activeMonster.current_stage] ?? "🐾";
-
   return (
     <InfiniteStairsGame
       remainingBefore={Math.max(DAILY_PLAY_LIMIT - todayCount, 0)}
-      characterImageUrl={characterImageUrl}
-      characterFallback={characterFallback}
+      avatarConfig={avatarConfig}
       monsterNickname={activeMonster.nickname}
     />
   );
