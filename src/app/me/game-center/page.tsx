@@ -1,10 +1,8 @@
 // /tree/me/game-center — 학생 게임센터 허브 (모바일 세로 최적화).
-// - 활성 몬스터알 진행 상태 (student_monsters where is_evolved=false)
-// - 오늘 남은 플레이 횟수 (get_today_play_count RPC, KST 기준)
-// - 이번 달 지점 랭킹 TOP 3 + 본인 순위 (game_rankings, 'YYYY-MM' KST)
-//
-// 활성 몬스터가 없으면 알 선택 페이지(/me/onboarding)로 보낸다 — /me 와 동일 정책.
-// Phase 1 단계: 실제 게임 라우트는 다음 단계에서 추가, 본 페이지는 허브 UI 만.
+// 두 게임(무한의계단 / 스카이슈터)을 모두 표시. 각 게임별로:
+//  - 오늘 남은 플레이 횟수 (KST 자정 기준, 게임별 독립)
+//  - 이번 달 지점 랭킹 TOP 3 + 본인 순위 (game_rankings, 'YYYY-MM' KST)
+// 활성 몬스터알 진행 상태는 두 게임이 공통으로 영향.
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -20,20 +18,17 @@ import {
   type MonsterStageImage,
   type StudentMonster,
 } from "@/lib/types";
-import { GameCenterClient } from "./GameCenterClient";
+import {
+  GameCenterClient,
+  type GameStats,
+  GAME_TYPES,
+} from "./GameCenterClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const GAME_TYPE = "infinite_stairs";
-
-// KST 기준 'YYYY-MM' — 월간 랭킹 키.
 function kstMonthKey(d: Date = new Date()): string {
-  // 'sv-SE' 로케일 + Asia/Seoul → 'YYYY-MM-DD HH:mm:ss' 형식, 앞 7자만 사용.
-  const ymd = d
-    .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })
-    .slice(0, 7);
-  return ymd;
+  return d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7);
 }
 
 export default async function GameCenterPage() {
@@ -53,13 +48,11 @@ export default async function GameCenterPage() {
     .maybeSingle();
 
   if (!studentRow?.id) {
-    // 학원에서 계정 발급 직후 garden_students 가 비어있을 가능성. 마을로 돌려보냄.
     redirect("/me/village");
   }
-
   const studentId = studentRow.id as string;
 
-  // 활성 몬스터 (is_evolved=false). 없으면 /me 와 동일하게 onboarding 으로.
+  // 활성 몬스터 (is_evolved=false). 없으면 onboarding 으로.
   const { data: activeRaw } = await sb
     .from("student_monsters")
     .select(
@@ -95,65 +88,78 @@ export default async function GameCenterPage() {
   const monsterSpecies = (speciesRow as MonsterSpecies | null) ?? null;
   const monsterStages = (stageRows ?? []) as MonsterStageImage[];
 
-  // 오늘 플레이 횟수 (KST 자정 기준)
-  const { data: todayCountRaw } = await sb.rpc("get_today_play_count", {
-    p_student_id: studentId,
-    p_game_type: GAME_TYPE,
-  });
-  const todayPlayCount =
-    typeof todayCountRaw === "number" ? todayCountRaw : 0;
-
-  // 이번 달 지점 랭킹 — TOP 3 + 본인 행. 표시용 이름은 garden_students 에서 조인.
+  // 게임별 데이터 — 오늘 플레이 횟수 + TOP 3 랭킹 + 본인 랭킹.
   const monthKey = kstMonthKey();
-  const [{ data: topRows }, { data: myRankingRow }] = await Promise.all([
-    sb
-      .from("game_rankings")
-      .select("id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at")
-      .eq("branch_id", payload.branchId)
-      .eq("game_type", GAME_TYPE)
-      .eq("month", monthKey)
-      .order("best_score", { ascending: false })
-      .limit(3),
-    sb
-      .from("game_rankings")
-      .select("id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at")
-      .eq("student_id", studentId)
-      .eq("game_type", GAME_TYPE)
-      .eq("month", monthKey)
-      .maybeSingle(),
-  ]);
+  const gameStats: Record<string, GameStats> = {};
+  const allStudentIds = new Set<string>();
 
-  const topRankings = (topRows ?? []) as GameRanking[];
-  const myRanking = (myRankingRow as GameRanking | null) ?? null;
+  await Promise.all(
+    GAME_TYPES.map(async (gt) => {
+      const [
+        { data: todayCountRaw },
+        { data: topRows },
+        { data: myRankingRow },
+      ] = await Promise.all([
+        sb.rpc("get_today_play_count", {
+          p_student_id: studentId,
+          p_game_type: gt.type,
+        }),
+        sb
+          .from("game_rankings")
+          .select(
+            "id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at",
+          )
+          .eq("branch_id", payload.branchId)
+          .eq("game_type", gt.type)
+          .eq("month", monthKey)
+          .order("best_score", { ascending: false })
+          .limit(3),
+        sb
+          .from("game_rankings")
+          .select(
+            "id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at",
+          )
+          .eq("student_id", studentId)
+          .eq("game_type", gt.type)
+          .eq("month", monthKey)
+          .maybeSingle(),
+      ]);
 
-  // 본인 순위 계산 — 본인보다 best_score 높은 행 수 + 1.
-  let myRankNumber: number | null = null;
-  if (myRanking) {
-    const { count } = await sb
-      .from("game_rankings")
-      .select("id", { count: "exact", head: true })
-      .eq("branch_id", payload.branchId)
-      .eq("game_type", GAME_TYPE)
-      .eq("month", monthKey)
-      .gt("best_score", myRanking.best_score);
-    myRankNumber = (count ?? 0) + 1;
-  }
+      const topRankings = (topRows ?? []) as GameRanking[];
+      const myRanking = (myRankingRow as GameRanking | null) ?? null;
 
-  // TOP 3 와 본인 이름 매핑 (학생 이름 표시용)
-  const idsToName = Array.from(
-    new Set(
-      [
-        ...topRankings.map((r) => r.student_id),
-        myRanking?.student_id,
-      ].filter((v): v is string => !!v),
-    ),
+      let myRankNumber: number | null = null;
+      if (myRanking) {
+        const { count } = await sb
+          .from("game_rankings")
+          .select("id", { count: "exact", head: true })
+          .eq("branch_id", payload.branchId)
+          .eq("game_type", gt.type)
+          .eq("month", monthKey)
+          .gt("best_score", myRanking.best_score);
+        myRankNumber = (count ?? 0) + 1;
+      }
+
+      for (const r of topRankings) allStudentIds.add(r.student_id);
+      if (myRanking) allStudentIds.add(myRanking.student_id);
+
+      gameStats[gt.type] = {
+        todayPlayCount:
+          typeof todayCountRaw === "number" ? todayCountRaw : 0,
+        topRankings,
+        myRanking,
+        myRankNumber,
+      };
+    }),
   );
+
+  // 랭킹에 표시할 학생 이름 일괄 조회.
   const nameByStudentId: Record<string, string> = {};
-  if (idsToName.length > 0) {
+  if (allStudentIds.size > 0) {
     const { data: nameRows } = await sb
       .from("garden_students")
       .select("id, name")
-      .in("id", idsToName);
+      .in("id", Array.from(allStudentIds));
     for (const r of (nameRows ?? []) as Array<{ id: string; name: string }>) {
       nameByStudentId[r.id] = r.name;
     }
@@ -162,14 +168,11 @@ export default async function GameCenterPage() {
   return (
     <GameCenterClient
       studentName={payload.name}
-      todayPlayCount={todayPlayCount}
       dailyLimit={DAILY_PLAY_LIMIT}
       activeMonster={activeMonster}
       monsterSpecies={monsterSpecies}
       monsterStages={monsterStages}
-      topRankings={topRankings}
-      myRanking={myRanking}
-      myRankNumber={myRankNumber}
+      gameStats={gameStats}
       myStudentId={studentId}
       nameByStudentId={nameByStudentId}
       monthKey={monthKey}

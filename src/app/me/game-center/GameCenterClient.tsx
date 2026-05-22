@@ -1,8 +1,8 @@
 "use client";
 
-// 게임센터 허브 UI (모바일 세로 최적화) — 네온 글로우 강화 버전.
-// 디자인 기준: 보라/핑크 그라데이션 + 진한 우주 배경 + 둥근 카드 + 강한 drop-shadow.
-// 이미지 에셋 없이 emoji + CSS 만으로 시각 임팩트 확보.
+// 게임센터 허브 UI (모바일 세로 최적화) — 두 게임(무한의계단 / 스카이슈터) 지원.
+// 각 게임은 자체 일일 한도 + 자체 월간 랭킹을 가짐 (game_rankings.game_type 별 키).
+// 몬스터알 진행 상태는 두 게임 공통.
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -16,22 +16,59 @@ import {
   type StudentMonster,
 } from "@/lib/types";
 
+export type GameTypeId = "infinite_stairs" | "sky_shooter";
+
+export type GameMeta = {
+  type: GameTypeId;
+  name: string;
+  description: string;
+  icon: string; // 이모지
+  studentRoute: string;
+  adminRoute: string;
+  iconBg: string; // tailwind gradient classes
+};
+
+// 게임 카탈로그 — 새 게임 추가 시 여기만 늘리면 허브/페이지 데이터 로드가 자동 반영.
+export const GAME_TYPES: GameMeta[] = [
+  {
+    type: "infinite_stairs",
+    name: "무한의 계단",
+    description: "좌·우 터치로 계단을 끝없이 올라가자!",
+    icon: "🪜",
+    studentRoute: "/me/game-center/infinite-stairs",
+    adminRoute: "/admin/game-center-preview/infinite-stairs",
+    iconBg: "linear-gradient(180deg, #1a0a3a 0%, #0d0524 100%)",
+  },
+  {
+    type: "sky_shooter",
+    name: "스카이 슈터",
+    description: "하늘을 날며 적을 쏘고 동전을 먹자!",
+    icon: "🚀",
+    studentRoute: "/me/game-center/sky-shooter",
+    adminRoute: "/admin/game-center-preview/sky-shooter",
+    iconBg: "linear-gradient(180deg, #0c4a6e 0%, #082f49 100%)",
+  },
+];
+
+export type GameStats = {
+  todayPlayCount: number;
+  topRankings: GameRanking[];
+  myRanking: GameRanking | null;
+  myRankNumber: number | null;
+};
+
 type Props = {
   studentName: string;
-  todayPlayCount: number;
   dailyLimit: number;
   activeMonster: StudentMonster;
   monsterSpecies: MonsterSpecies | null;
   monsterStages: MonsterStageImage[];
-  topRankings: GameRanking[];
-  myRanking: GameRanking | null;
-  myRankNumber: number | null;
+  gameStats: Record<string, GameStats>;
   myStudentId: string;
   nameByStudentId: Record<string, string>;
   monthKey: string;
-  // adminMode: 관리자 미리보기. 일일 한도/랭킹 영향 없음, 화면 상단에 테스트 모드 뱃지.
+  // adminMode: 관리자 미리보기. 일일 한도/랭킹/EXP 영향 없음, 테스트 모드 뱃지.
   adminMode?: boolean;
-  // 관리자 모드에서 ← 돌아가기 클릭 시 이동할 경로.
   villageHref?: string;
 };
 
@@ -39,14 +76,11 @@ const MEDAL = ["🥇", "🥈", "🥉"];
 
 export function GameCenterClient({
   studentName,
-  todayPlayCount,
   dailyLimit,
   activeMonster,
   monsterSpecies,
   monsterStages,
-  topRankings,
-  myRanking,
-  myRankNumber,
+  gameStats,
   myStudentId,
   nameByStudentId,
   monthKey,
@@ -55,24 +89,9 @@ export function GameCenterClient({
 }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
+  const [rankingTab, setRankingTab] = useState<GameTypeId>("infinite_stairs");
 
-  // 관리자 모드는 일일 한도 무시 → 항상 플레이 가능.
-  const remaining = adminMode
-    ? dailyLimit
-    : Math.max(dailyLimit - todayPlayCount, 0);
-  const canPlay = adminMode || remaining > 0;
-  const gameHref = adminMode
-    ? "/admin/game-center-preview/infinite-stairs"
-    : "/me/game-center/infinite-stairs";
-
-  const remainingMessage =
-    remaining === 0
-      ? "모든 횟수를 사용했어요!"
-      : remaining === dailyLimit
-        ? "오늘도 화이팅! 🚀"
-        : `${remaining}판 더 도전 가능!`;
-
-  // 현재 단계 / 다음 단계 정보 — required_exp 와 image_url 둘 다 보고 결정.
+  // 현재 단계 / 다음 단계 — required_exp + image_url 기준.
   const { currentStageInfo, nextStageInfo, progressRatio } = useMemo(() => {
     const sorted = [...monsterStages].sort((a, b) => a.stage - b.stage);
     const cur =
@@ -100,7 +119,6 @@ export function GameCenterClient({
   const eggLabel = monsterSpecies?.hide_name
     ? "??? 비밀의 알"
     : (monsterSpecies?.name ?? "내 몬스터");
-
   const stageImageUrl = currentStageInfo?.image_url ?? null;
   const stageFallback =
     STAGE_FALLBACK_EMOJI[activeMonster.current_stage] ?? "🥚";
@@ -110,13 +128,22 @@ export function GameCenterClient({
     window.setTimeout(() => setToast(null), 2000);
   };
 
-  const onPlayClick = () => {
+  const onPlayClick = (g: GameMeta, canPlay: boolean) => {
     if (!canPlay) {
-      showToast("오늘은 여기까지! 내일 다시 오자 🎮");
+      showToast(`${g.name}은 오늘 다 썼어요! 내일 다시 오자 🎮`);
       return;
     }
-    router.push(gameHref);
+    router.push(adminMode ? g.adminRoute : g.studentRoute);
   };
+
+  const activeRanking = gameStats[rankingTab] ?? {
+    todayPlayCount: 0,
+    topRankings: [],
+    myRanking: null,
+    myRankNumber: null,
+  };
+  const activeGameMeta =
+    GAME_TYPES.find((g) => g.type === rankingTab) ?? GAME_TYPES[0];
 
   return (
     <main
@@ -177,54 +204,6 @@ export function GameCenterClient({
           </span>
         </header>
 
-        {/* 남은 횟수 — 하트 5개 (admin 은 무제한) */}
-        <section
-          className="mb-5 rounded-2xl border border-purple-400/20 bg-gradient-to-br from-purple-900/30 to-purple-950/30 p-4 backdrop-blur-sm"
-          style={{ boxShadow: "0 0 24px rgba(168,85,247,0.12) inset" }}
-          aria-label="오늘 남은 플레이 횟수"
-        >
-          <div className="mb-3 flex items-baseline justify-between">
-            <span className="text-base font-bold text-white/90">
-              {adminMode ? "오늘 남은 횟수" : "오늘 남은 횟수"}
-            </span>
-            <span className="text-xl font-extrabold">
-              {adminMode ? (
-                <span className="text-amber-300">∞</span>
-              ) : (
-                <>
-                  <span
-                    className={
-                      remaining > 0 ? "text-pink-300" : "text-white/40"
-                    }
-                  >
-                    {remaining}
-                  </span>
-                  <span className="text-white/40"> / {dailyLimit}</span>
-                </>
-              )}
-            </span>
-          </div>
-          <div className="flex items-end justify-between">
-            <div className="flex gap-1.5">
-              {Array.from({ length: dailyLimit }, (_, i) => (
-                <Heart key={i} filled={adminMode ? true : i < remaining} />
-              ))}
-            </div>
-            <span
-              className={[
-                "text-xs",
-                adminMode
-                  ? "text-amber-200/80"
-                  : remaining === 0
-                    ? "text-pink-200/80"
-                    : "text-white/55",
-              ].join(" ")}
-            >
-              {adminMode ? "테스트 모드 · 무제한" : remainingMessage}
-            </span>
-          </div>
-        </section>
-
         {/* 몬스터알 카드 */}
         <section
           className="mb-5 overflow-hidden rounded-2xl border border-purple-400/25 p-4 backdrop-blur-sm"
@@ -257,7 +236,6 @@ export function GameCenterClient({
           </div>
 
           <div className="flex items-stretch gap-4">
-            {/* 알 디스플레이 영역 — 포털 효과 + 알 + 성장중 뱃지 */}
             <div
               className="relative h-44 w-36 shrink-0 overflow-hidden rounded-2xl"
               style={{
@@ -267,7 +245,6 @@ export function GameCenterClient({
                   "0 0 24px rgba(168,85,247,0.25) inset, 0 0 1px rgba(255,255,255,0.08) inset",
               }}
             >
-              {/* "성장 중" 뱃지 */}
               <div
                 className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-pink-200 backdrop-blur-sm"
                 style={{ boxShadow: "0 0 10px rgba(244,114,182,0.3)" }}
@@ -276,18 +253,25 @@ export function GameCenterClient({
                 <span>성장 중</span>
               </div>
 
-              {/* 별 입자 */}
-              <span className="absolute right-3 top-4 text-xs text-yellow-200/70" aria-hidden>
+              <span
+                className="absolute right-3 top-4 text-xs text-yellow-200/70"
+                aria-hidden
+              >
                 ✦
               </span>
-              <span className="absolute right-6 top-10 text-[8px] text-yellow-200/50" aria-hidden>
+              <span
+                className="absolute right-6 top-10 text-[8px] text-yellow-200/50"
+                aria-hidden
+              >
                 ✦
               </span>
-              <span className="absolute left-3 top-12 text-[10px] text-yellow-200/60" aria-hidden>
+              <span
+                className="absolute left-3 top-12 text-[10px] text-yellow-200/60"
+                aria-hidden
+              >
                 ✦
               </span>
 
-              {/* 알 본체 — float 애니메이션 */}
               <motion.div
                 className="absolute inset-x-0 top-4 flex justify-center"
                 animate={{ y: [0, -6, 0] }}
@@ -304,8 +288,7 @@ export function GameCenterClient({
                     alt={currentStageInfo?.stage_name ?? "현재 단계"}
                     className="h-24 w-24 object-contain"
                     style={{
-                      filter:
-                        "drop-shadow(0 8px 20px rgba(168,85,247,0.55))",
+                      filter: "drop-shadow(0 8px 20px rgba(168,85,247,0.55))",
                     }}
                     draggable={false}
                   />
@@ -322,8 +305,10 @@ export function GameCenterClient({
                 )}
               </motion.div>
 
-              {/* 알 아래 포털 링 */}
-              <div className="absolute inset-x-0 bottom-3 flex justify-center" aria-hidden>
+              <div
+                className="absolute inset-x-0 bottom-3 flex justify-center"
+                aria-hidden
+              >
                 <div className="relative h-8 w-24">
                   <div
                     className="absolute inset-0 rounded-full"
@@ -335,19 +320,24 @@ export function GameCenterClient({
                   />
                   <motion.div
                     className="absolute inset-x-2 bottom-3 h-1.5 rounded-full border border-pink-300/50"
-                    animate={{ scaleX: [1, 1.1, 1], opacity: [0.6, 0.9, 0.6] }}
+                    animate={{
+                      scaleX: [1, 1.1, 1],
+                      opacity: [0.6, 0.9, 0.6],
+                    }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
                   <motion.div
                     className="absolute inset-x-5 bottom-1 h-1 rounded-full border border-purple-300/40"
-                    animate={{ scaleX: [1.05, 0.95, 1.05], opacity: [0.4, 0.7, 0.4] }}
+                    animate={{
+                      scaleX: [1.05, 0.95, 1.05],
+                      opacity: [0.4, 0.7, 0.4],
+                    }}
                     transition={{ duration: 2.4, repeat: Infinity }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* 정보 영역 */}
             <div className="flex min-w-0 flex-1 flex-col justify-center">
               <div className="truncate text-2xl font-extrabold text-white">
                 {activeMonster.nickname}
@@ -475,91 +465,30 @@ export function GameCenterClient({
             <span aria-hidden>🎮</span>
             <span>게임 목록</span>
           </h2>
-          <button
-            type="button"
-            onClick={onPlayClick}
-            disabled={!canPlay}
-            className={[
-              "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border p-3.5 text-left transition-all active:scale-[0.98]",
-              canPlay
-                ? "border-purple-400/30"
-                : "border-white/5 opacity-55",
-            ].join(" ")}
-            style={
-              canPlay
-                ? {
-                    background:
-                      "linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(168,85,247,0.18) 50%, rgba(236,72,153,0.18) 100%)",
-                    boxShadow:
-                      "0 0 24px rgba(168,85,247,0.22), 0 0 1px rgba(255,255,255,0.08) inset",
-                  }
-                : { background: "rgba(255,255,255,0.02)" }
-            }
-          >
-            {/* 사다리 아이콘 영역 */}
-            <div
-              className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-              style={{
-                background:
-                  "linear-gradient(180deg, #1a0a3a 0%, #0d0524 100%)",
-                boxShadow: "0 0 12px rgba(168,85,247,0.18) inset",
-              }}
-            >
-              <span className="absolute right-1 top-1 text-[8px] text-white/30" aria-hidden>
-                ☁
-              </span>
-              <span className="absolute bottom-1 left-1 text-[8px] text-white/20" aria-hidden>
-                ☁
-              </span>
-              <span
-                className="text-3xl"
-                style={{
-                  filter:
-                    "drop-shadow(0 4px 8px rgba(244,114,182,0.4))",
-                }}
-                aria-hidden
-              >
-                🪜
-              </span>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="text-lg font-extrabold text-white">
-                무한의 계단
-              </div>
-              <div className="mt-0.5 truncate text-xs text-white/60">
-                좌·우 터치로 계단을 끝없이 올라가자!
-              </div>
-            </div>
-
-            {/* 플레이 버튼 + chevron */}
-            <div className="flex shrink-0 items-center gap-1">
-              <span
-                className={[
-                  "rounded-full px-3.5 py-2 text-xs font-extrabold",
-                  canPlay
-                    ? "bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white"
-                    : "bg-white/10 text-white/50",
-                ].join(" ")}
-                style={
-                  canPlay
-                    ? {
-                        boxShadow:
-                          "0 4px 16px rgba(244,114,182,0.5), 0 0 1px rgba(255,255,255,0.4) inset",
-                      }
-                    : undefined
-                }
-              >
-                {canPlay ? "▶ 플레이" : "내일!"}
-              </span>
-              <span className="text-white/40" aria-hidden>
-                ›
-              </span>
-            </div>
-          </button>
+          <div className="space-y-2.5">
+            {GAME_TYPES.map((g) => {
+              const stats = gameStats[g.type];
+              const used = stats?.todayPlayCount ?? 0;
+              const remaining = adminMode
+                ? dailyLimit
+                : Math.max(dailyLimit - used, 0);
+              const canPlay = adminMode || remaining > 0;
+              return (
+                <GameCard
+                  key={g.type}
+                  game={g}
+                  remaining={remaining}
+                  dailyLimit={dailyLimit}
+                  adminMode={adminMode}
+                  canPlay={canPlay}
+                  onClick={() => onPlayClick(g, canPlay)}
+                />
+              );
+            })}
+          </div>
         </section>
 
-        {/* 이번 달 랭킹 */}
+        {/* 이번 달 랭킹 — 게임별 탭 */}
         <section
           className="mb-7 rounded-2xl border border-purple-400/20 bg-purple-900/20 p-4 backdrop-blur-sm"
           aria-label="이번 달 랭킹"
@@ -568,19 +497,13 @@ export function GameCenterClient({
             <h2 className="flex items-center gap-2 text-base font-bold text-white">
               <span
                 style={{
-                  filter:
-                    "drop-shadow(0 0 8px rgba(251,191,36,0.6))",
+                  filter: "drop-shadow(0 0 8px rgba(251,191,36,0.6))",
                 }}
                 aria-hidden
               >
                 🏆
               </span>
-              <span>
-                이번 달 랭킹{" "}
-                <span className="text-sm font-bold text-white/50">
-                  · 무한의 계단
-                </span>
-              </span>
+              <span>이번 달 랭킹</span>
             </h2>
             <span className="flex items-center gap-1 text-xs text-white/55">
               <span aria-hidden>📅</span>
@@ -588,70 +511,38 @@ export function GameCenterClient({
             </span>
           </div>
 
-          {topRankings.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-purple-400/20 bg-black/20 px-4 py-7 text-center">
-              <Podium />
-              <div className="mt-2 text-sm text-white/60">
-                아직 랭킹이 없어요.
-              </div>
-              <div className="mt-0.5 text-xs text-pink-200/80">
-                첫 도전자가 되어보세요! 🚀
-              </div>
-            </div>
-          ) : (
-            <ol className="space-y-2">
-              {topRankings.map((r, i) => {
-                const isMe = r.student_id === myStudentId;
-                return (
-                  <li
-                    key={r.id}
-                    className={[
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors",
-                      isMe
-                        ? "bg-pink-400/15 ring-1 ring-pink-300/40"
-                        : "bg-white/[0.04]",
-                    ].join(" ")}
-                  >
-                    <span className="w-7 text-center text-2xl">
-                      {MEDAL[i] ?? `${i + 1}`}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-bold">
-                      {nameByStudentId[r.student_id] ?? "익명"}
-                      {isMe && (
-                        <span className="ml-1.5 rounded bg-pink-500/40 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                          나
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-base font-extrabold text-pink-200">
-                      {r.best_score}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
+          {/* 게임 탭 */}
+          <div className="mb-3 flex gap-1.5 rounded-xl border border-white/10 bg-black/20 p-1">
+            {GAME_TYPES.map((g) => {
+              const active = g.type === rankingTab;
+              return (
+                <button
+                  key={g.type}
+                  type="button"
+                  onClick={() => setRankingTab(g.type)}
+                  className={[
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold transition-all",
+                    active
+                      ? "bg-gradient-to-r from-pink-500/30 to-fuchsia-500/30 text-white shadow-[0_0_10px_rgba(244,114,182,0.35)]"
+                      : "text-white/55 active:bg-white/[0.04]",
+                  ].join(" ")}
+                >
+                  <span aria-hidden>{g.icon}</span>
+                  <span className="truncate">{g.name}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          {myRanking &&
-            myRankNumber !== null &&
-            !topRankings.some((r) => r.student_id === myStudentId) && (
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <div className="flex items-center gap-3 rounded-xl bg-pink-400/12 px-3 py-2.5 ring-1 ring-pink-300/30">
-                  <span className="w-7 text-center text-sm font-bold text-pink-200">
-                    {myRankNumber}위
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-bold">
-                    {nameByStudentId[myRanking.student_id] ?? studentName}
-                    <span className="ml-1.5 rounded bg-pink-500/40 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                      나
-                    </span>
-                  </span>
-                  <span className="font-extrabold text-pink-200">
-                    {myRanking.best_score}
-                  </span>
-                </div>
-              </div>
-            )}
+          <RankingList
+            topRankings={activeRanking.topRankings}
+            myRanking={activeRanking.myRanking}
+            myRankNumber={activeRanking.myRankNumber}
+            myStudentId={myStudentId}
+            nameByStudentId={nameByStudentId}
+            studentName={studentName}
+            gameLabel={activeGameMeta.name}
+          />
         </section>
 
         {/* 하단 — 몬스터마을 돌아가기 */}
@@ -669,8 +560,7 @@ export function GameCenterClient({
             <span
               className="text-base"
               style={{
-                filter:
-                  "drop-shadow(0 0 6px rgba(74,222,128,0.5))",
+                filter: "drop-shadow(0 0 6px rgba(74,222,128,0.5))",
               }}
               aria-hidden
             >
@@ -680,7 +570,6 @@ export function GameCenterClient({
         </div>
       </div>
 
-      {/* Jua 폰트 — 본 페이지에서만 사용 */}
       <link
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Jua&display=swap"
@@ -699,43 +588,204 @@ export function GameCenterClient({
   );
 }
 
-// 하트 — 네온 분홍 채워짐 / 빈 상태.
-function Heart({ filled }: { filled: boolean }) {
+// ===== 보조 컴포넌트 =====
+
+function GameCard({
+  game,
+  remaining,
+  dailyLimit,
+  adminMode,
+  canPlay,
+  onClick,
+}: {
+  game: GameMeta;
+  remaining: number;
+  dailyLimit: number;
+  adminMode: boolean;
+  canPlay: boolean;
+  onClick: () => void;
+}) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-8 w-8"
-      aria-hidden
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!canPlay}
+      className={[
+        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border p-3.5 text-left transition-all active:scale-[0.98]",
+        canPlay ? "border-purple-400/30" : "border-white/5 opacity-55",
+      ].join(" ")}
       style={
-        filled
+        canPlay
           ? {
-              filter:
-                "drop-shadow(0 0 6px rgba(244,114,182,0.7)) drop-shadow(0 0 12px rgba(168,85,247,0.4))",
+              background:
+                "linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(168,85,247,0.18) 50%, rgba(236,72,153,0.18) 100%)",
+              boxShadow:
+                "0 0 24px rgba(168,85,247,0.22), 0 0 1px rgba(255,255,255,0.08) inset",
             }
-          : undefined
+          : { background: "rgba(255,255,255,0.02)" }
       }
     >
-      <defs>
-        <linearGradient id="heartFillGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fb7185" />
-          <stop offset="100%" stopColor="#d946ef" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 7a5.5 5.5 0 0 1 9.5 5C19 16.5 12 21 12 21z"
-        fill={filled ? "url(#heartFillGrad)" : "rgba(255,255,255,0.04)"}
-        stroke={filled ? "rgba(252,165,201,0.9)" : "rgba(255,255,255,0.12)"}
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
+      <div
+        className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+        style={{
+          background: game.iconBg,
+          boxShadow: "0 0 12px rgba(168,85,247,0.18) inset",
+        }}
+      >
+        <span
+          className="text-3xl"
+          style={{
+            filter: "drop-shadow(0 4px 8px rgba(244,114,182,0.4))",
+          }}
+          aria-hidden
+        >
+          {game.icon}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="text-lg font-extrabold text-white">{game.name}</div>
+        <div className="mt-0.5 truncate text-xs text-white/60">
+          {game.description}
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
+          <span className="text-white/45">오늘</span>
+          <span
+            className={[
+              "font-bold",
+              adminMode
+                ? "text-amber-300"
+                : remaining > 0
+                  ? "text-pink-300"
+                  : "text-white/35",
+            ].join(" ")}
+          >
+            {adminMode ? "∞" : `${remaining} / ${dailyLimit}`}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <span
+          className={[
+            "rounded-full px-3.5 py-2 text-xs font-extrabold",
+            canPlay
+              ? "bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white"
+              : "bg-white/10 text-white/50",
+          ].join(" ")}
+          style={
+            canPlay
+              ? {
+                  boxShadow:
+                    "0 4px 16px rgba(244,114,182,0.5), 0 0 1px rgba(255,255,255,0.4) inset",
+                }
+              : undefined
+          }
+        >
+          {canPlay ? "▶ 플레이" : "내일!"}
+        </span>
+        <span className="text-white/40" aria-hidden>
+          ›
+        </span>
+      </div>
+    </button>
   );
 }
 
-// 랭킹 빈 상태용 시상대 그래픽.
+function RankingList({
+  topRankings,
+  myRanking,
+  myRankNumber,
+  myStudentId,
+  nameByStudentId,
+  studentName,
+  gameLabel,
+}: {
+  topRankings: GameRanking[];
+  myRanking: GameRanking | null;
+  myRankNumber: number | null;
+  myStudentId: string;
+  nameByStudentId: Record<string, string>;
+  studentName: string;
+  gameLabel: string;
+}) {
+  if (topRankings.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-purple-400/20 bg-black/20 px-4 py-7 text-center">
+        <Podium />
+        <div className="mt-2 text-sm text-white/60">
+          아직 {gameLabel} 랭킹이 없어요.
+        </div>
+        <div className="mt-0.5 text-xs text-pink-200/80">
+          첫 도전자가 되어보세요! 🚀
+        </div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <ol className="space-y-2">
+        {topRankings.map((r, i) => {
+          const isMe = r.student_id === myStudentId;
+          return (
+            <li
+              key={r.id}
+              className={[
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                isMe
+                  ? "bg-pink-400/15 ring-1 ring-pink-300/40"
+                  : "bg-white/[0.04]",
+              ].join(" ")}
+            >
+              <span className="w-7 text-center text-2xl">
+                {MEDAL[i] ?? `${i + 1}`}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold">
+                {nameByStudentId[r.student_id] ?? "익명"}
+                {isMe && (
+                  <span className="ml-1.5 rounded bg-pink-500/40 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    나
+                  </span>
+                )}
+              </span>
+              <span className="text-base font-extrabold text-pink-200">
+                {r.best_score}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      {myRanking &&
+        myRankNumber !== null &&
+        !topRankings.some((r) => r.student_id === myStudentId) && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <div className="flex items-center gap-3 rounded-xl bg-pink-400/12 px-3 py-2.5 ring-1 ring-pink-300/30">
+              <span className="w-7 text-center text-sm font-bold text-pink-200">
+                {myRankNumber}위
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold">
+                {nameByStudentId[myRanking.student_id] ?? studentName}
+                <span className="ml-1.5 rounded bg-pink-500/40 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  나
+                </span>
+              </span>
+              <span className="font-extrabold text-pink-200">
+                {myRanking.best_score}
+              </span>
+            </div>
+          </div>
+        )}
+    </>
+  );
+}
+
 function Podium() {
   return (
-    <div className="mx-auto flex h-12 w-24 items-end justify-center gap-0.5" aria-hidden>
+    <div
+      className="mx-auto flex h-12 w-24 items-end justify-center gap-0.5"
+      aria-hidden
+    >
       <div className="flex h-7 w-6 items-start justify-center rounded-t-sm bg-gradient-to-b from-slate-400/70 to-slate-500/40 pt-1 text-[10px] font-extrabold text-white/80">
         2
       </div>
@@ -757,7 +807,6 @@ function Podium() {
   );
 }
 
-// 가벼운 별 배경 — 정적 CSS 만으로 렌더.
 function Stars() {
   return (
     <div

@@ -125,6 +125,41 @@ export class GameAudio {
     osc.stop(now + 0.34);
   }
 
+  // 효과음 — 총알 발사 (낮은 볼륨, 짧은 클릭)
+  sfxShoot() {
+    this.beep(1400, 0.04, "square", 0.05);
+  }
+
+  // 효과음 — 적 처치 (펑)
+  sfxHitEnemy() {
+    this.beep(440, 0.08, "square", 0.18);
+    this.beep(660, 0.06, "triangle", 0.12, 0.02);
+  }
+
+  // 효과음 — 동전 획득 (상승 띵)
+  sfxCoin() {
+    this.beep(880, 0.06, "triangle", 0.15);
+    this.beep(1320, 0.08, "triangle", 0.12, 0.04);
+  }
+
+  // 효과음 — 폭탄 폭발 (저음 콰)
+  sfxBomb() {
+    this.ensure();
+    if (!this.ctx || !this.master) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.28, now + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    osc.connect(g).connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.48);
+  }
+
   // 효과음 — 게임오버 (하강 톤)
   sfxGameOver() {
     this.ensure();

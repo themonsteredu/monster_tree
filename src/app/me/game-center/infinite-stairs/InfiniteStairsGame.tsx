@@ -22,7 +22,7 @@ import {
   recordInfiniteStairsPlayAction,
   type InfiniteStairsResult,
 } from "../actions";
-import { GameAudio } from "./bgm";
+import { GameAudio } from "../bgm";
 
 type Side = "L" | "R";
 type Phase = "ready" | "playing" | "over";

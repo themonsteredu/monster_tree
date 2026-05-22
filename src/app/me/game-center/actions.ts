@@ -1,7 +1,8 @@
 "use server";
 
 // 게임센터 server actions — 게임 결과 기록 + EXP 적립 + 단계 진화 + 월간 베스트 갱신.
-// 보안: 클라이언트가 임의 점수 보내도 서버에서 일일 5판 / 점수 상한 검증.
+// 두 게임(infinite_stairs / sky_shooter)이 같은 로직을 공유하므로 recordGamePlay 헬퍼로 추출.
+// 보안: 클라이언트가 임의 점수 보내도 서버에서 일일 한도 + 점수 상한 검증.
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -9,31 +10,45 @@ import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { DAILY_PLAY_LIMIT } from "@/lib/types";
 
-const GAME_TYPE = "infinite_stairs";
-// 안전상한 — 정상 플레이로 도달 불가능한 점수는 거부.
-const MAX_REASONABLE_SCORE = 2000;
+export type GameType = "infinite_stairs" | "sky_shooter";
+
+// 각 게임의 정상 플레이로 도달 가능한 최대 점수 — 그 이상은 거부.
+const MAX_REASONABLE_SCORE: Record<GameType, number> = {
+  infinite_stairs: 2000,
+  sky_shooter: 20000,
+};
+
 const EXP_RATE = 0.1; // 점수 * 10% = EXP
 const MIN_EXP = 1;
 const MAX_EXP = 200;
 
-export type InfiniteStairsResult =
-  | { ok: false; reason: "auth" | "limit" | "invalid" | "no_student" | "no_monster"; message: string }
+export type PlayResult =
+  | {
+      ok: false;
+      reason: "auth" | "limit" | "invalid" | "no_student" | "no_monster";
+      message: string;
+    }
   | {
       ok: true;
+      gameType: GameType;
       score: number;
       expEarned: number;
       newExp: number;
       stageUp: boolean;
       fromStage: number;
       toStage: number;
-      finalEvolution: boolean; // 5단계 도달
+      finalEvolution: boolean;
       isNewBest: boolean;
       remainingToday: number;
     };
 
-export async function recordInfiniteStairsPlayAction(args: {
-  score: number;
-}): Promise<InfiniteStairsResult> {
+// 후방호환 — 기존 호출자가 import 하는 이름을 유지.
+export type InfiniteStairsResult = PlayResult;
+
+async function recordGamePlay(
+  gameType: GameType,
+  score: number,
+): Promise<PlayResult> {
   const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
@@ -41,9 +56,9 @@ export async function recordInfiniteStairsPlayAction(args: {
   }
 
   if (
-    !Number.isInteger(args.score) ||
-    args.score < 0 ||
-    args.score > MAX_REASONABLE_SCORE
+    !Number.isInteger(score) ||
+    score < 0 ||
+    score > MAX_REASONABLE_SCORE[gameType]
   ) {
     return { ok: false, reason: "invalid", message: "잘못된 점수입니다." };
   }
@@ -59,36 +74,47 @@ export async function recordInfiniteStairsPlayAction(args: {
     .maybeSingle();
 
   if (!student?.id) {
-    return { ok: false, reason: "no_student", message: "학생 정보를 찾을 수 없어요." };
+    return {
+      ok: false,
+      reason: "no_student",
+      message: "학생 정보를 찾을 수 없어요.",
+    };
   }
   const studentId = student.id as string;
 
-  // 일일 한도 체크
+  // 일일 한도 체크 — 게임별 독립
   const { data: todayCountRaw } = await sb.rpc("get_today_play_count", {
     p_student_id: studentId,
-    p_game_type: GAME_TYPE,
+    p_game_type: gameType,
   });
-  const todayCount =
-    typeof todayCountRaw === "number" ? todayCountRaw : 0;
+  const todayCount = typeof todayCountRaw === "number" ? todayCountRaw : 0;
   if (todayCount >= DAILY_PLAY_LIMIT) {
-    return { ok: false, reason: "limit", message: "오늘은 더 이상 플레이할 수 없어요." };
+    return {
+      ok: false,
+      reason: "limit",
+      message: "오늘은 더 이상 플레이할 수 없어요.",
+    };
   }
 
   const expEarned = Math.max(
     MIN_EXP,
-    Math.min(MAX_EXP, Math.floor(args.score * EXP_RATE)),
+    Math.min(MAX_EXP, Math.floor(score * EXP_RATE)),
   );
 
   // 플레이 기록
   const { error: insertErr } = await sb.from("game_plays").insert({
     student_id: studentId,
     branch_id: payload.branchId,
-    game_type: GAME_TYPE,
-    score: args.score,
+    game_type: gameType,
+    score,
     exp_earned: expEarned,
   });
   if (insertErr) {
-    return { ok: false, reason: "invalid", message: `기록 저장 실패: ${insertErr.message}` };
+    return {
+      ok: false,
+      reason: "invalid",
+      message: `기록 저장 실패: ${insertErr.message}`,
+    };
   }
 
   // 활성 몬스터 EXP 누적 + 단계 진화 체크
@@ -144,9 +170,12 @@ export async function recordInfiniteStairsPlayAction(args: {
       monsterPatch.evolved_at = new Date().toISOString();
     }
   }
-  await sb.from("student_monsters").update(monsterPatch).eq("id", activeMonster.id);
+  await sb
+    .from("student_monsters")
+    .update(monsterPatch)
+    .eq("id", activeMonster.id);
 
-  // 월간 베스트 갱신
+  // 월간 베스트 갱신 — 게임별 별도 키 (student × game × month UNIQUE).
   const monthKey = new Date()
     .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })
     .slice(0, 7);
@@ -155,17 +184,17 @@ export async function recordInfiniteStairsPlayAction(args: {
     .from("game_rankings")
     .select("id, best_score")
     .eq("student_id", studentId)
-    .eq("game_type", GAME_TYPE)
+    .eq("game_type", gameType)
     .eq("month", monthKey)
     .maybeSingle();
 
   let isNewBest = false;
   if (existingRanking) {
-    if (args.score > (existingRanking.best_score as number)) {
+    if (score > (existingRanking.best_score as number)) {
       await sb
         .from("game_rankings")
         .update({
-          best_score: args.score,
+          best_score: score,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingRanking.id);
@@ -175,11 +204,11 @@ export async function recordInfiniteStairsPlayAction(args: {
     await sb.from("game_rankings").insert({
       student_id: studentId,
       branch_id: payload.branchId,
-      game_type: GAME_TYPE,
-      best_score: args.score,
+      game_type: gameType,
+      best_score: score,
       month: monthKey,
     });
-    isNewBest = args.score > 0;
+    isNewBest = score > 0;
   }
 
   revalidatePath("/me/game-center");
@@ -187,7 +216,8 @@ export async function recordInfiniteStairsPlayAction(args: {
 
   return {
     ok: true,
-    score: args.score,
+    gameType,
+    score,
     expEarned,
     newExp,
     stageUp,
@@ -197,4 +227,16 @@ export async function recordInfiniteStairsPlayAction(args: {
     isNewBest,
     remainingToday: Math.max(DAILY_PLAY_LIMIT - (todayCount + 1), 0),
   };
+}
+
+export async function recordInfiniteStairsPlayAction(args: {
+  score: number;
+}): Promise<PlayResult> {
+  return recordGamePlay("infinite_stairs", args.score);
+}
+
+export async function recordSkyShooterPlayAction(args: {
+  score: number;
+}): Promise<PlayResult> {
+  return recordGamePlay("sky_shooter", args.score);
 }

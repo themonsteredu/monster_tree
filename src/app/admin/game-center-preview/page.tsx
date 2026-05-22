@@ -1,16 +1,14 @@
 // /admin/game-center-preview — 관리자가 학생 게임센터를 그대로 체험할 수 있는 진입점.
-// 학생용 GameCenterClient 를 adminMode 로 재사용.
-//
-// 정책:
-//  - 일일 한도 무시 (무제한 플레이)
-//  - 게임 결과를 game_plays / game_rankings / student_monsters 어디에도 저장 안 함
-//  - 화면 상단에 "🛠 테스트 모드" 뱃지 노출
-//  - 몬스터알 / 랭킹 영역은 placeholder/실데이터 혼용으로 시각적 동일성 유지
+// 학생용 GameCenterClient 를 adminMode 로 재사용. 두 게임(무한의계단/스카이슈터) 모두 표시.
 
 import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
-import { GameCenterClient } from "@/app/me/game-center/GameCenterClient";
+import {
+  GameCenterClient,
+  type GameStats,
+  GAME_TYPES,
+} from "@/app/me/game-center/GameCenterClient";
 import {
   DAILY_PLAY_LIMIT,
   type GameRanking,
@@ -21,8 +19,6 @@ import { getAdminBranchId } from "@/lib/branch";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const GAME_TYPE = "infinite_stairs";
 
 function kstMonthKey(): string {
   return new Date()
@@ -48,32 +44,45 @@ export default async function AdminGameCenterPreviewPage({
   const sb = createSupabaseServiceClient();
   const monthKey = kstMonthKey();
 
-  // 랭킹은 실제 지점 데이터를 표시 (관리자가 학생 시점 그대로 확인 가능).
-  const { data: topRows } = await sb
-    .from("game_rankings")
-    .select(
-      "id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at",
-    )
-    .eq("branch_id", branchId)
-    .eq("game_type", GAME_TYPE)
-    .eq("month", monthKey)
-    .order("best_score", { ascending: false })
-    .limit(3);
-  const topRankings = (topRows ?? []) as GameRanking[];
+  // 게임별 랭킹 TOP 3 일괄 로드 — 관리자가 학생 시점 그대로 확인 가능.
+  const gameStats: Record<string, GameStats> = {};
+  const allStudentIds = new Set<string>();
+
+  await Promise.all(
+    GAME_TYPES.map(async (gt) => {
+      const { data: topRows } = await sb
+        .from("game_rankings")
+        .select(
+          "id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at",
+        )
+        .eq("branch_id", branchId)
+        .eq("game_type", gt.type)
+        .eq("month", monthKey)
+        .order("best_score", { ascending: false })
+        .limit(3);
+      const topRankings = (topRows ?? []) as GameRanking[];
+      for (const r of topRankings) allStudentIds.add(r.student_id);
+      gameStats[gt.type] = {
+        todayPlayCount: 0,
+        topRankings,
+        myRanking: null,
+        myRankNumber: null,
+      };
+    }),
+  );
 
   const nameByStudentId: Record<string, string> = {};
-  if (topRankings.length > 0) {
-    const ids = Array.from(new Set(topRankings.map((r) => r.student_id)));
+  if (allStudentIds.size > 0) {
     const { data: nameRows } = await sb
       .from("garden_students")
       .select("id, name")
-      .in("id", ids);
+      .in("id", Array.from(allStudentIds));
     for (const r of (nameRows ?? []) as Array<{ id: string; name: string }>) {
       nameByStudentId[r.id] = r.name;
     }
   }
 
-  // 관리자에겐 활성 몬스터가 없으므로 placeholder 합성.
+  // 관리자에겐 활성 몬스터가 없음 → placeholder 합성 (스테이지 1 알 fallback).
   const fakeMonster: StudentMonster = {
     id: "__admin_preview__",
     student_id: "__admin__",
@@ -91,14 +100,11 @@ export default async function AdminGameCenterPreviewPage({
       adminMode
       villageHref={`/admin/village-preview?branch=${encodeURIComponent(branchId)}`}
       studentName="관리자"
-      todayPlayCount={0}
       dailyLimit={DAILY_PLAY_LIMIT}
       activeMonster={fakeMonster}
       monsterSpecies={null}
       monsterStages={[]}
-      topRankings={topRankings}
-      myRanking={null}
-      myRankNumber={null}
+      gameStats={gameStats}
       myStudentId=""
       nameByStudentId={nameByStudentId}
       monthKey={monthKey}
