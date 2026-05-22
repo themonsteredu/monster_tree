@@ -18,11 +18,8 @@ import {
   type MonsterStageImage,
   type StudentMonster,
 } from "@/lib/types";
-import {
-  GameCenterClient,
-  type GameStats,
-  GAME_TYPES,
-} from "./GameCenterClient";
+import { GameCenterClient } from "./GameCenterClient";
+import { GAME_TYPES, type GameStats } from "./games";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

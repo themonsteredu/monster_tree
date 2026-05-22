@@ -4,11 +4,11 @@
 import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { GameCenterClient } from "@/app/me/game-center/GameCenterClient";
 import {
-  GameCenterClient,
-  type GameStats,
   GAME_TYPES,
-} from "@/app/me/game-center/GameCenterClient";
+  type GameStats,
+} from "@/app/me/game-center/games";
 import {
   DAILY_PLAY_LIMIT,
   type GameRanking,

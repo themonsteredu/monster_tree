@@ -15,47 +15,15 @@ import {
   type MonsterStageImage,
   type StudentMonster,
 } from "@/lib/types";
+import {
+  GAME_TYPES,
+  type GameMeta,
+  type GameStats,
+  type GameTypeId,
+} from "./games";
 
-export type GameTypeId = "infinite_stairs" | "sky_shooter";
-
-export type GameMeta = {
-  type: GameTypeId;
-  name: string;
-  description: string;
-  icon: string; // 이모지
-  studentRoute: string;
-  adminRoute: string;
-  iconBg: string; // tailwind gradient classes
-};
-
-// 게임 카탈로그 — 새 게임 추가 시 여기만 늘리면 허브/페이지 데이터 로드가 자동 반영.
-export const GAME_TYPES: GameMeta[] = [
-  {
-    type: "infinite_stairs",
-    name: "무한의 계단",
-    description: "좌·우 터치로 계단을 끝없이 올라가자!",
-    icon: "🪜",
-    studentRoute: "/me/game-center/infinite-stairs",
-    adminRoute: "/admin/game-center-preview/infinite-stairs",
-    iconBg: "linear-gradient(180deg, #1a0a3a 0%, #0d0524 100%)",
-  },
-  {
-    type: "sky_shooter",
-    name: "스카이 슈터",
-    description: "하늘을 날며 적을 쏘고 동전을 먹자!",
-    icon: "🚀",
-    studentRoute: "/me/game-center/sky-shooter",
-    adminRoute: "/admin/game-center-preview/sky-shooter",
-    iconBg: "linear-gradient(180deg, #0c4a6e 0%, #082f49 100%)",
-  },
-];
-
-export type GameStats = {
-  todayPlayCount: number;
-  topRankings: GameRanking[];
-  myRanking: GameRanking | null;
-  myRankNumber: number | null;
-};
+// 게임 카탈로그/타입은 ./games 로 분리 → 서버 컴포넌트(page.tsx)도 안전하게 import.
+// 본 모듈은 client. 여기서 export 한 값을 서버가 import 하면 런타임에 reference 에러 발생.
 
 type Props = {
   studentName: string;
