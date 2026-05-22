@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   STAGE_FALLBACK_EMOJI,
@@ -46,6 +47,7 @@ export function GameCenterClient({
   nameByStudentId,
   monthKey,
 }: Props) {
+  const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
 
   const remaining = Math.max(dailyLimit - todayPlayCount, 0);
@@ -101,7 +103,7 @@ export function GameCenterClient({
       showToast("오늘은 여기까지! 내일 다시 오자 🎮");
       return;
     }
-    showToast("무한의계단은 곧 오픈! 🚧");
+    router.push("/me/game-center/infinite-stairs");
   };
 
   return (
