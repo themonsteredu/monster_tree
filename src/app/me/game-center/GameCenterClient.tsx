@@ -29,6 +29,10 @@ type Props = {
   myStudentId: string;
   nameByStudentId: Record<string, string>;
   monthKey: string;
+  // adminMode: 관리자 미리보기. 일일 한도/랭킹 영향 없음, 화면 상단에 테스트 모드 뱃지.
+  adminMode?: boolean;
+  // 관리자 모드에서 ← 돌아가기 클릭 시 이동할 경로.
+  villageHref?: string;
 };
 
 const MEDAL = ["🥇", "🥈", "🥉"];
@@ -46,12 +50,20 @@ export function GameCenterClient({
   myStudentId,
   nameByStudentId,
   monthKey,
+  adminMode = false,
+  villageHref = "/me/village",
 }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
 
-  const remaining = Math.max(dailyLimit - todayPlayCount, 0);
-  const canPlay = remaining > 0;
+  // 관리자 모드는 일일 한도 무시 → 항상 플레이 가능.
+  const remaining = adminMode
+    ? dailyLimit
+    : Math.max(dailyLimit - todayPlayCount, 0);
+  const canPlay = adminMode || remaining > 0;
+  const gameHref = adminMode
+    ? "/admin/game-center-preview/infinite-stairs"
+    : "/me/game-center/infinite-stairs";
 
   const remainingMessage =
     remaining === 0
@@ -103,7 +115,7 @@ export function GameCenterClient({
       showToast("오늘은 여기까지! 내일 다시 오자 🎮");
       return;
     }
-    router.push("/me/game-center/infinite-stairs");
+    router.push(gameHref);
   };
 
   return (
@@ -118,6 +130,25 @@ export function GameCenterClient({
       <Stars />
 
       <div className="relative z-10 mx-auto w-full max-w-md px-5 pb-16 pt-6">
+        {/* 관리자 테스트 모드 뱃지 */}
+        {adminMode && (
+          <div
+            className="mb-4 flex items-center justify-between rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
+            style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
+          >
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden>🛠</span>
+              <span>테스트 모드 — 기록/EXP 저장 안 됨</span>
+            </span>
+            <Link
+              href="/admin/game-center"
+              className="rounded-full bg-amber-400/20 px-2.5 py-1 text-[10px] uppercase tracking-wider"
+            >
+              관리 →
+            </Link>
+          </div>
+        )}
+
         {/* 헤더 */}
         <header className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -146,7 +177,7 @@ export function GameCenterClient({
           </span>
         </header>
 
-        {/* 남은 횟수 — 하트 5개 */}
+        {/* 남은 횟수 — 하트 5개 (admin 은 무제한) */}
         <section
           className="mb-5 rounded-2xl border border-purple-400/20 bg-gradient-to-br from-purple-900/30 to-purple-950/30 p-4 backdrop-blur-sm"
           style={{ boxShadow: "0 0 24px rgba(168,85,247,0.12) inset" }}
@@ -154,30 +185,42 @@ export function GameCenterClient({
         >
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-base font-bold text-white/90">
-              오늘 남은 횟수
+              {adminMode ? "오늘 남은 횟수" : "오늘 남은 횟수"}
             </span>
             <span className="text-xl font-extrabold">
-              <span
-                className={remaining > 0 ? "text-pink-300" : "text-white/40"}
-              >
-                {remaining}
-              </span>
-              <span className="text-white/40"> / {dailyLimit}</span>
+              {adminMode ? (
+                <span className="text-amber-300">∞</span>
+              ) : (
+                <>
+                  <span
+                    className={
+                      remaining > 0 ? "text-pink-300" : "text-white/40"
+                    }
+                  >
+                    {remaining}
+                  </span>
+                  <span className="text-white/40"> / {dailyLimit}</span>
+                </>
+              )}
             </span>
           </div>
           <div className="flex items-end justify-between">
             <div className="flex gap-1.5">
               {Array.from({ length: dailyLimit }, (_, i) => (
-                <Heart key={i} filled={i < remaining} />
+                <Heart key={i} filled={adminMode ? true : i < remaining} />
               ))}
             </div>
             <span
               className={[
                 "text-xs",
-                remaining === 0 ? "text-pink-200/80" : "text-white/55",
+                adminMode
+                  ? "text-amber-200/80"
+                  : remaining === 0
+                    ? "text-pink-200/80"
+                    : "text-white/55",
               ].join(" ")}
             >
-              {remainingMessage}
+              {adminMode ? "테스트 모드 · 무제한" : remainingMessage}
             </span>
           </div>
         </section>
@@ -614,7 +657,7 @@ export function GameCenterClient({
         {/* 하단 — 몬스터마을 돌아가기 */}
         <div className="flex justify-center">
           <Link
-            href="/me/village"
+            href={villageHref}
             className="group relative flex items-center gap-3 rounded-full border border-purple-400/40 bg-gradient-to-r from-purple-900/50 via-fuchsia-900/40 to-purple-900/50 px-6 py-3 text-sm font-extrabold text-white backdrop-blur-sm transition-all active:scale-95"
             style={{
               boxShadow:

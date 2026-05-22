@@ -1,14 +1,34 @@
-// /admin/game-center-preview — 학생이 보는 게임센터 화면 미리보기 (스텁)
-// 실제 학생용 게임 화면은 아직 구현 전. 본 페이지는 몬스터마을 hub 의 학생 뷰 진입점 자리잡이 +
-// 우측 상단의 '관리 페이지' 버튼으로 admin 페이지로 점프할 수 있게 한다.
+// /admin/game-center-preview — 관리자가 학생 게임센터를 그대로 체험할 수 있는 진입점.
+// 학생용 GameCenterClient 를 adminMode 로 재사용.
+//
+// 정책:
+//  - 일일 한도 무시 (무제한 플레이)
+//  - 게임 결과를 game_plays / game_rankings / student_monsters 어디에도 저장 안 함
+//  - 화면 상단에 "🛠 테스트 모드" 뱃지 노출
+//  - 몬스터알 / 랭킹 영역은 placeholder/실데이터 혼용으로 시각적 동일성 유지
 
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { GameCenterClient } from "@/app/me/game-center/GameCenterClient";
+import {
+  DAILY_PLAY_LIMIT,
+  type GameRanking,
+  type StudentMonster,
+} from "@/lib/types";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAdminBranchId } from "@/lib/branch";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const GAME_TYPE = "infinite_stairs";
+
+function kstMonthKey(): string {
+  return new Date()
+    .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })
+    .slice(0, 7);
+}
 
 export default async function AdminGameCenterPreviewPage({
   searchParams,
@@ -19,45 +39,69 @@ export default async function AdminGameCenterPreviewPage({
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
-  const adminLink = branchId
-    ? `/admin/game-center?branch=${encodeURIComponent(branchId)}`
-    : "/admin/game-center";
+  const branchId =
+    getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  if (!branchId) {
+    redirect("/admin/select-branch");
+  }
+
+  const sb = createSupabaseServiceClient();
+  const monthKey = kstMonthKey();
+
+  // 랭킹은 실제 지점 데이터를 표시 (관리자가 학생 시점 그대로 확인 가능).
+  const { data: topRows } = await sb
+    .from("game_rankings")
+    .select(
+      "id, student_id, branch_id, game_type, best_score, month, reward_exp, rank, updated_at",
+    )
+    .eq("branch_id", branchId)
+    .eq("game_type", GAME_TYPE)
+    .eq("month", monthKey)
+    .order("best_score", { ascending: false })
+    .limit(3);
+  const topRankings = (topRows ?? []) as GameRanking[];
+
+  const nameByStudentId: Record<string, string> = {};
+  if (topRankings.length > 0) {
+    const ids = Array.from(new Set(topRankings.map((r) => r.student_id)));
+    const { data: nameRows } = await sb
+      .from("garden_students")
+      .select("id, name")
+      .in("id", ids);
+    for (const r of (nameRows ?? []) as Array<{ id: string; name: string }>) {
+      nameByStudentId[r.id] = r.name;
+    }
+  }
+
+  // 관리자에겐 활성 몬스터가 없으므로 placeholder 합성.
+  const fakeMonster: StudentMonster = {
+    id: "__admin_preview__",
+    student_id: "__admin__",
+    species_id: "__admin__",
+    nickname: "테스트",
+    current_exp: 0,
+    current_stage: 1,
+    is_evolved: false,
+    selected_at: new Date().toISOString(),
+    evolved_at: null,
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="sticky top-0 z-40 bg-amber-50 border-b border-amber-200">
-        <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-xs font-semibold shrink-0">
-              학생 미리보기
-            </span>
-            <span className="text-amber-800 truncate">
-              학생이 보게 될 게임센터 화면이에요
-            </span>
-          </div>
-          <Link
-            href={adminLink}
-            className="shrink-0 text-amber-800 hover:text-amber-900 hover:bg-amber-100 rounded-lg px-2 py-1 transition font-semibold"
-          >
-            관리 페이지 →
-          </Link>
-        </div>
-      </div>
-
-      <main className="max-w-2xl mx-auto px-4 py-10">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
-          <div className="text-5xl mb-4">🎮</div>
-          <h1 className="text-lg font-bold text-gray-900 mb-2">게임센터</h1>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            학생용 게임 화면은 준비 중이에요.
-            <br />
-            우측 상단{" "}
-            <span className="font-semibold text-gray-700">관리 페이지 →</span>{" "}
-            에서 콘텐츠를 추가하면 이곳에 노출돼요.
-          </p>
-        </div>
-      </main>
-    </div>
+    <GameCenterClient
+      adminMode
+      villageHref={`/admin/village-preview?branch=${encodeURIComponent(branchId)}`}
+      studentName="관리자"
+      todayPlayCount={0}
+      dailyLimit={DAILY_PLAY_LIMIT}
+      activeMonster={fakeMonster}
+      monsterSpecies={null}
+      monsterStages={[]}
+      topRankings={topRankings}
+      myRanking={null}
+      myRankNumber={null}
+      myStudentId=""
+      nameByStudentId={nameByStudentId}
+      monthKey={monthKey}
+    />
   );
 }

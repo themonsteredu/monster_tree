@@ -44,12 +44,18 @@ type Props = {
   remainingBefore: number;
   avatarConfig: AvatarConfig | null;
   monsterNickname: string;
+  // 관리자 미리보기 모드 — 서버 액션 호출 안 함, 결과 저장 안 됨, 무제한 다시하기.
+  adminMode?: boolean;
+  // adminMode 에서 '나가기' 클릭 시 이동 경로 (기본: /me/game-center)
+  homeHref?: string;
 };
 
 export function InfiniteStairsGame({
   remainingBefore,
   avatarConfig,
   monsterNickname,
+  adminMode = false,
+  homeHref = "/me/game-center",
 }: Props) {
   const router = useRouter();
   const galleryPositions = useGalleryPositions();
@@ -112,6 +118,13 @@ export function InfiniteStairsGame({
       audioRef.current?.stopBgm();
       audioRef.current?.sfxGameOver();
       setSubmitting(true);
+      // 관리자 모드 — 서버 호출 안 함. 점수만 로컬에 표시.
+      if (adminMode) {
+        setResult(null);
+        setSubmitting(false);
+        setPhase("over");
+        return;
+      }
       try {
         const res = await recordInfiniteStairsPlayAction({
           score: finalScore,
@@ -128,7 +141,7 @@ export function InfiniteStairsGame({
         setPhase("over");
       }
     },
-    [clearTimers],
+    [clearTimers, adminMode],
   );
 
   const startTurnTimer = useCallback(
@@ -325,11 +338,25 @@ export function InfiniteStairsGame({
       />
       <Stars />
 
+      {/* 관리자 테스트 모드 뱃지 (게임 화면 최상단) */}
+      {adminMode && (
+        <div className="absolute inset-x-0 top-0 z-40 pointer-events-none flex justify-center pt-1">
+          <span
+            className="pointer-events-auto rounded-b-xl border border-amber-400/40 border-t-0 bg-amber-500/20 px-3 py-1 text-[11px] font-bold text-amber-100 backdrop-blur-sm"
+            style={{ boxShadow: "0 0 12px rgba(245,158,11,0.4)" }}
+          >
+            🛠 테스트 모드 · 기록 저장 안 됨
+          </span>
+        </div>
+      )}
+
       {/* 점수 + 타이머 (상단) */}
-      <div className="absolute inset-x-0 top-0 z-30 px-5 pt-4">
+      <div
+        className={`absolute inset-x-0 top-0 z-30 px-5 ${adminMode ? "pt-9" : "pt-4"}`}
+      >
         <div className="mx-auto flex w-full max-w-md items-center justify-between">
           <Link
-            href="/me/game-center"
+            href={homeHref}
             className="rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs font-bold text-white/80 backdrop-blur-sm"
           >
             ← 나가기
@@ -521,8 +548,9 @@ export function InfiniteStairsGame({
             score={score}
             maxCombo={maxCombo}
             monsterNickname={monsterNickname}
-            onRetry={remainingBefore > 1 ? startGame : null}
-            onHome={() => router.push("/me/game-center")}
+            adminMode={adminMode}
+            onRetry={adminMode || remainingBefore > 1 ? startGame : null}
+            onHome={() => router.push(homeHref)}
             onEvolutionContinue={() => router.push("/me/onboarding")}
           />
         )}
@@ -702,6 +730,7 @@ function ResultOverlay({
   score,
   maxCombo,
   monsterNickname,
+  adminMode,
   onRetry,
   onHome,
   onEvolutionContinue,
@@ -711,6 +740,7 @@ function ResultOverlay({
   score: number;
   maxCombo: number;
   monsterNickname: string;
+  adminMode: boolean;
   onRetry: (() => void) | null;
   onHome: () => void;
   onEvolutionContinue: () => void;
@@ -740,6 +770,43 @@ function ResultOverlay({
             <div className="text-4xl">⏳</div>
             <div className="mt-3 text-base font-bold text-white">
               결과 저장 중...
+            </div>
+          </>
+        ) : adminMode ? (
+          <>
+            <div className="text-2xl font-extrabold text-white">GAME OVER</div>
+            <div className="mt-1 inline-block rounded-full border border-amber-400/40 bg-amber-500/15 px-3 py-1 text-[11px] font-bold text-amber-100">
+              🛠 테스트 모드 — 기록 저장 안 됨
+            </div>
+            <div className="mt-4 rounded-xl bg-white/[0.05] p-4">
+              <div className="text-xs text-white/55">최종 점수</div>
+              <div className="text-5xl font-extrabold text-pink-300">
+                {score}
+              </div>
+            </div>
+            {maxCombo >= 3 && (
+              <div className="mt-2 flex items-center justify-center gap-2 text-sm text-yellow-200">
+                <span aria-hidden>🔥</span>
+                <span className="font-bold">최고 콤보 ×{maxCombo}</span>
+              </div>
+            )}
+            <div className="mt-5 flex flex-col gap-2">
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 px-5 py-3 text-base font-extrabold text-white shadow-[0_6px_18px_rgba(244,114,182,0.45)] active:scale-95"
+                >
+                  ↻ 다시하기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onHome}
+                className="rounded-full border border-white/15 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/80 active:scale-95"
+              >
+                게임센터로
+              </button>
             </div>
           </>
         ) : result?.ok ? (
