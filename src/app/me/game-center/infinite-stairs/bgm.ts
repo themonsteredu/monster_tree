@@ -107,6 +107,24 @@ export class GameAudio {
     this.beep(base * 1.5, 0.12, "square", 0.1, 0.04);
   }
 
+  // 효과음 — 피격 (목숨 -1)
+  sfxHurt() {
+    this.ensure();
+    if (!this.ctx || !this.master) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.28);
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.22, now + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    osc.connect(g).connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.34);
+  }
+
   // 효과음 — 게임오버 (하강 톤)
   sfxGameOver() {
     this.ensure();

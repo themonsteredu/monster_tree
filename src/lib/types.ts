@@ -377,13 +377,14 @@ export type StudentMonster = {
   evolved_at: string | null;
 };
 
-// 단계별 기본 이름/필요 EXP.
+// 단계별 기본 이름/필요 EXP — 관리자가 새 species 만들 때 기본값 + 도감/UI fallback.
+// 누적 EXP 기준: 0 → 70 → 190 → 380 → 630.
 export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requiredExp: number }> = [
   { stage: 1, name: "알", requiredExp: 0 },
-  { stage: 2, name: "아기", requiredExp: 50 },
-  { stage: 3, name: "청소년", requiredExp: 150 },
-  { stage: 4, name: "성체", requiredExp: 300 },
-  { stage: 5, name: "최종 진화", requiredExp: 500 },
+  { stage: 2, name: "금간 알", requiredExp: 70 },
+  { stage: 3, name: "부화", requiredExp: 190 },
+  { stage: 4, name: "성장", requiredExp: 380 },
+  { stage: 5, name: "완성체", requiredExp: 630 },
 ];
 
 // 게임센터 — 한 판 기록.
@@ -411,7 +412,7 @@ export type GameRanking = {
 };
 
 // 하루 플레이 횟수 상한 (학생당, 게임당).
-export const DAILY_PLAY_LIMIT = 5;
+export const DAILY_PLAY_LIMIT = 3;
 
 // 단계별 fallback 이모지 — monster_stage_images.image_url 이 비어있을 때만 사용.
 // 관리자가 이미지를 업로드하면 그쪽이 우선.

@@ -31,6 +31,11 @@ const STAIR_QUEUE_LEN = 10; // 화면에 보이는 계단 수
 const INITIAL_TIMER_MS = 2000;
 const TIMER_STEP_MS = 50;
 const MIN_TIMER_MS = 800;
+const STARTING_LIVES = 3;
+// 피격 후 무적 시간(ms) — 같은 액션 연타 시 중복 피해 방지 (오답 탭 한정).
+const INVINCIBLE_MS = 700;
+// 깜빡임 지속 시간(ms)
+const DAMAGED_FLASH_MS = 700;
 
 function randomSide(): Side {
   return Math.random() < 0.5 ? "L" : "R";
@@ -71,6 +76,8 @@ export function InfiniteStairsGame({
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [lives, setLives] = useState(STARTING_LIVES);
+  const [damaged, setDamaged] = useState(false);
 
   // 클로저 문제 회피 — 타이머/이벤트 콜백에서 최신값 읽기
   const scoreRef = useRef(0);
@@ -79,6 +86,10 @@ export function InfiniteStairsGame({
   const climbingRef = useRef(false);
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
+  const livesRef = useRef(STARTING_LIVES);
+  const invincibleRef = useRef(false);
+  // loseLife 와 startTurnTimer 가 서로를 호출하는 순환 참조 해소를 위해 ref 우회.
+  const loseLifeRef = useRef<() => void>(() => {});
 
   const timeoutRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -154,8 +165,8 @@ export function InfiniteStairsGame({
 
       timeoutRef.current = window.setTimeout(() => {
         if (phaseRef.current !== "playing") return;
-        setFlash("bad");
-        void submitResult(scoreRef.current);
+        // 시간 초과 = 피해 1 (무적 무시). loseLife 가 마지막 목숨이면 submitResult 호출.
+        loseLifeRef.current();
       }, duration);
 
       const tick = () => {
@@ -168,16 +179,53 @@ export function InfiniteStairsGame({
       };
       rafRef.current = requestAnimationFrame(tick);
     },
-    [clearTimers, submitResult],
+    [clearTimers],
   );
+
+  // 피해 처리 — 오답 탭(무적 체크 호출자 측) 또는 시간 초과.
+  // 마지막 목숨이면 submitResult, 아니면 같은 계단에서 타이머 리셋 + 무적/깜빡임.
+  const loseLife = useCallback(() => {
+    const newLives = livesRef.current - 1;
+    livesRef.current = newLives;
+    setLives(newLives);
+    comboRef.current = 0;
+    setCombo(0);
+    setFlash("bad");
+    window.setTimeout(() => setFlash("none"), 220);
+    setDamaged(true);
+    window.setTimeout(() => setDamaged(false), DAMAGED_FLASH_MS);
+
+    if (newLives <= 0) {
+      void submitResult(scoreRef.current);
+      return;
+    }
+
+    audioRef.current?.sfxHurt();
+    invincibleRef.current = true;
+    window.setTimeout(() => {
+      invincibleRef.current = false;
+    }, INVINCIBLE_MS);
+
+    // 같은 계단에서 다시 도전 — 타이머만 풀 듀레이션으로 리셋.
+    startTurnTimer(durationRef.current);
+  }, [startTurnTimer, submitResult]);
+
+  // ref 동기화 — startTurnTimer 의 timeout 콜백이 ref 로 호출.
+  useEffect(() => {
+    loseLifeRef.current = loseLife;
+  }, [loseLife]);
 
   const startGame = useCallback(() => {
     scoreRef.current = 0;
     comboRef.current = 0;
     maxComboRef.current = 0;
+    livesRef.current = STARTING_LIVES;
+    invincibleRef.current = false;
     setScore(0);
     setCombo(0);
     setMaxCombo(0);
+    setLives(STARTING_LIVES);
+    setDamaged(false);
     const initial = makeStairs();
     stairsRef.current = initial;
     setStairs(initial);
@@ -199,9 +247,9 @@ export function InfiniteStairsGame({
       const expected = stairsRef.current[1];
 
       if (side !== expected) {
-        setFlash("bad");
-        setTimeout(() => setFlash("none"), 220);
-        void submitResult(scoreRef.current);
+        // 무적 시간(피격 직후)엔 오답 탭 무시 — 중복 피해 방지.
+        if (invincibleRef.current) return;
+        loseLife();
         return;
       }
 
@@ -255,7 +303,7 @@ export function InfiniteStairsGame({
         climbAnimRef.current = null;
       }, 110);
     },
-    [startTurnTimer, submitResult],
+    [startTurnTimer, loseLife],
   );
 
   // 키보드 입력 (PC)
@@ -354,13 +402,14 @@ export function InfiniteStairsGame({
       <div
         className={`absolute inset-x-0 top-0 z-30 px-5 ${adminMode ? "pt-9" : "pt-4"}`}
       >
-        <div className="mx-auto flex w-full max-w-md items-center justify-between">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2">
           <Link
             href={homeHref}
             className="rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs font-bold text-white/80 backdrop-blur-sm"
           >
             ← 나가기
           </Link>
+          <Hearts lives={lives} max={STARTING_LIVES} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -415,6 +464,7 @@ export function InfiniteStairsGame({
           stairs={stairs}
           score={score}
           climbing={climbing}
+          damaged={damaged}
           avatarConfig={avatarConfig}
           galleryPositions={galleryPositions}
         />
@@ -561,16 +611,51 @@ export function InfiniteStairsGame({
 
 // ============== 계단 컬럼 + 캐릭터 ==============
 
+// 상단 목숨 표시 — 채워진 ❤️ + 잃은 자리는 흐린 회색 (subtle).
+function Hearts({ lives, max }: { lives: number; max: number }) {
+  return (
+    <div
+      className="flex items-center gap-1"
+      aria-label={`목숨 ${lives} / ${max}`}
+    >
+      {Array.from({ length: max }).map((_, i) => {
+        const filled = i < lives;
+        return (
+          <motion.span
+            key={i}
+            className="text-lg leading-none"
+            initial={false}
+            animate={{
+              scale: filled ? 1 : 0.78,
+              opacity: filled ? 1 : 0.22,
+            }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            style={{
+              filter: filled
+                ? "drop-shadow(0 0 6px rgba(244,63,94,0.7))"
+                : "grayscale(1)",
+            }}
+          >
+            ❤️
+          </motion.span>
+        );
+      })}
+    </div>
+  );
+}
+
 function StairColumn({
   stairs,
   score,
   climbing,
+  damaged,
   avatarConfig,
   galleryPositions,
 }: {
   stairs: Side[];
   score: number;
   climbing: boolean;
+  damaged: boolean;
   avatarConfig: AvatarConfig | null;
   galleryPositions: Record<string, import("@/lib/types").AvatarGalleryItemPosition>;
 }) {
@@ -623,6 +708,15 @@ function StairColumn({
         transition={{ duration: 0.1 }}
         style={{ bottom: `${stairBottomStartPct + 8}%` }}
       >
+        {/* 피격 깜빡임 — damaged 켜진 동안 opacity 진동 */}
+        <motion.div
+          animate={
+            damaged
+              ? { opacity: [1, 0.2, 1, 0.2, 1, 0.25, 1] }
+              : { opacity: 1 }
+          }
+          transition={{ duration: damaged ? 0.7 : 0.1 }}
+        >
         {/* 점프 효과 — score 변할 때마다 살짝 위로 튀어오름 */}
         <motion.div
           key={score}
@@ -663,6 +757,7 @@ function StairColumn({
               🏃
             </span>
           )}
+        </motion.div>
         </motion.div>
       </motion.div>
     </div>
