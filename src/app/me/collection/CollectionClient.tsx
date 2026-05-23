@@ -30,6 +30,10 @@ type Props = {
   entries: CollectionEntry[];
   collectedCount: number;
   totalCount: number;
+  // 관리자 미리보기 모드 — 학생 화면 그대로 보되 학생 라우팅 대신 admin 라우트로 분기.
+  adminMode?: boolean;
+  // adminMode 일 때 ← 돌아가기 등의 기본 라우트.
+  homeHref?: string;
 };
 
 export function CollectionClient({
@@ -37,6 +41,8 @@ export function CollectionClient({
   entries,
   collectedCount,
   totalCount,
+  adminMode = false,
+  homeHref = "/me",
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -45,15 +51,32 @@ export function CollectionClient({
   return (
     <main className="min-h-[100dvh] bg-gradient-to-b from-amber-50 to-orange-100 pb-16">
       <div className="mx-auto max-w-md px-4 pt-6">
+        {adminMode && (
+          <div
+            className="mb-3 flex items-center justify-between rounded-xl border border-amber-400/50 bg-amber-100 px-3 py-2 text-xs font-bold text-amber-900"
+            style={{ boxShadow: "0 0 10px rgba(245,158,11,0.2)" }}
+          >
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden>🛠</span>
+              <span>테스트 모드 — 실제 학생 도감 아님</span>
+            </span>
+            <Link
+              href="/admin/monsters"
+              className="rounded-full bg-amber-200 px-2.5 py-0.5 text-[10px] uppercase tracking-wider"
+            >
+              종 관리 →
+            </Link>
+          </div>
+        )}
         <header className="mb-5 flex items-center justify-between">
           <Link
-            href="/me"
+            href={homeHref}
             className="rounded-full bg-white/70 px-3 py-1.5 text-xs font-bold text-amber-800 backdrop-blur-sm"
           >
-            ← 사과정원
+            {adminMode ? "← 관리" : "← 사과정원"}
           </Link>
           <span className="text-xs text-amber-700">
-            {studentName} 님의 도감
+            {adminMode ? "도감 미리보기" : `${studentName} 님의 도감`}
           </span>
         </header>
 
@@ -100,11 +123,11 @@ export function CollectionClient({
 
         <div className="mt-6 text-center">
           <Link
-            href="/me"
+            href={homeHref}
             className="font-pretendard text-amber-600 hover:text-amber-700"
             style={{ fontSize: 13, fontWeight: 500 }}
           >
-            🍎 사과정원으로
+            {adminMode ? "🛠 관리 페이지로" : "🍎 사과정원으로"}
           </Link>
         </div>
       </div>
