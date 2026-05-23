@@ -899,13 +899,21 @@ export function MeTreeClient({
           </>
         )}
 
-        <div className="mt-4 text-center">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/me/village"
             className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
             style={{ fontSize: 13, fontWeight: 500 }}
           >
             🏘️ 몬스터 마을로
+          </Link>
+          <span className="text-amber-300" aria-hidden>·</span>
+          <Link
+            href="/me/collection"
+            className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
+            style={{ fontSize: 13, fontWeight: 500 }}
+          >
+            📖 몬스터도감
           </Link>
         </div>
       </div>

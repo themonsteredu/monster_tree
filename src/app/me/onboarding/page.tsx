@@ -1,13 +1,15 @@
-// /tree/me/onboarding — 학생 알 선택 화면.
-// 첫 로그인 / 진화 완료 후 새 알 필요할 때 표시.
-// 활성화 + 1단계 이미지가 있는 종만 보여준다.
+// /tree/me/onboarding — 새 몬스터알 받기.
+// 흐름:
+//   - 첫 진입(가입 직후) : "🥚 어떤 친구가 들어있을까요?" + 닉네임 입력
+//   - 진화 직후 진입     : "🎉 OO몬을 발견했다!" 축하 화면 + 새 알 닉네임 입력
+// 종은 학생이 고르지 않음 — 서버가 무작위 배정 (startRandomEggAction).
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import type { MonsterSpecies, MonsterStageImage } from "@/lib/types";
-import { SelectEggClient } from "./SelectEggClient";
+import type { MonsterSpecies, StudentMonster } from "@/lib/types";
+import { NewEggClient } from "./NewEggClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,16 +21,15 @@ export default async function OnboardingPage() {
 
   const sb = createSupabaseServiceClient();
 
-  // 본인 student 행
   const { data: studentRow } = await sb
     .from("garden_students")
     .select("id")
-    .eq("branch_id", payload!.branchId)
-    .eq("external_student_id", payload!.studentLocalId)
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
     .maybeSingle();
 
-  // 이미 활성 몬스터 있으면 /me 로 돌려보냄
   if (studentRow?.id) {
+    // 이미 활성 몬스터 있으면 /me 로 돌려보냄
     const { data: existing } = await sb
       .from("student_monsters")
       .select("id")
@@ -40,7 +41,18 @@ export default async function OnboardingPage() {
     }
   }
 
-  // 진화 완료한 몬스터 카운트 — 축하 메시지 표시 여부 결정
+  // 활성 종이 1개도 없으면 안내 화면.
+  const { data: anyActive } = await sb
+    .from("monster_species")
+    .select("id")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+  const noActiveSpecies = !anyActive;
+
+  // 가장 최근에 진화한 몬스터 — 축하 메시지용. 최근 10분 이내일 때만 fresh 로 표시.
+  let recentlyEvolved: (StudentMonster & { species: MonsterSpecies }) | null =
+    null;
   let evolvedCount = 0;
   if (studentRow?.id) {
     const { count } = await sb
@@ -49,31 +61,52 @@ export default async function OnboardingPage() {
       .eq("student_id", studentRow.id)
       .eq("is_evolved", true);
     evolvedCount = count ?? 0;
+
+    if (evolvedCount > 0) {
+      const { data: lastEvolved } = await sb
+        .from("student_monsters")
+        .select(
+          "id, student_id, species_id, nickname, current_exp, current_stage, is_evolved, selected_at, evolved_at",
+        )
+        .eq("student_id", studentRow.id)
+        .eq("is_evolved", true)
+        .order("evolved_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastEvolved) {
+        const { data: sp } = await sb
+          .from("monster_species")
+          .select(
+            "id, name, emoji, description, display_order, is_active, hide_name, created_at, updated_at",
+          )
+          .eq("id", (lastEvolved as StudentMonster).species_id)
+          .maybeSingle();
+        if (sp) {
+          recentlyEvolved = {
+            ...(lastEvolved as StudentMonster),
+            species: sp as MonsterSpecies,
+          };
+        }
+      }
+    }
   }
 
-  // 활성 종 + 1단계 이미지
-  const [{ data: species }, { data: stages }] = await Promise.all([
-    sb
-      .from("monster_species")
-      .select("id, name, description, display_order, is_active, hide_name, created_at, updated_at")
-      .eq("is_active", true)
-      .order("display_order", { ascending: true }),
-    sb
-      .from("monster_stage_images")
-      .select("id, species_id, stage, image_url, stage_name, required_exp, updated_at")
-      .eq("stage", 1),
-  ]);
+  // 진화한 지 10분 이내면 fresh 축하 — 새로고침해도 잠시 동안 메시지 유지.
+  const isFreshEvolution = (() => {
+    if (!recentlyEvolved?.evolved_at) return false;
+    const t = new Date(recentlyEvolved.evolved_at).getTime();
+    return Date.now() - t < 10 * 60 * 1000;
+  })();
 
   return (
-    <SelectEggClient
-      studentName={payload!.name}
-      species={(species ?? []) as MonsterSpecies[]}
-      stage1Map={Object.fromEntries(
-        ((stages ?? []) as MonsterStageImage[])
-          .filter((s) => !!s.image_url)
-          .map((s) => [s.species_id, s as MonsterStageImage]),
-      )}
+    <NewEggClient
+      studentName={payload.name}
+      noActiveSpecies={noActiveSpecies}
       evolvedCount={evolvedCount}
+      celebrateSpecies={isFreshEvolution ? recentlyEvolved!.species : null}
+      celebrateMonsterNickname={
+        isFreshEvolution ? recentlyEvolved!.nickname : null
+      }
     />
   );
 }

@@ -345,6 +345,7 @@ export const WEATHER_LABEL: Record<WeatherType, { icon: string; name: string }> 
 export type MonsterSpecies = {
   id: string;
   name: string;
+  emoji: string; // 도감/UI 의 큰 아이콘 (예: '🔥', '💧'). 마이그레이션 시 기본 '✨'.
   description: string;
   display_order: number;
   is_active: boolean;

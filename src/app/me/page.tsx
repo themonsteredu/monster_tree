@@ -153,13 +153,12 @@ export default async function MyTreePage() {
     const activeRaw = allMonsters.find((m) => !m.is_evolved) ?? null;
 
     if (!activeRaw) {
-      // 활성 몬스터 없음 → 알 선택 페이지로 (종이 1개라도 활성 + 1단계 이미지 있을 때만)
+      // 활성 몬스터 없음 → 알 선택 페이지로 (활성 종이 1개라도 있을 때).
+      // image_url 은 필수 아님 — 없으면 STAGE_FALLBACK_EMOJI 가 표시됨.
       const { data: anyEgg } = await sbService
-        .from('monster_stage_images')
-        .select('species_id, monster_species!inner(is_active)')
-        .eq('stage', 1)
-        .not('image_url', 'is', null)
-        .eq('monster_species.is_active', true)
+        .from('monster_species')
+        .select('id')
+        .eq('is_active', true)
         .limit(1)
         .maybeSingle();
       if (anyEgg) {
@@ -184,12 +183,13 @@ export default async function MyTreePage() {
       monsterSpecies = (speciesRow as MonsterSpecies | null) ?? null;
       monsterStages = (stagesRows ?? []) as MonsterStageImage[];
 
-      // 자동 부화: current_exp 와 image_url 둘 다 충족하는 최고 단계로.
+      // 자동 부화 — current_exp 가 required_exp 도달하면 단계 업.
+      // image_url 은 선택적 (없으면 fallback 이모지 사용).
       const fromStage = activeMonster.current_stage;
       const targetStage = (() => {
         let best = activeMonster.current_stage;
         for (const s of monsterStages) {
-          if (s.stage > best && s.required_exp <= activeMonster.current_exp && s.image_url) {
+          if (s.stage > best && s.required_exp <= activeMonster.current_exp) {
             best = s.stage;
           }
         }

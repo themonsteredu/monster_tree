@@ -152,9 +152,10 @@ async function recordGamePlay(
     image_url: string | null;
   }>;
 
+  // image_url 은 선택적 — 없으면 fallback 이모지 사용.
   let targetStage = activeMonster.current_stage;
   for (const s of stages) {
-    if (s.stage > targetStage && s.required_exp <= newExp && s.image_url) {
+    if (s.stage > targetStage && s.required_exp <= newExp) {
       targetStage = s.stage;
     }
   }
