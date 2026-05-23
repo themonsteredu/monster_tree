@@ -1,47 +1,64 @@
-// /admin/quiz-center — 퀴즈센터 (준비 중)
-// 몬스터마을 허브의 하위 메뉴. 향후 학생용 퀴즈 관리 페이지가 될 자리.
+// /admin/quiz-center — 퀴즈 문제 관리.
+// 카테고리(수학/상식/넌센스) × 학년 × 난이도 × 검수상태 필터링,
+// 직접 등록 / AI 대량 생성 / 검수 / 비활성화 / 삭제까지.
 
 import Link from "next/link";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
-import { getAdminBranchId } from "@/lib/branch";
+import { QuizCenterAdminClient } from "./QuizCenterAdminClient";
+import type { QuizQuestion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+// AI 대량 생성(50개 등)이 길어질 수 있어 5분까지 허용 (Vercel Pro plan 필요).
+export const maxDuration = 300;
 
-export default async function QuizCenterPage({
+export default async function QuizCenterAdminPage({
   searchParams,
 }: {
-  searchParams: { key?: string; branch?: string };
+  searchParams: { key?: string };
 }) {
-  const authed = isAdminAuthenticated(searchParams.key);
-  if (!authed) return <LoginForm initialKey={searchParams.key ?? ""} />;
+  if (!isAdminAuthenticated(searchParams.key)) {
+    return <LoginForm initialKey={searchParams.key ?? ""} />;
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return (
+      <main className="p-6 text-center text-gray-400 bg-gray-50 min-h-screen">
+        Supabase 환경변수가 설정되지 않았어요.
+      </main>
+    );
+  }
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
-  const villageHref = branchId
-    ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}`
-    : "/admin/village-preview";
+  // service_role 로 모든 문제 (검수 완료 + 미검수 + 비활성 포함) 조회.
+  const sb = createSupabaseServiceClient();
+  const { data: questions } = await sb
+    .from("quiz_questions")
+    .select(
+      "id, category, grade, question, option_1, option_2, option_3, option_4, correct_answer, explanation, difficulty, is_approved, is_active, created_at, approved_at",
+    )
+    .order("created_at", { ascending: false })
+    .limit(2000);
 
   return (
-    <main className="min-h-screen p-6 bg-gray-50">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold text-gray-900">🧩 퀴즈센터</h1>
+    <main className="min-h-screen pb-24 bg-gray-50">
+      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
           <Link
-            href={villageHref}
-            className="text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
+            href="/admin"
+            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
           >
-            ← 몬스터마을
+            ← 관리
           </Link>
+          <h1 className="text-lg font-semibold text-gray-900 truncate">
+            📝 퀴즈 관리
+          </h1>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-          <div className="text-5xl mb-4">🧩</div>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            퀴즈센터는 준비 중입니다.
-            <br />곧 단원별 퀴즈를 출제·관리할 수 있게 돼요.
-          </p>
-        </div>
-      </div>
+      </header>
+
+      <QuizCenterAdminClient
+        initialQuestions={(questions ?? []) as QuizQuestion[]}
+      />
     </main>
   );
 }
