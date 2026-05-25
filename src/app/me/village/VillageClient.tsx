@@ -128,7 +128,7 @@ export function VillageClient({
     <main className="fixed inset-0 bg-black overflow-hidden text-white flex items-center justify-center">
       {/* 상단 우측 — 학생 이름 + 포인트 */}
       <header className="absolute top-0 right-0 z-30 px-4 pt-3 pointer-events-none">
-        <div className="bg-black/55 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-2 pointer-events-auto">
+        <div className="bg-black/70 rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-2 pointer-events-auto">
           <span className="text-white/90">{studentName}</span>
           <span className="text-amber-300">⭐ {totalPoints}</span>
         </div>
@@ -185,7 +185,7 @@ export function VillageClient({
                   />
                 ) : (
                   <div
-                    className="w-full aspect-square bg-white/15 border border-white/40 rounded-xl flex items-center justify-center backdrop-blur-sm"
+                    className="w-full aspect-square bg-white/20 border border-white/40 rounded-xl flex items-center justify-center"
                     style={locked ? { filter: "brightness(0.55) saturate(0.7)" } : undefined}
                   >
                     <span className="text-white text-[11px] font-semibold px-2 text-center">
