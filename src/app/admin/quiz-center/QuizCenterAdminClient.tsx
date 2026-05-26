@@ -858,12 +858,45 @@ function AIGenerateModal({
 
 /* ===== 엑셀/시트 업로드 모달 ===== */
 
-const BULK_TEMPLATE = [
-  "category\tgrade\tquestion\toption_1\toption_2\toption_3\toption_4\tcorrect_answer\texplanation\tdifficulty",
-  "math\tmiddle_1\t2 + 3 은?\t4\t5\t6\t7\t2\t2+3=5 예요.\teasy",
-  "general\tall\t대한민국의 수도는?\t서울\t부산\t대구\t인천\t1\t\tmedium",
-  "nonsense\tall\t세상에서 가장 뜨거운 과일은?\t사과\t귤\t천도복숭아\t바나나\t3\t천(1000)도니까요.\teasy",
-].join("\n");
+const TEMPLATE_HEADER = [
+  "category", "grade", "question", "option_1", "option_2",
+  "option_3", "option_4", "correct_answer", "explanation", "difficulty",
+];
+
+const TEMPLATE_ROWS: string[][] = [
+  ["math", "middle_1", "-3 + 5 의 값은?", "-8", "-2", "2", "8", "3", "5에서 3을 빼면 2가 돼요.", "easy"],
+  ["math", "elementary_3", "7 × 8 의 값은?", "54", "56", "48", "64", "2", "7단을 외우면 7×8=56 이에요.", "easy"],
+  ["general", "all", "대한민국의 수도는?", "서울", "부산", "대구", "인천", "1", "대한민국의 수도는 서울이에요.", "easy"],
+  ["general", "all", "1기압에서 물이 끓는 온도는 섭씨 몇 도?", "0도", "50도", "100도", "200도", "3", "1기압에서 물은 100도에서 끓어요.", "easy"],
+  ["nonsense", "all", "세상에서 가장 뜨거운 과일은?", "사과", "귤", "천도복숭아", "바나나", "3", "천(1000)도 복숭아라서요.", "easy"],
+];
+
+// textarea '예시 채우기'용 — 탭 구분(시트 붙여넣기와 동일 포맷).
+const BULK_TEMPLATE = [TEMPLATE_HEADER, ...TEMPLATE_ROWS]
+  .map((r) => r.join("\t"))
+  .join("\n");
+
+function csvCell(v: string): string {
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+// 양식 다운로드 — UTF-8 BOM + CRLF 로 엑셀 한글/줄바꿈 호환.
+function downloadCsvTemplate() {
+  const csv =
+    "﻿" +
+    [TEMPLATE_HEADER, ...TEMPLATE_ROWS]
+      .map((r) => r.map(csvCell).join(","))
+      .join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "quiz-template.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function BulkUploadModal({
   onClose,
@@ -931,6 +964,13 @@ function BulkUploadModal({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={downloadCsvTemplate}
+            className="text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 transition"
+          >
+            📥 양식 다운로드(CSV)
+          </button>
           <label className="text-sm text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 cursor-pointer transition">
             📁 CSV 파일 선택
             <input
@@ -945,9 +985,12 @@ function BulkUploadModal({
             onClick={() => setText(BULK_TEMPLATE)}
             className="text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-1.5 transition"
           >
-            예시 양식 채우기
+            예시 채우기(붙여넣기 칸)
           </button>
         </div>
+        <p className="text-xs text-gray-500 -mt-1">
+          ① 양식 다운로드 → 엑셀/시트에서 작성 → ② CSV로 저장 후 「CSV 파일 선택」 (또는 시트 셀 복사해 아래에 붙여넣기)
+        </p>
 
         <textarea
           value={text}
