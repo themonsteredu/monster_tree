@@ -365,7 +365,7 @@ export function SuggestClient({
           "radial-gradient(circle at 20% 0%, #f5deb3 0%, #d8a574 35%, #a06a3a 100%)",
       }}
     >
-      <header className="sticky top-0 z-30 bg-white/70 backdrop-blur border-b border-amber-200/50">
+      <header className="sticky top-0 z-30 bg-white/95 border-b border-amber-200/50">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link
             href={adminMode ? "/admin" : "/me/village"}
@@ -758,8 +758,7 @@ export function SuggestClient({
                                 : "cursor-default"
                             } ${s.is_mine ? "ring-2 ring-amber-700/40" : ""}`}
                             style={{
-                              boxShadow:
-                                "0 10px 22px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.2)",
+                              boxShadow: "0 3px 8px rgba(0,0,0,0.28)",
                               minHeight: isDense ? "120px" : "170px",
                             }}
                           >
@@ -889,8 +888,7 @@ export function SuggestClient({
                               s.is_mine ? "ring-2 ring-amber-700/40" : ""
                             }`}
                             style={{
-                              boxShadow:
-                                "0 8px 20px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2)",
+                              boxShadow: "0 3px 8px rgba(0,0,0,0.25)",
                             }}
                           >
                             <div

@@ -345,6 +345,7 @@ export const WEATHER_LABEL: Record<WeatherType, { icon: string; name: string }> 
 export type MonsterSpecies = {
   id: string;
   name: string;
+  emoji: string; // 도감/UI 의 큰 아이콘 (예: '🔥', '💧'). 마이그레이션 시 기본 '✨'.
   description: string;
   display_order: number;
   is_active: boolean;
@@ -377,14 +378,52 @@ export type StudentMonster = {
   evolved_at: string | null;
 };
 
-// 단계별 기본 이름/필요 EXP.
+// 단계별 기본 이름/필요 EXP — 관리자가 새 species 만들 때 기본값 + 도감/UI fallback.
+// 누적 EXP 기준: 0 → 70 → 190 → 380 → 630.
 export const MONSTER_STAGE_DEFAULTS: Array<{ stage: number; name: string; requiredExp: number }> = [
   { stage: 1, name: "알", requiredExp: 0 },
-  { stage: 2, name: "아기", requiredExp: 50 },
-  { stage: 3, name: "청소년", requiredExp: 150 },
-  { stage: 4, name: "성체", requiredExp: 300 },
-  { stage: 5, name: "최종 진화", requiredExp: 500 },
+  { stage: 2, name: "금간 알", requiredExp: 70 },
+  { stage: 3, name: "부화", requiredExp: 190 },
+  { stage: 4, name: "성장", requiredExp: 380 },
+  { stage: 5, name: "완성체", requiredExp: 630 },
 ];
+
+// 게임센터 — 한 판 기록.
+export type GamePlay = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  game_type: string;
+  score: number;
+  exp_earned: number;
+  played_at: string;
+};
+
+// 게임센터 — 월간 베스트 (지점/게임/월 단위, student×game×month UNIQUE).
+export type GameRanking = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  game_type: string;
+  best_score: number;
+  month: string; // 'YYYY-MM' (KST)
+  reward_exp: number;
+  rank: number | null;
+  updated_at: string;
+};
+
+// 하루 플레이 횟수 상한 (학생당, 게임당).
+export const DAILY_PLAY_LIMIT = 3;
+
+// 단계별 fallback 이모지 — monster_stage_images.image_url 이 비어있을 때만 사용.
+// 관리자가 이미지를 업로드하면 그쪽이 우선.
+export const STAGE_FALLBACK_EMOJI: Record<number, string> = {
+  1: "🥚",
+  2: "🥚",
+  3: "🐣",
+  4: "🐾",
+  5: "🔥",
+};
 
 // 건의함 (Suggestion Mailbox)
 export type SuggestionCategory = "praise" | "suggestion" | "complaint" | "etc";
@@ -434,4 +473,81 @@ export type SuggestionBlock = {
   blocked_at: string;
   blocked_until: string | null;
   blocked_by: string | null;
+};
+
+// 퀴즈센터 — 문제 카테고리/학년/난이도 도메인.
+export type QuizCategory = "math" | "general" | "nonsense";
+export type QuizDifficulty = "easy" | "medium" | "hard";
+
+export const QUIZ_CATEGORY_LABEL: Record<QuizCategory, string> = {
+  math: "수학",
+  general: "상식",
+  nonsense: "넌센스",
+};
+
+export const QUIZ_CATEGORY_ICON: Record<QuizCategory, string> = {
+  math: "🧮",
+  general: "🌏",
+  nonsense: "🎭",
+};
+
+export const QUIZ_DIFFICULTY_LABEL: Record<QuizDifficulty, string> = {
+  easy: "쉬움",
+  medium: "보통",
+  hard: "어려움",
+};
+
+// 학년 키 — 수학은 학년별, 상식/넌센스는 'all'.
+export const QUIZ_MATH_GRADES = [
+  "elementary_3",
+  "elementary_4",
+  "elementary_5",
+  "elementary_6",
+  "middle_1",
+  "middle_2",
+  "middle_3",
+] as const;
+
+export type QuizMathGrade = (typeof QUIZ_MATH_GRADES)[number];
+export type QuizGrade = QuizMathGrade | "all";
+
+export const QUIZ_GRADE_LABEL: Record<QuizGrade, string> = {
+  elementary_3: "초3",
+  elementary_4: "초4",
+  elementary_5: "초5",
+  elementary_6: "초6",
+  middle_1: "중1",
+  middle_2: "중2",
+  middle_3: "중3",
+  all: "전체",
+};
+
+export type QuizQuestion = {
+  id: string;
+  category: QuizCategory;
+  grade: QuizGrade;
+  question: string;
+  option_1: string;
+  option_2: string;
+  option_3: string;
+  option_4: string;
+  correct_answer: number; // 1~4
+  explanation: string | null;
+  difficulty: QuizDifficulty;
+  is_approved: boolean;
+  is_active: boolean;
+  created_at: string;
+  approved_at: string | null;
+};
+
+export type QuizPlay = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  played_at: string;
+  question_ids: string[];
+  answers: number[];
+  correct_count: number;
+  is_perfect: boolean;
+  point_earned: number;
 };

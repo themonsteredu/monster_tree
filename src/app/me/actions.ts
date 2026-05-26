@@ -648,3 +648,69 @@ export async function selectEggAction(args: { speciesId: string; nickname: strin
   revalidatePath("/me/onboarding");
   return { ok: true as const };
 }
+
+/* ============== 몬스터 — 랜덤 알 받기 ==============
+ * 활성 종 중 1개를 서버에서 랜덤 선택 → student_monsters 행 생성.
+ * 학생은 종을 직접 고르지 않는다 — 알이 부화할 때까지 정체를 숨김.
+ */
+export async function startRandomEggAction(args: { nickname: string }) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  const nickname = (args.nickname ?? "").trim();
+  if (!nickname || nickname.length > 10) {
+    return { ok: false as const, message: "이름은 1~10자 이내로 입력해주세요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+
+  // 본인 student 행
+  const { data: row } = await sb
+    .from("garden_students")
+    .select("id")
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
+    .maybeSingle();
+  if (!row?.id) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+  // 이미 키우는 게 있으면 거부
+  const { data: existing } = await sb
+    .from("student_monsters")
+    .select("id")
+    .eq("student_id", row.id)
+    .eq("is_evolved", false)
+    .maybeSingle();
+  if (existing?.id) {
+    return { ok: false as const, message: "이미 키우고 있는 몬스터가 있어요." };
+  }
+
+  // 활성 종 중 랜덤 1개 (DB 에서 PostgreSQL random() 으로 셔플)
+  const { data: species } = await sb
+    .from("monster_species")
+    .select("id")
+    .eq("is_active", true);
+  const list = (species ?? []) as Array<{ id: string }>;
+  if (list.length === 0) {
+    return { ok: false as const, message: "키울 수 있는 알이 없어요." };
+  }
+  const pick = list[Math.floor(Math.random() * list.length)];
+
+  const { error: insErr } = await sb.from("student_monsters").insert({
+    student_id: row.id,
+    species_id: pick.id,
+    nickname,
+    current_exp: 0,
+    current_stage: 1,
+    is_evolved: false,
+  });
+  if (insErr) {
+    return { ok: false as const, message: `생성 실패: ${insErr.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/me/onboarding");
+  revalidatePath("/me/collection");
+  return { ok: true as const };
+}

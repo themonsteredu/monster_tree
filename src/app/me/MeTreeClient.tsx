@@ -244,9 +244,11 @@ export function MeTreeClient({
     monster: sceneLayout?.monster ?? DEFAULT_SCENE_LAYOUT.monster,
   };
 
+  // 상대시간("N분 전") 표시용 시계. 분 단위 해상도면 충분하므로 30s 주기.
+  // (저사양 기기에서 1s 주기 전체 리렌더가 끊김의 원인이었음)
   useEffect(() => {
     setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const t = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -298,10 +300,18 @@ export function MeTreeClient({
     },
   });
 
+  // 하이라이트 자동 사라짐은 시계 틱(now)에 의존하지 않고 전용 타이머로 처리해
+  // 정확한 타이밍(HIGHLIGHT_MS)을 유지한다.
   useEffect(() => {
-    if (!highlight || !now) return;
-    if (highlight.expiresAt <= now.getTime()) setHighlight(null);
-  }, [now, highlight]);
+    if (!highlight) return;
+    const ms = highlight.expiresAt - Date.now();
+    if (ms <= 0) {
+      setHighlight(null);
+      return;
+    }
+    const t = window.setTimeout(() => setHighlight(null), ms);
+    return () => clearTimeout(t);
+  }, [highlight]);
 
   useEffect(() => {
     if (!stageUp) return;
@@ -605,9 +615,7 @@ export function MeTreeClient({
                   zIndex: 5,
                   padding: "8px 14px",
                   borderRadius: 14,
-                  background: "rgba(255,255,255,0.18)",
-                  backdropFilter: "blur(8px)",
-                  WebkitBackdropFilter: "blur(8px)",
+                  background: "rgba(255,255,255,0.32)",
                   border: "1px solid rgba(255,255,255,0.22)",
                   textAlign: "center",
                   minWidth: 66,
@@ -899,13 +907,21 @@ export function MeTreeClient({
           </>
         )}
 
-        <div className="mt-4 text-center">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/me/village"
             className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
             style={{ fontSize: 13, fontWeight: 500 }}
           >
             🏘️ 몬스터 마을로
+          </Link>
+          <span className="text-amber-300" aria-hidden>·</span>
+          <Link
+            href="/me/collection"
+            className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
+            style={{ fontSize: 13, fontWeight: 500 }}
+          >
+            📖 몬스터도감
           </Link>
         </div>
       </div>
@@ -1377,8 +1393,7 @@ function StageUpModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(61,40,24,0.35)",
-        backdropFilter: "blur(2px)",
+        background: "rgba(61,40,24,0.5)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1459,8 +1474,7 @@ function HarvestModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(61,40,24,0.35)",
-        backdropFilter: "blur(2px)",
+        background: "rgba(61,40,24,0.5)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

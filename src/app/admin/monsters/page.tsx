@@ -32,7 +32,7 @@ export default async function MonstersAdminPage({
   const [{ data: species }, { data: stages }] = await Promise.all([
     sb
       .from("monster_species")
-      .select("id, name, description, display_order, is_active, hide_name, created_at, updated_at")
+      .select("id, name, emoji, description, display_order, is_active, hide_name, created_at, updated_at")
       .order("display_order", { ascending: true }),
     sb
       .from("monster_stage_images")
@@ -51,7 +51,15 @@ export default async function MonstersAdminPage({
           >
             ← 관리
           </Link>
-          <h1 className="text-lg font-semibold text-gray-900 truncate">몬스터 종 관리</h1>
+          <h1 className="flex-1 text-lg font-semibold text-gray-900 truncate">
+            몬스터 종 관리
+          </h1>
+          <Link
+            href="/admin/collection-preview"
+            className="shrink-0 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-200 transition"
+          >
+            📖 도감 미리보기
+          </Link>
         </div>
       </header>
       <MonstersAdminClient

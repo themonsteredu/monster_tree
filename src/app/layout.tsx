@@ -50,7 +50,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Pen+Script&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Pen+Script&family=Jua&display=swap"
         />
         {/* iOS / 안드로이드 홈화면 아이콘 — basePath 포함 명시 */}
         <link rel="apple-touch-icon" href="/tree/icons/monster-symbol.png" />
