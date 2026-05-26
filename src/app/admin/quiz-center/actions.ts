@@ -11,8 +11,14 @@ import type {
   QuizDifficulty,
   QuizGrade,
   QuizMathGrade,
+  QuizQuestion,
 } from "@/lib/types";
-import { QUIZ_GRADE_LABEL, QUIZ_DIFFICULTY_LABEL } from "@/lib/types";
+import {
+  QUIZ_GRADE_LABEL,
+  QUIZ_DIFFICULTY_LABEL,
+  QUIZ_CATEGORY_LABEL,
+  QUIZ_MATH_GRADES,
+} from "@/lib/types";
 
 const CATEGORIES: QuizCategory[] = ["math", "general", "nonsense"];
 const DIFFICULTIES: QuizDifficulty[] = ["easy", "medium", "hard"];
@@ -172,6 +178,259 @@ export async function deleteQuestionAction(args: { id: string }) {
   if (error) return { ok: false as const, message: `삭제 실패: ${error.message}` };
   revalidateAll();
   return { ok: true as const };
+}
+
+/* ===== 엑셀/시트 일괄 업로드 (CSV/TSV) ===== */
+
+// 셀 값/머리글을 비교용으로 정규화 (소문자 + 공백 제거).
+function normToken(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+const CATEGORY_BY_TOKEN: Record<string, QuizCategory> = {
+  math: "math",
+  general: "general",
+  nonsense: "nonsense",
+  [normToken(QUIZ_CATEGORY_LABEL.math)]: "math", // 수학
+  [normToken(QUIZ_CATEGORY_LABEL.general)]: "general", // 상식
+  [normToken(QUIZ_CATEGORY_LABEL.nonsense)]: "nonsense", // 넌센스
+};
+
+const DIFFICULTY_BY_TOKEN: Record<string, QuizDifficulty> = {
+  easy: "easy",
+  medium: "medium",
+  hard: "hard",
+  [normToken(QUIZ_DIFFICULTY_LABEL.easy)]: "easy", // 쉬움
+  [normToken(QUIZ_DIFFICULTY_LABEL.medium)]: "medium", // 보통
+  [normToken(QUIZ_DIFFICULTY_LABEL.hard)]: "hard", // 어려움
+};
+
+const GRADE_BY_TOKEN: Record<string, QuizGrade> = (() => {
+  const m: Record<string, QuizGrade> = { all: "all", 전체: "all", 공통: "all" };
+  for (const g of QUIZ_MATH_GRADES) {
+    m[g] = g;
+    m[normToken(QUIZ_GRADE_LABEL[g])] = g; // 초3, 중1 ...
+  }
+  return m;
+})();
+
+type ImportField =
+  | "category"
+  | "grade"
+  | "question"
+  | "option_1"
+  | "option_2"
+  | "option_3"
+  | "option_4"
+  | "correct_answer"
+  | "explanation"
+  | "difficulty";
+
+const HEADER_ALIASES: Record<string, ImportField> = {
+  category: "category", 분류: "category", 카테고리: "category",
+  grade: "grade", 학년: "grade",
+  question: "question", 문제: "question",
+  option_1: "option_1", option1: "option_1", 보기1: "option_1", 보기_1: "option_1",
+  option_2: "option_2", option2: "option_2", 보기2: "option_2", 보기_2: "option_2",
+  option_3: "option_3", option3: "option_3", 보기3: "option_3", 보기_3: "option_3",
+  option_4: "option_4", option4: "option_4", 보기4: "option_4", 보기_4: "option_4",
+  correct_answer: "correct_answer", correct: "correct_answer", answer: "correct_answer",
+  정답: "correct_answer", 답: "correct_answer",
+  explanation: "explanation", 해설: "explanation",
+  difficulty: "difficulty", 난이도: "difficulty",
+};
+
+// CSV/TSV 파서 — 따옴표(이스케이프 "" 포함)와 셀 내부 줄바꿈을 처리.
+// 구분자는 첫 줄에 탭이 있으면 TSV(시트 복사·붙여넣기), 없으면 CSV.
+function parseTable(text: string): string[][] {
+  const t = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const firstLine = t.split("\n", 1)[0] ?? "";
+  const delim = firstLine.includes("\t") ? "\t" : ",";
+
+  const rows: string[][] = [];
+  let field = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (t[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === delim) {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += c;
+    }
+  }
+  row.push(field);
+  rows.push(row);
+
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
+}
+
+type BulkImportResult =
+  | { ok: true; inserted: QuizQuestion[] }
+  | { ok: false; message: string; errors?: string[] };
+
+/**
+ * 엑셀/구글시트/노션에서 복사한 표 또는 CSV 텍스트를 문제로 일괄 등록.
+ * - 첫 줄 = 머리글 (영문 컬럼명 또는 한글: 분류/학년/문제/보기1~4/정답/해설/난이도).
+ * - 한 줄이라도 형식 오류가 있으면 **아무것도 저장하지 않고** 줄별 오류를 돌려줌(all-or-nothing).
+ * - approve!==false 이면 바로 검수완료(학생 즉시 노출), false 면 미검수 큐로.
+ */
+export async function bulkImportQuestionsAction(args: {
+  text: string;
+  approve?: boolean;
+}): Promise<BulkImportResult> {
+  ensureAuth();
+
+  const text = (args.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return { ok: false, message: "붙여넣은 내용이 없어요." };
+
+  const table = parseTable(text);
+  if (table.length < 2) {
+    return { ok: false, message: "머리글 1줄 + 문제 1줄 이상이 필요해요." };
+  }
+
+  const colIndex: Partial<Record<ImportField, number>> = {};
+  table[0].forEach((h, i) => {
+    const f = HEADER_ALIASES[normToken(h)];
+    if (f && colIndex[f] === undefined) colIndex[f] = i;
+  });
+
+  const required: ImportField[] = [
+    "category", "question", "option_1", "option_2", "option_3", "option_4", "correct_answer",
+  ];
+  const missing = required.filter((f) => colIndex[f] === undefined);
+  if (missing.length) {
+    return {
+      ok: false,
+      message:
+        `머리글에 필수 칸이 없어요: ${missing.join(", ")}. ` +
+        "(필요 컬럼: category, grade, question, option_1~4, correct_answer / 선택: explanation, difficulty)",
+    };
+  }
+
+  const approve = args.approve !== false;
+  const errors: string[] = [];
+  const toInsert: Record<string, unknown>[] = [];
+
+  table.slice(1).forEach((cells, idx) => {
+    const lineNo = idx + 2; // 머리글이 1번째 줄.
+    if (cells.every((c) => c.trim() === "")) return; // 빈 줄 스킵.
+
+    const cell = (f: ImportField) => {
+      const i = colIndex[f];
+      return i === undefined ? "" : (cells[i] ?? "").trim();
+    };
+
+    const category = CATEGORY_BY_TOKEN[normToken(cell("category"))];
+    if (!category) {
+      errors.push(
+        `${lineNo}번째 줄: 카테고리("${cell("category")}")는 math/general/nonsense 또는 수학/상식/넌센스 여야 해요.`,
+      );
+      return;
+    }
+
+    let grade: QuizGrade;
+    if (category === "math") {
+      const g = GRADE_BY_TOKEN[normToken(cell("grade"))];
+      if (!g || g === "all") {
+        errors.push(`${lineNo}번째 줄: 수학은 학년이 필요해요 (초3~중3 또는 elementary_3~middle_3).`);
+        return;
+      }
+      grade = g;
+    } else {
+      grade = "all";
+    }
+
+    const caDigits = cell("correct_answer").replace(/[^0-9]/g, "");
+    const correct = caDigits ? parseInt(caDigits, 10) : NaN;
+    if (Number.isNaN(correct)) {
+      errors.push(`${lineNo}번째 줄: 정답은 1~4 숫자로 적어주세요.`);
+      return;
+    }
+
+    let difficulty: QuizDifficulty = "medium";
+    const dToken = normToken(cell("difficulty"));
+    if (dToken) {
+      const d = DIFFICULTY_BY_TOKEN[dToken];
+      if (!d) {
+        errors.push(`${lineNo}번째 줄: 난이도는 easy/medium/hard 또는 쉬움/보통/어려움 이어야 해요.`);
+        return;
+      }
+      difficulty = d;
+    }
+
+    const input = {
+      category,
+      grade,
+      question: cell("question"),
+      option_1: cell("option_1"),
+      option_2: cell("option_2"),
+      option_3: cell("option_3"),
+      option_4: cell("option_4"),
+      correct_answer: correct,
+      explanation: cell("explanation"),
+      difficulty,
+    };
+    const vErr = validateQuestionInput(input);
+    if (vErr) {
+      errors.push(`${lineNo}번째 줄: ${vErr}`);
+      return;
+    }
+
+    toInsert.push({
+      category,
+      grade,
+      question: input.question.trim(),
+      option_1: input.option_1.trim(),
+      option_2: input.option_2.trim(),
+      option_3: input.option_3.trim(),
+      option_4: input.option_4.trim(),
+      correct_answer: correct,
+      explanation: input.explanation.trim() || null,
+      difficulty,
+      is_approved: approve,
+      approved_at: approve ? new Date().toISOString() : null,
+      is_active: true,
+    });
+  });
+
+  if (errors.length) {
+    return {
+      ok: false,
+      message: `${errors.length}개 줄에 오류가 있어 아무것도 저장하지 않았어요. 고친 뒤 다시 업로드해주세요.`,
+      errors: errors.slice(0, 50),
+    };
+  }
+  if (toInsert.length === 0) {
+    return { ok: false, message: "추가할 문제가 없어요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const { data, error } = await sb.from("quiz_questions").insert(toInsert).select();
+  if (error) return { ok: false, message: `DB 저장 실패: ${error.message}` };
+
+  revalidateAll();
+  return { ok: true, inserted: (data ?? []) as QuizQuestion[] };
 }
 
 /* ====================== AI 대량 생성 (Claude) ====================== */
