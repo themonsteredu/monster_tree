@@ -1,17 +1,18 @@
 # 인수인계서 — 몬스터마을 게임센터 / 도감 / 퀴즈 통합
 
-> 작성 시점 기준 통합 브랜치: **`claude/tender-wright-5niRX`** (최신 커밋 `f611d4c`)
+> 통합 브랜치: **`claude/tender-wright-5niRX`** → **`main` 에 머지 완료** (이후 배포 기준은 `main`)
 > 저장소: `themonsteredu/monster_tree` (= 사과정원 sap, basePath `/tree`, garden.themonster.kr)
 
 ---
 
 ## 0. 가장 먼저 할 일 (TL;DR)
 
-1. **Vercel에서 `claude/tender-wright-5niRX` 최신 배포를 Production으로 Promote**
+1. **Vercel에서 `main` 최신 배포를 Production으로 Promote** (통합 브랜치는 `main`에 머지됨)
    → 안 하면 학생 폰에 게임센터/도감/퀴즈가 안 보임 (현재 production은 옛 perf 브랜치).
 2. **DB 마이그레이션 적용 확인** (§3) — 안 돼 있으면 해당 페이지가 런타임 에러.
 3. **`ANTHROPIC_API_KEY` 환경변수 확인** (퀴즈 AI 문제생성용).
-4. 학생 계정으로 폰에서 게임센터 / 도감 / 퀴즈 동작 확인.
+4. **퀴즈 문제 검수(승인)** (§3-2) — 안 하면 학생에게 문제가 0개로 보임.
+5. 학생 계정으로 폰에서 게임센터 / 도감 / 퀴즈 동작 확인.
 
 ---
 
@@ -99,11 +100,38 @@ alter table public.monster_species add column if not exists emoji text not null 
 > **TODO 권장:** 위 SQL을 정식 마이그레이션 파일(`0039_game_center.sql` 등)로 커밋해
 > 다른 환경에서도 재현 가능하게 만들기. (현재는 production DB에만 손으로 들어가 있음.)
 
-### 3-2. 퀴즈센터 — 마이그레이션 파일 있음
-- `supabase/migrations/0037_quiz_center.sql` (quiz_questions / quiz_plays / get_today_quiz_count)
-- `supabase/migrations/0038_village_quiz_link.sql` (마을 quiz 링크)
-- ⚠️ 퀴즈가 이전에 production에 올라간 적 있어 **아마 이미 적용됨**. promote 전에 확인.
-- ※ 게임센터 SQL을 "0037"로 칭했지만 파일은 아님 → 퀴즈 0037 파일과 **번호만 겹침, 충돌 아님**.
+### 3-2. 퀴즈센터 — "내가 뭘 해야 하나" 체크리스트
+
+순서대로 하면 학생에게 퀴즈가 보임. (1~3은 환경 세팅, 4가 **가장 자주 빼먹는 단계**.)
+
+**(1) 마이그레이션 적용** — `supabase/migrations/`
+- `0037_quiz_center.sql` → `quiz_questions`, `quiz_plays`, RPC `get_today_quiz_count`, RLS
+- `0038_village_quiz_link.sql` → 마을 '퀴즈 오두막' 링크를 `/quiz-center` + `is_ready=true` 로 갱신
+- ⚠️ 퀴즈가 이전에 production에 올라간 적 있어 **아마 이미 적용됨**. promote 전에 Supabase에서 두 테이블 존재 여부 확인.
+- ※ 게임센터 수동 SQL(§3-1)을 "0037"로 칭했지만 파일은 아님 → 퀴즈 0037 파일과 **번호만 겹침, 충돌 아님**.
+
+**(2) 환경변수** `ANTHROPIC_API_KEY`
+- Vercel Project Settings → `/admin/quiz-center` 의 **AI 대량 생성** 버튼에 필요 (서버 전용).
+- 시드 스크립트(아래 3번)를 로컬에서 돌릴 땐 `.env.local` 에도 필요.
+- 모델: **`claude-opus-4-7`** (Messages API 직접 호출, SDK 미사용 — `src/app/admin/quiz-center/actions.ts`).
+
+**(3) (선택) 초기 문제 시드** — `scripts/seed-quiz.mjs`
+- 실행: repo 루트에서 `npm install` (1회) → `npm run seed:quiz`
+- 생성량: 수학 7학년×20 = 140, 상식(all) 30, 넌센스(all) 30 → **총 200문제**
+- 필요 env(`.env.local`): `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- 결과: 전부 `is_approved=false` (검수 대기) 로 적재 → **그대로면 학생에게 안 보임.** 4번 필수.
+
+**(4) ⚠️ 문제 검수(승인) — 빼먹으면 학생 화면 퀴즈 0개**
+- RLS 정책상 학생/anon 은 `is_approved=true AND is_active=true` 문제만 SELECT 가능.
+- 시드·AI 대량 생성 문제는 **`is_approved=false`** 로 들어감 → 관리자가 `/admin/quiz-center`
+  에서 검수 큐를 보고 **승인(approve)** 해야 학생에게 노출됨.
+- 예외: 관리자가 폼으로 **직접 1개씩 추가**한 문제는 `is_approved=true` 로 바로 저장됨.
+- 카테고리/학년: `math`(학년별 `elementary_3`~`middle_3`) / `general`(all) / `nonsense`(all).
+
+**(5) 동작 규칙 메모**
+- 학생: 하루 1회, 3문제. 올클(3/3) 시 사과포인트 1점 → `garden_pending_points` 에 행 추가(승인제).
+- 오늘 푼 횟수: RPC `get_today_quiz_count` (KST 기준).
+- 관리자 미리보기: `/admin/quiz-center-preview` (DB 영향 없는 테스트 모드).
 
 ### 3-3. 환경변수 (Vercel Project Settings)
 - 기존 필수: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
@@ -139,9 +167,10 @@ alter table public.monster_species add column if not exists emoji text not null 
 
 ## 6. 남은 일 / 추천
 
-- [ ] **`claude/tender-wright-5niRX` → Production promote** (필수)
-- [ ] 퀴즈 마이그레이션 0037/0038 + `ANTHROPIC_API_KEY` 적용 확인
+- [x] **이 통합 브랜치를 `main`에 머지** — 이후 배포는 main 기준으로 일원화 (완료)
+- [ ] **`main` → Production promote** (필수, Vercel에서 수동)
+- [ ] 퀴즈 마이그레이션 0037/0038 + `ANTHROPIC_API_KEY` 적용 확인 (§3-2)
+- [ ] **퀴즈 문제 검수(승인)** — 시드 200문제는 `is_approved=false` 라 승인 전엔 학생에게 안 보임 (§3-2-4)
 - [ ] 게임센터 수동 SQL을 정식 마이그레이션 파일로 커밋 (§3-1 TODO)
-- [ ] (선택) 이 통합 브랜치를 `main`에 머지하고, 이후 배포는 main 기준으로 일원화
 - [ ] 게임 밸런스 검수: 하루 3판/목숨3/스폰속도/콤보 임계 등 실제 플레이로 튜닝
 - [ ] 몬스터 단계별 이미지 업로드 (현재 이모지 fallback) — `/admin/monsters`
