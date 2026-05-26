@@ -474,3 +474,80 @@ export type SuggestionBlock = {
   blocked_until: string | null;
   blocked_by: string | null;
 };
+
+// 퀴즈센터 — 문제 카테고리/학년/난이도 도메인.
+export type QuizCategory = "math" | "general" | "nonsense";
+export type QuizDifficulty = "easy" | "medium" | "hard";
+
+export const QUIZ_CATEGORY_LABEL: Record<QuizCategory, string> = {
+  math: "수학",
+  general: "상식",
+  nonsense: "넌센스",
+};
+
+export const QUIZ_CATEGORY_ICON: Record<QuizCategory, string> = {
+  math: "🧮",
+  general: "🌏",
+  nonsense: "🎭",
+};
+
+export const QUIZ_DIFFICULTY_LABEL: Record<QuizDifficulty, string> = {
+  easy: "쉬움",
+  medium: "보통",
+  hard: "어려움",
+};
+
+// 학년 키 — 수학은 학년별, 상식/넌센스는 'all'.
+export const QUIZ_MATH_GRADES = [
+  "elementary_3",
+  "elementary_4",
+  "elementary_5",
+  "elementary_6",
+  "middle_1",
+  "middle_2",
+  "middle_3",
+] as const;
+
+export type QuizMathGrade = (typeof QUIZ_MATH_GRADES)[number];
+export type QuizGrade = QuizMathGrade | "all";
+
+export const QUIZ_GRADE_LABEL: Record<QuizGrade, string> = {
+  elementary_3: "초3",
+  elementary_4: "초4",
+  elementary_5: "초5",
+  elementary_6: "초6",
+  middle_1: "중1",
+  middle_2: "중2",
+  middle_3: "중3",
+  all: "전체",
+};
+
+export type QuizQuestion = {
+  id: string;
+  category: QuizCategory;
+  grade: QuizGrade;
+  question: string;
+  option_1: string;
+  option_2: string;
+  option_3: string;
+  option_4: string;
+  correct_answer: number; // 1~4
+  explanation: string | null;
+  difficulty: QuizDifficulty;
+  is_approved: boolean;
+  is_active: boolean;
+  created_at: string;
+  approved_at: string | null;
+};
+
+export type QuizPlay = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  played_at: string;
+  question_ids: string[];
+  answers: number[];
+  correct_count: number;
+  is_perfect: boolean;
+  point_earned: number;
+};
