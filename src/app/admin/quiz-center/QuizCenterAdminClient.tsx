@@ -22,6 +22,7 @@ import {
   QUIZ_MATH_GRADES,
 } from "@/lib/types";
 import {
+  bulkImportQuestionsAction,
   createQuestionAction,
   deleteQuestionAction,
   generateAIQuestionsAction,
@@ -62,6 +63,7 @@ export function QuizCenterAdminClient({
   const [editing, setEditing] = useState<QuizQuestion | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // 토스트 자동 사라짐.
@@ -143,6 +145,13 @@ export function QuizCenterAdminClient({
           className="text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-4 py-2 transition"
         >
           + 문제 추가
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowBulk(true)}
+          className="text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-4 py-2 transition"
+        >
+          📋 엑셀/시트 업로드
         </button>
         <button
           type="button"
@@ -308,6 +317,23 @@ export function QuizCenterAdminClient({
               `${count}개 생성 — 미검수 큐로 들어갔어요${
                 skipped > 0 ? ` (${skipped}개 형식 오류로 제외)` : ""
               }. 새로고침하면 목록에 보여요.`,
+            );
+          }}
+          onError={(m) => setToast(m)}
+        />
+      )}
+
+      {/* 엑셀/시트 업로드 모달 */}
+      {showBulk && (
+        <BulkUploadModal
+          onClose={() => setShowBulk(false)}
+          onImported={(rows, approved) => {
+            handleCreated(rows);
+            setShowBulk(false);
+            setToast(
+              `${rows.length}개 문제를 추가했어요${
+                approved ? " (바로 검수완료)" : " — 미검수 큐로 들어갔어요"
+              }.`,
             );
           }}
           onError={(m) => setToast(m)}
@@ -824,6 +850,152 @@ function AIGenerateModal({
           className="text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-2 disabled:opacity-50"
         >
           {pending ? "생성 중... (수십초~수분)" : "🚀 생성 시작"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ===== 엑셀/시트 업로드 모달 ===== */
+
+const BULK_TEMPLATE = [
+  "category\tgrade\tquestion\toption_1\toption_2\toption_3\toption_4\tcorrect_answer\texplanation\tdifficulty",
+  "math\tmiddle_1\t2 + 3 은?\t4\t5\t6\t7\t2\t2+3=5 예요.\teasy",
+  "general\tall\t대한민국의 수도는?\t서울\t부산\t대구\t인천\t1\t\tmedium",
+  "nonsense\tall\t세상에서 가장 뜨거운 과일은?\t사과\t귤\t천도복숭아\t바나나\t3\t천(1000)도니까요.\teasy",
+].join("\n");
+
+function BulkUploadModal({
+  onClose,
+  onImported,
+  onError,
+}: {
+  onClose: () => void;
+  onImported: (rows: QuizQuestion[], approved: boolean) => void;
+  onError: (msg: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const [approve, setApprove] = useState(true);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [pending, startTransition] = useTransition();
+
+  const loadFile = (file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result ?? ""));
+    reader.onerror = () => onError("파일을 읽지 못했어요.");
+    reader.readAsText(file);
+  };
+
+  const submit = () => {
+    setErrors([]);
+    startTransition(async () => {
+      const res = await bulkImportQuestionsAction({ text, approve });
+      if (!res.ok) {
+        if (res.errors?.length) setErrors(res.errors);
+        onError(res.message);
+        return;
+      }
+      onImported(res.inserted, approve);
+    });
+  };
+
+  return (
+    <Modal title="📋 엑셀/시트 업로드" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="text-xs text-gray-600 leading-relaxed bg-gray-50 border border-gray-100 rounded-lg p-3">
+          <p className="font-semibold text-gray-800 mb-1">사용법</p>
+          <p>
+            구글시트·엑셀에서 <b>머리글 포함 셀들을 복사</b>해 아래 칸에 붙여넣거나, CSV 파일을 올려주세요.
+          </p>
+          <p className="mt-1">
+            첫 줄은 머리글 — 필요 컬럼: <code>category</code>, <code>grade</code>,{" "}
+            <code>question</code>, <code>option_1</code>~<code>option_4</code>,{" "}
+            <code>correct_answer</code> / 선택: <code>explanation</code>, <code>difficulty</code>.
+            (한글 머리글 <code>분류/학년/문제/보기1~4/정답/해설/난이도</code> 도 가능)
+          </p>
+          <ul className="mt-1 list-disc list-inside space-y-0.5">
+            <li>
+              <b>category</b>: math/general/nonsense (또는 수학/상식/넌센스)
+            </li>
+            <li>
+              <b>grade</b>: 수학은 초3~중3(또는 elementary_3~middle_3), 상식·넌센스는 비워두면 자동 공통(all)
+            </li>
+            <li>
+              <b>correct_answer</b>: 정답 보기 번호 1~4
+            </li>
+            <li>
+              <b>difficulty</b>: easy/medium/hard (비우면 보통)
+            </li>
+          </ul>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 cursor-pointer transition">
+            📁 CSV 파일 선택
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt"
+              className="hidden"
+              onChange={(e) => loadFile(e.target.files?.[0])}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setText(BULK_TEMPLATE)}
+            className="text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-1.5 transition"
+          >
+            예시 양식 채우기
+          </button>
+        </div>
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={9}
+          placeholder={"여기에 표를 붙여넣으세요 (첫 줄 = 머리글).\n탭 또는 쉼표로 구분된 형식을 지원해요."}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono resize-y"
+        />
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={approve}
+            onChange={(e) => setApprove(e.target.checked)}
+          />
+          바로 검수완료 처리 (체크 해제 시 미검수 큐로 — 학생에게 안 보임)
+        </label>
+
+        {errors.length > 0 && (
+          <div className="border border-red-200 bg-red-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+            <p className="text-sm font-semibold text-red-700 mb-1">
+              오류 {errors.length}개 — 저장 안 됨
+            </p>
+            <ul className="text-xs text-red-600 space-y-0.5">
+              {errors.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={pending}
+          className="text-sm text-gray-600 hover:bg-gray-100 rounded-lg px-3 py-2"
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || text.trim() === ""}
+          className="text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-2 disabled:opacity-50"
+        >
+          {pending ? "업로드 중..." : "업로드"}
         </button>
       </div>
     </Modal>
