@@ -110,16 +110,20 @@ alter table public.monster_species add column if not exists emoji text not null 
 - ⚠️ 퀴즈가 이전에 production에 올라간 적 있어 **아마 이미 적용됨**. promote 전에 Supabase에서 두 테이블 존재 여부 확인.
 - ※ 게임센터 수동 SQL(§3-1)을 "0037"로 칭했지만 파일은 아님 → 퀴즈 0037 파일과 **번호만 겹침, 충돌 아님**.
 
-**(2) 환경변수** `ANTHROPIC_API_KEY`
-- Vercel Project Settings → `/admin/quiz-center` 의 **AI 대량 생성** 버튼에 필요 (서버 전용).
-- 시드 스크립트(아래 3번)를 로컬에서 돌릴 땐 `.env.local` 에도 필요.
-- 모델: **`claude-opus-4-7`** (Messages API 직접 호출, SDK 미사용 — `src/app/admin/quiz-center/actions.ts`).
+**(2) 문제 채우기 — 3가지 방법 (택1 이상)**
+- **A. 엑셀/시트 업로드 (API 불필요, 권장)** — `/admin/quiz-center` → `📋 엑셀/시트 업로드`.
+  구글시트·엑셀 셀 복사 후 붙여넣기(탭 구분) 또는 `.csv` 파일. 첫 줄 머리글
+  `category, grade, question, option_1~4, correct_answer`(+선택 `explanation, difficulty`),
+  한글 머리글/값도 인식. 기본 **바로 검수완료**(학생 즉시 노출). 오류는 줄 번호로 안내(all-or-nothing).
+- **B. 직접 1개씩 추가** — `+ 문제 추가`. 바로 `is_approved=true` 저장.
+- **C. AI 대량 생성** — `🤖 AI 문제 생성`. **`ANTHROPIC_API_KEY` 필요** → `is_approved=false`(검수 대기).
 
-**(3) (선택) 초기 문제 시드** — `scripts/seed-quiz.mjs`
-- 실행: repo 루트에서 `npm install` (1회) → `npm run seed:quiz`
-- 생성량: 수학 7학년×20 = 140, 상식(all) 30, 넌센스(all) 30 → **총 200문제**
-- 필요 env(`.env.local`): `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- 결과: 전부 `is_approved=false` (검수 대기) 로 적재 → **그대로면 학생에게 안 보임.** 4번 필수.
+**(3) 환경변수** `ANTHROPIC_API_KEY` — **AI 생성을 쓸 때만 필요(선택)**
+- A/B 방법만 쓰면 **없어도 됨.** AI 대량 생성(2-C) + 시드 스크립트(아래)에만 필요.
+- 모델: **`claude-opus-4-7`** (Messages API 직접 호출, SDK 미사용 — `src/app/admin/quiz-center/actions.ts`).
+- (선택) 초기 시드 스크립트 `scripts/seed-quiz.mjs`: `npm run seed:quiz` → 200문제
+  (수학 7학년×20=140 / 상식 30 / 넌센스 30), 전부 `is_approved=false`.
+  필요 env(`.env.local`): `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 
 **(4) ⚠️ 문제 검수(승인) — 빼먹으면 학생 화면 퀴즈 0개**
 - RLS 정책상 학생/anon 은 `is_approved=true AND is_active=true` 문제만 SELECT 가능.
@@ -136,7 +140,8 @@ alter table public.monster_species add column if not exists emoji text not null 
 ### 3-3. 환경변수 (Vercel Project Settings)
 - 기존 필수: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
   `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_KEY`, `JWT_SECRET`
-- 퀴즈 추가: **`ANTHROPIC_API_KEY`** (AI 문제생성)
+- 퀴즈 추가: **`ANTHROPIC_API_KEY`** — *AI 문제생성·시드 스크립트를 쓸 때만* 필요(선택).
+  엑셀 업로드/직접 추가만 쓰면 없어도 됨 (§3-2-2).
 
 ---
 
