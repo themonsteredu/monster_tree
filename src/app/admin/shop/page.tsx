@@ -28,19 +28,31 @@ export default async function ShopAdminPage({
   let query = sb
     .from("shop_requests")
     .select(
-      "id, student_id, branch_id, student_name_snapshot, product_url, options, memo, estimated_price_won, point_cost, status, point_log_id, admin_note, requested_at, approved_at, updated_at, garden_students(total_points)",
+      "id, student_id, branch_id, student_name_snapshot, product_url, options, memo, estimated_price_won, point_cost, status, point_log_id, admin_note, requested_at, approved_at, updated_at",
     )
     .order("requested_at", { ascending: false })
     .limit(300);
   if (branchId) query = query.eq("branch_id", branchId);
 
   const { data } = await query;
+  const requests = (data ?? []) as ShopRequest[];
 
-  const rows: ShopRequestRow[] = ((data ?? []) as Array<
-    ShopRequest & { garden_students: { total_points: number } | null }
-  >).map((r) => ({
+  // 학생 잔액은 임베드 조인 대신 별도 조회 (to-one 임베드 타입 모호성 회피).
+  const studentIds = Array.from(new Set(requests.map((r) => r.student_id)));
+  const balanceById = new Map<string, number>();
+  if (studentIds.length > 0) {
+    const { data: studs } = await sb
+      .from("garden_students")
+      .select("id, total_points")
+      .in("id", studentIds);
+    for (const s of (studs ?? []) as Array<{ id: string; total_points: number }>) {
+      balanceById.set(s.id, s.total_points ?? 0);
+    }
+  }
+
+  const rows: ShopRequestRow[] = requests.map((r) => ({
     ...r,
-    student_balance: r.garden_students?.total_points ?? 0,
+    student_balance: balanceById.get(r.student_id) ?? 0,
   }));
 
   return (
