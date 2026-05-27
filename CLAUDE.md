@@ -28,6 +28,7 @@
 - /admin/game-center-preview/sky-shooter ← /me/game-center/sky-shooter
 - /admin/collection-preview ← /me/collection (도감)
 - /admin/quiz-center-preview ← /quiz-center (퀴즈센터)
+- /admin/shop-preview ← /shop (상점 — 포인트 대리구매 신청)
 
 새 학생 기능 만들 때마다 이 목록도 갱신.
 
