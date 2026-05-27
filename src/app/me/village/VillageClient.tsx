@@ -24,6 +24,10 @@ type Props = {
 // 마우스 leave 후 hover 해제 / 터치 종료 후 자동 닫힘 시간.
 const TOUCH_TIP_LINGER_MS = 1600;
 
+// 배경 이미지가 없거나 로드 실패했을 때의 기본 배경. 항상 무대 바닥 레이어로 깔아
+// 업로드 이미지가 404 나도 화면이 완전 검정으로 비지 않게 한다.
+const STAGE_GRADIENT = "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)";
+
 export function VillageClient({
   settings,
   buildings,
@@ -37,7 +41,16 @@ export function VillageClient({
   const [welcomeVisible, setWelcomeVisible] = useState(true);
   const [welcomeFading, setWelcomeFading] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [imgErrorIds, setImgErrorIds] = useState<Set<string>>(new Set());
   const hideTimerRef = useRef<number | null>(null);
+
+  const markImgError = (id: string) =>
+    setImgErrorIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     if (!toast) return;
@@ -115,13 +128,11 @@ export function VillageClient({
     width: "min(100vw, calc(100dvh * 16 / 9))",
     maxHeight: "100dvh",
     aspectRatio: "16 / 9",
-    ...(settings?.background_image
-      ? {
-          backgroundImage: `url(${settings.background_image})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }
-      : { background: "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)" }),
+    // 그라데이션을 바닥 레이어로 항상 깔고, 배경 이미지를 그 위에 올린다.
+    // 이미지가 404/삭제 등으로 안 뜨면 그라데이션이 보여 완전 검정 화면을 막는다.
+    background: settings?.background_image
+      ? `url(${settings.background_image}) center / cover no-repeat, ${STAGE_GRADIENT}`
+      : STAGE_GRADIENT,
   };
 
   return (
@@ -171,7 +182,7 @@ export function VillageClient({
                 className="relative w-full transition-transform group-hover:scale-105 group-active:scale-95"
                 style={{ transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined }}
               >
-                {b.image_url ? (
+                {b.image_url && !imgErrorIds.has(b.id) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={b.image_url}
@@ -179,9 +190,7 @@ export function VillageClient({
                     draggable={false}
                     className="w-full h-auto object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.45)]"
                     style={locked ? { filter: "brightness(0.55) saturate(0.7)" } : undefined}
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
-                    }}
+                    onError={() => markImgError(b.id)}
                   />
                 ) : (
                   <div
