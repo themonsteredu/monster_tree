@@ -551,3 +551,53 @@ export type QuizPlay = {
   is_perfect: boolean;
   point_earned: number;
 };
+
+// 상점 — 포인트 대리구매 신청.
+// 환산: 1pt = 100원. wonToPoints 는 올림(학생에게 불리하지 않게 = 정확히 필요한 만큼).
+export const POINT_TO_WON = 100;
+export function wonToPoints(won: number): number {
+  if (!Number.isFinite(won) || won <= 0) return 0;
+  return Math.ceil(won / POINT_TO_WON);
+}
+
+export type ShopRequestStatus =
+  | "requested"
+  | "purchased"
+  | "shipping"
+  | "delivered"
+  | "canceled";
+
+export const SHOP_STATUS_LABEL: Record<ShopRequestStatus, string> = {
+  requested: "신청됨",
+  purchased: "구매완료",
+  shipping: "배송중",
+  delivered: "전달완료",
+  canceled: "취소됨",
+};
+
+// 학생/관리자가 다음으로 보낼 수 있는 상태 전이.
+export const SHOP_NEXT_STATUS: Record<ShopRequestStatus, ShopRequestStatus[]> = {
+  requested: ["purchased", "canceled"],
+  purchased: ["shipping", "canceled"],
+  shipping: ["delivered", "canceled"],
+  delivered: [],
+  canceled: [],
+};
+
+export type ShopRequest = {
+  id: string;
+  student_id: string;
+  branch_id: string;
+  student_name_snapshot: string;
+  product_url: string;
+  options: string | null;
+  memo: string | null;
+  estimated_price_won: number;
+  point_cost: number;
+  status: ShopRequestStatus;
+  point_log_id: string | null;
+  admin_note: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  updated_at: string;
+};

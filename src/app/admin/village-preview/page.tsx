@@ -96,7 +96,10 @@ export default async function AdminVillagePreviewPage({
           game: branchId
             ? `/admin/game-center-preview?branch=${encodeURIComponent(branchId)}`
             : "/admin/game-center-preview",
-          // 상점(shop) 은 admin 미리보기 페이지가 아직 없어 매핑하지 않음 (토스트 노출).
+          // 상점: 학생 상점 미리보기(테스트 모드) → '관리 페이지' 버튼으로 /admin/shop 점프.
+          shop: branchId
+            ? `/admin/shop-preview?branch=${encodeURIComponent(branchId)}`
+            : "/admin/shop-preview",
         }}
       />
     </div>
