@@ -15,8 +15,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
-import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import type { AvatarConfig } from "@/lib/types";
 import {
   recordInfiniteStairsPlayAction,
@@ -36,6 +34,8 @@ const STARTING_LIVES = 3;
 const INVINCIBLE_MS = 700;
 // 깜빡임 지속 시간(ms)
 const DAMAGED_FLASH_MS = 700;
+// 게임 캐릭터 — 귀여운 이모지. 바꾸고 싶으면 이 값만 교체 (예: "🐰" "🦊" "🐧" "👾").
+const CHARACTER_EMOJI = "🐥";
 
 function randomSide(): Side {
   return Math.random() < 0.5 ? "L" : "R";
@@ -57,13 +57,12 @@ type Props = {
 
 export function InfiniteStairsGame({
   remainingBefore,
-  avatarConfig,
+  // avatarConfig 는 더 이상 사용 안 함 — 게임 캐릭터는 고정 이모지(CHARACTER_EMOJI).
   monsterNickname,
   adminMode = false,
   homeHref = "/me/game-center",
 }: Props) {
   const router = useRouter();
-  const galleryPositions = useGalleryPositions();
   const [phase, setPhase] = useState<Phase>("ready");
   const [score, setScore] = useState(0);
   const [stairs, setStairs] = useState<Side[]>(() => makeStairs());
@@ -483,8 +482,6 @@ export function InfiniteStairsGame({
           score={score}
           climbing={climbing}
           damaged={damaged}
-          avatarConfig={avatarConfig}
-          galleryPositions={galleryPositions}
         />
       </div>
 
@@ -667,15 +664,11 @@ function StairColumn({
   score,
   climbing,
   damaged,
-  avatarConfig,
-  galleryPositions,
 }: {
   stairs: Side[];
   score: number;
   climbing: boolean;
   damaged: boolean;
-  avatarConfig: AvatarConfig | null;
-  galleryPositions: Record<string, import("@/lib/types").AvatarGalleryItemPosition>;
 }) {
   const visible = stairs.slice(0, 9);
   // 계단 크기 80%로 축소 (사용자 피드백): 폭 42→34%, 높이 8→6.5%, 간격 9→7.5%.
@@ -768,31 +761,16 @@ function StairColumn({
             aria-hidden
             className="absolute -bottom-1 left-1/2 h-2.5 w-16 -translate-x-1/2 rounded-full bg-black/60 blur-md"
           />
-          {avatarConfig ? (
-            <div
-              className="relative"
-              style={{
-                filter:
-                  "drop-shadow(0 10px 18px rgba(0,0,0,0.6)) drop-shadow(0 0 22px rgba(244,114,182,0.55)) saturate(1.08)",
-              }}
-            >
-              <AvatarFigurePreloaded
-                config={avatarConfig}
-                size={96}
-                galleryPositions={galleryPositions}
-              />
-            </div>
-          ) : (
-            <span
-              className="relative text-6xl leading-none"
-              style={{
-                filter:
-                  "drop-shadow(0 8px 14px rgba(0,0,0,0.6)) drop-shadow(0 0 18px rgba(244,114,182,0.55))",
-              }}
-            >
-              🏃
-            </span>
-          )}
+          <span
+            className="relative leading-none"
+            style={{
+              fontSize: "4.5rem",
+              filter:
+                "drop-shadow(0 10px 18px rgba(0,0,0,0.6)) drop-shadow(0 0 22px rgba(244,114,182,0.55))",
+            }}
+          >
+            {CHARACTER_EMOJI}
+          </span>
           </motion.div>
           </motion.div>
         </div>
