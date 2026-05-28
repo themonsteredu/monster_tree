@@ -67,8 +67,6 @@ export function InfiniteStairsGame({
   const [phase, setPhase] = useState<Phase>("ready");
   const [score, setScore] = useState(0);
   const [stairs, setStairs] = useState<Side[]>(() => makeStairs());
-  const [timerMs, setTimerMs] = useState(INITIAL_TIMER_MS);
-  const [maxTimerMs, setMaxTimerMs] = useState(INITIAL_TIMER_MS);
   const [result, setResult] = useState<InfiniteStairsResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState<"none" | "good" | "bad">("none");
@@ -96,6 +94,10 @@ export function InfiniteStairsGame({
   const climbAnimRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
   const durationRef = useRef<number>(INITIAL_TIMER_MS);
+  // 타이머 바는 React state(매 프레임 setState → 전체 리렌더) 대신 DOM 을 직접 갱신해
+  // 60fps 리렌더로 인한 버벅임을 없앤다. lastTierRef 는 색 구간 변경 시에만 배경/그림자 갱신.
+  const timerBarRef = useRef<HTMLDivElement | null>(null);
+  const lastTierRef = useRef<string>("");
   const audioRef = useRef<GameAudio | null>(null);
   if (audioRef.current === null && typeof window !== "undefined") {
     audioRef.current = new GameAudio();
@@ -155,13 +157,36 @@ export function InfiniteStairsGame({
     [clearTimers, adminMode],
   );
 
+  // 타이머 바 DOM 직접 갱신 — 폭은 매 프레임, 배경/그림자 색은 구간이 바뀔 때만.
+  const paintTimer = useCallback((ratio: number) => {
+    const el = timerBarRef.current;
+    if (!el) return;
+    const r = ratio < 0 ? 0 : ratio > 1 ? 1 : ratio;
+    el.style.width = `${r * 100}%`;
+    const tier = r > 0.5 ? "hi" : r > 0.25 ? "mid" : "lo";
+    if (tier !== lastTierRef.current) {
+      lastTierRef.current = tier;
+      el.style.background =
+        tier === "hi"
+          ? "linear-gradient(to right,#34d399,#22d3ee)"
+          : tier === "mid"
+            ? "linear-gradient(to right,#fcd34d,#fb923c)"
+            : "linear-gradient(to right,#f43f5e,#ef4444)";
+      el.style.boxShadow =
+        tier === "lo"
+          ? "0 0 14px rgba(244,63,94,0.8)"
+          : "0 0 8px rgba(168,85,247,0.5)";
+    }
+  }, []);
+
   const startTurnTimer = useCallback(
     (duration: number) => {
       clearTimers();
       startedAtRef.current = performance.now();
       durationRef.current = duration;
-      setTimerMs(duration);
-      setMaxTimerMs(duration);
+      // 바를 풀로 리셋 (DOM 직접 갱신 — 리렌더 없음)
+      lastTierRef.current = "";
+      paintTimer(1);
 
       timeoutRef.current = window.setTimeout(() => {
         if (phaseRef.current !== "playing") return;
@@ -172,14 +197,14 @@ export function InfiniteStairsGame({
       const tick = () => {
         const elapsed = performance.now() - startedAtRef.current;
         const remaining = Math.max(durationRef.current - elapsed, 0);
-        setTimerMs(remaining);
+        paintTimer(durationRef.current > 0 ? remaining / durationRef.current : 0);
         if (remaining > 0 && phaseRef.current === "playing") {
           rafRef.current = requestAnimationFrame(tick);
         }
       };
       rafRef.current = requestAnimationFrame(tick);
     },
-    [clearTimers],
+    [clearTimers, paintTimer],
   );
 
   // 피해 처리 — 오답 탭(무적 체크 호출자 측) 또는 시간 초과.
@@ -255,6 +280,10 @@ export function InfiniteStairsGame({
 
       // === 정답 처리 ===
       audioRef.current?.sfxStep();
+      // 정답 즉시 현재 턴 타이머(게임오버 timeout + rAF) 정리.
+      // 안 그러면 climb 애니(110ms) 동안 직전 턴의 게임오버 timeout 이 발화해
+      // 정답인데도 목숨이 깎이는 버그 발생(막판 정답 탭 시).
+      clearTimers();
 
       // 콤보 — 타이머가 50% 이상 남았을 때 탭하면 콤보 증가, 아니면 0 으로 리셋.
       const elapsed = performance.now() - startedAtRef.current;
@@ -303,7 +332,7 @@ export function InfiniteStairsGame({
         climbAnimRef.current = null;
       }, 110);
     },
-    [startTurnTimer, loseLife],
+    [startTurnTimer, loseLife, clearTimers],
   );
 
   // 키보드 입력 (PC)
@@ -341,15 +370,6 @@ export function InfiniteStairsGame({
     setMuted(next);
     audioRef.current?.setMuted(next);
   };
-
-  const timerRatio =
-    maxTimerMs > 0 ? Math.max(0, Math.min(1, timerMs / maxTimerMs)) : 0;
-  const timerColor =
-    timerRatio > 0.5
-      ? "from-emerald-400 to-cyan-400"
-      : timerRatio > 0.25
-        ? "from-amber-300 to-orange-400"
-        : "from-rose-500 to-red-500";
 
   const flashOverlay =
     flash === "bad"
@@ -444,16 +464,14 @@ export function InfiniteStairsGame({
           className="mx-auto mt-3 h-2 w-full max-w-md overflow-hidden rounded-full bg-white/10"
           style={{ boxShadow: "0 0 1px rgba(255,255,255,0.1) inset" }}
         >
-          <motion.div
-            className={`h-full rounded-full bg-gradient-to-r ${timerColor}`}
+          <div
+            ref={timerBarRef}
+            className="h-full rounded-full"
             style={{
-              width: `${timerRatio * 100}%`,
-              boxShadow:
-                timerRatio < 0.25
-                  ? "0 0 14px rgba(244,63,94,0.8)"
-                  : "0 0 8px rgba(168,85,247,0.5)",
+              width: "100%",
+              background: "linear-gradient(to right,#34d399,#22d3ee)",
+              boxShadow: "0 0 8px rgba(168,85,247,0.5)",
             }}
-            transition={{ duration: 0 }}
           />
         </div>
       </div>
