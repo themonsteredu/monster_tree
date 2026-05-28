@@ -678,8 +678,14 @@ function StairColumn({
   galleryPositions: Record<string, import("@/lib/types").AvatarGalleryItemPosition>;
 }) {
   const visible = stairs.slice(0, 9);
+  // 계단 크기 80%로 축소 (사용자 피드백): 폭 42→34%, 높이 8→6.5%, 간격 9→7.5%.
   const stairBottomStartPct = 16;
-  const stairStepPct = 9;
+  const stairStepPct = 7.5;
+  const stairHeightPct = 6.5;
+  const stairWidthPct = 34;
+  // 계단의 좌/우 중앙(%) — 캐릭터 위치 보간에 사용.
+  const stairCenterL = 6 + stairWidthPct / 2; // 23
+  const stairCenterR = 100 - 6 - stairWidthPct / 2; // 77
   // climbing 중에는 캐릭터가 다음 계단(stairs[1]) 쪽에 서 있어야 함.
   const charSide = climbing ? stairs[1] : stairs[0];
 
@@ -700,9 +706,13 @@ function StairColumn({
           const opacity = Math.max(0.42, 1 - i * 0.07);
           return (
             <div
-              key={`stair-${i}-${side}`}
-              className="absolute h-[8%] w-[42%]"
+              // ★ 안정 키 — 큐 시프트 시 같은 논리 위치의 요소가 같은 키를 유지해
+              //   React 가 DOM 을 재활용 → 한 칸 오를 때 깜빡임/뚝뚝 끊김 방지.
+              key={`stair-${score + i}`}
+              className="absolute"
               style={{
+                width: `${stairWidthPct}%`,
+                height: `${stairHeightPct}%`,
                 bottom: `${bottom}%`,
                 ...(side === "L" ? { left: "6%" } : { right: "6%" }),
                 opacity,
@@ -716,36 +726,33 @@ function StairColumn({
         })}
       </motion.div>
 
-      {/* 캐릭터 — 가장 아래 계단 위 */}
+      {/* 캐릭터 — 가장 아래 계단 위.
+          ★ left/right 토글(auto) 방식은 framer-motion 이 보간을 못 해 좌↔우가
+            순간이동했다. 항상 left(%) 하나로만 애니메이션해 부드럽게 미끄러진다.
+            계단 중앙(23%/77%)에 캐릭터 중심을 정확히 맞추도록 안쪽에서 -50% 평행이동. */}
       <motion.div
         className="absolute"
-        animate={{
-          left: charSide === "L" ? "11%" : "auto",
-          right: charSide === "R" ? "11%" : "auto",
-        }}
-        transition={{ duration: 0.1 }}
-        style={{ bottom: `${stairBottomStartPct + 8}%` }}
+        animate={{ left: `${charSide === "L" ? stairCenterL : stairCenterR}%` }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        style={{ bottom: `${stairBottomStartPct + stairHeightPct}%` }}
       >
-        {/* 피격 깜빡임 — damaged 켜진 동안 opacity 진동 */}
-        <motion.div
-          animate={
-            damaged
-              ? { opacity: [1, 0.2, 1, 0.2, 1, 0.25, 1] }
-              : { opacity: 1 }
-          }
-          transition={{ duration: damaged ? 0.7 : 0.1 }}
-        >
-        {/* 점프 효과 — score 변할 때마다 살짝 위로 튀어오름 */}
-        <motion.div
-          key={score}
-          initial={{ y: -10, scale: 0.95 }}
-          animate={{ y: [0, -4, 0] }}
-          transition={{
-            y: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
-            scale: { duration: 0.15 },
-          }}
-          className="relative flex h-20 w-20 items-end justify-center"
-        >
+        <div style={{ transform: "translateX(-50%)" }}>
+          {/* 피격 깜빡임 — damaged 켜진 동안 opacity 진동 */}
+          <motion.div
+            animate={
+              damaged
+                ? { opacity: [1, 0.2, 1, 0.2, 1, 0.25, 1] }
+                : { opacity: 1 }
+            }
+            transition={{ duration: damaged ? 0.7 : 0.1 }}
+          >
+          {/* 점프 효과 — 매 칸 재마운트(=깜빡임/뚝뚝) 방지 위해 key={score}/initial 제거.
+              위아래로 살짝 튀는 idle 바운스만 끊김 없이 계속. */}
+          <motion.div
+            animate={{ y: [0, -4, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            className="relative flex h-20 w-20 items-end justify-center"
+          >
           {/* 캐릭터 그림자 */}
           <div
             aria-hidden
@@ -775,8 +782,9 @@ function StairColumn({
               🏃
             </span>
           )}
-        </motion.div>
-        </motion.div>
+          </motion.div>
+          </motion.div>
+        </div>
       </motion.div>
     </div>
   );
