@@ -751,32 +751,43 @@ function StairColumn({
           <motion.div
             animate={{ y: [0, -4, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            className="relative flex h-20 w-20 items-end justify-center"
+            className="relative flex h-24 w-24 items-end justify-center"
           >
-          {/* 캐릭터 그림자 */}
+          {/* 후광(halo) — 어두운 배경에 묻히지 않도록 캐릭터 뒤에 핑크/퍼플 글로우. */}
           <div
             aria-hidden
-            className="absolute -bottom-2 left-1/2 h-2 w-12 -translate-x-1/2 rounded-full bg-black/55 blur-sm"
+            className="pointer-events-none absolute bottom-1 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle, rgba(244,114,182,0.42) 0%, rgba(168,85,247,0.18) 50%, transparent 75%)",
+              filter: "blur(6px)",
+            }}
+          />
+          {/* 발 그림자 — 계단 위에 또렷이 서 있는 느낌. */}
+          <div
+            aria-hidden
+            className="absolute -bottom-1 left-1/2 h-2.5 w-16 -translate-x-1/2 rounded-full bg-black/60 blur-md"
           />
           {avatarConfig ? (
             <div
+              className="relative"
               style={{
                 filter:
-                  "drop-shadow(0 8px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 18px rgba(244,114,182,0.35))",
+                  "drop-shadow(0 10px 18px rgba(0,0,0,0.6)) drop-shadow(0 0 22px rgba(244,114,182,0.55)) saturate(1.08)",
               }}
             >
               <AvatarFigurePreloaded
                 config={avatarConfig}
-                size={80}
+                size={96}
                 galleryPositions={galleryPositions}
               />
             </div>
           ) : (
             <span
-              className="text-5xl leading-none"
+              className="relative text-6xl leading-none"
               style={{
                 filter:
-                  "drop-shadow(0 6px 12px rgba(0,0,0,0.55)) drop-shadow(0 0 14px rgba(244,114,182,0.4))",
+                  "drop-shadow(0 8px 14px rgba(0,0,0,0.6)) drop-shadow(0 0 18px rgba(244,114,182,0.55))",
               }}
             >
               🏃
