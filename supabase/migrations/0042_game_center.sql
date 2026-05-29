@@ -43,6 +43,10 @@ create index if not exists game_rankings_branch_month_idx
   on public.game_rankings (branch_id, game_type, month, best_score desc);
 
 -- 3) get_today_play_count(student, game_type) — 오늘(KST) 플레이 횟수 --------
+-- 기존에 매개변수 기본값을 가진 함수가 수동 적용돼 있을 수 있어, create or replace 가
+-- "cannot remove parameter defaults" (42P13) 로 막힌다. 먼저 drop 후 재생성한다.
+-- (앱은 항상 두 인자를 모두 넘기므로 기본값 제거해도 안전)
+drop function if exists public.get_today_play_count(uuid, text);
 create or replace function public.get_today_play_count(p_student_id uuid, p_game_type text)
 returns int
 language sql
