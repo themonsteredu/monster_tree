@@ -317,7 +317,7 @@ export async function submitQuizAnswersAction(args: {
   });
   const correctCount = perItem.filter((p) => p.correct).length;
   const isPerfect = correctCount === 3;
-  const pointEarned = isPerfect ? 1 : 0;
+  let pointEarned = isPerfect ? 1 : 0;
 
   // 관리자 테스트 모드: 기록/포인트 저장 안 함, 채점 결과만 반환.
   if (auth.mode === "admin") {
@@ -332,20 +332,43 @@ export async function submitQuizAnswersAction(args: {
   }
 
   // 학생: quiz_plays 기록 + 올클이면 garden_pending_points 에 +1pt 적립.
-  const { error: insertErr } = await sb.from("quiz_plays").insert({
-    student_id: auth.studentId,
-    branch_id: auth.branchId,
-    question_ids: args.questionIds,
-    answers: args.answers,
-    correct_count: correctCount,
-    is_perfect: isPerfect,
-    point_earned: pointEarned,
-  });
+  // 단 "하루 1포인트" 를 앱(아래 당일 적립 검사) + DB(0043 unique index) 양쪽에서 강제한다.
+  if (pointEarned > 0) {
+    const { count } = await sb
+      .from("quiz_plays")
+      .select("id", { count: "exact", head: true })
+      .eq("student_id", auth.studentId)
+      .gt("point_earned", 0)
+      .gte("played_at", todayKstMidnightUtcIso());
+    if ((count ?? 0) > 0) pointEarned = 0; // 오늘 이미 포인트를 받았음 → 추가 지급 안 함
+  }
+
+  const insertPlay = (pe: number) =>
+    sb.from("quiz_plays").insert({
+      student_id: auth.studentId,
+      branch_id: auth.branchId,
+      question_ids: args.questionIds,
+      answers: args.answers,
+      correct_count: correctCount,
+      is_perfect: isPerfect,
+      point_earned: pe,
+    });
+
+  let { error: insertErr } = await insertPlay(pointEarned);
+  // DB 백스톱(하루 1포인트 unique index) 충돌 = 동시 제출 race. 포인트 없이 기록만 남긴다.
+  if (
+    insertErr &&
+    (insertErr as { code?: string }).code === "23505" &&
+    pointEarned > 0
+  ) {
+    pointEarned = 0;
+    ({ error: insertErr } = await insertPlay(0));
+  }
   if (insertErr) {
     return { ok: false, message: `기록 저장 실패: ${insertErr.message}` };
   }
 
-  if (isPerfect) {
+  if (pointEarned > 0) {
     const { error: pendErr } = await sb.from("garden_pending_points").insert({
       student_id: auth.studentId,
       points: 1,
