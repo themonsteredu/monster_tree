@@ -1,0 +1,67 @@
+# 매일 자동 데이터베이스 백업 (H-5)
+#
+# 무엇을 하나: 매일 한 번 Supabase(Postgres) 전체를 pg_dump 로 받아
+#              GitHub Actions 의 "아티팩트(첨부파일)" 로 90일간 보관한다.
+#              실수로 데이터가 지워지거나 DB 사고가 나도 이 파일로 되살릴 수 있다.
+#
+# 준비물 (원장님이 1회만 설정):
+#   1) Supabase 대시보드 → 프로젝트 → Settings → Database →
+#      "Connection string" → URI 탭 → "Session pooler" 의 주소를 복사.
+#      (postgresql://postgres.xxxx:비밀번호@aws-0-...pooler.supabase.com:5432/postgres 형태)
+#   2) GitHub 저장소 → Settings → Secrets and variables → Actions →
+#      "New repository secret" → 이름: SUPABASE_DB_URL, 값: 위에서 복사한 주소.
+#   3) 끝. 매일 자동 실행되고, Actions 탭에서 수동 실행(Run workflow)도 가능.
+#
+# 백업 파일 받기: GitHub → Actions → "Daily DB Backup" 실행 기록 →
+#                하단 Artifacts 에서 .dump 파일 다운로드.
+# 되살리기(복구): pg_restore --clean --if-exists -d "<새 DB 주소>" 받은파일.dump
+#
+# ⚠️ 이 자동 백업은 "추가 안전망" 입니다. 더 안전하게는 Supabase 유료(Pro) 플랜의
+#    자동 일일 백업 / 시점 복구(PITR) 도 함께 켜는 것을 권장합니다.
+
+name: Daily DB Backup
+
+on:
+  schedule:
+    - cron: '20 18 * * *'   # 매일 18:20 UTC = 한국시간 새벽 3시 20분
+  workflow_dispatch:        # 수동 실행 버튼
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secret
+        run: |
+          if [ -z "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "::error::SUPABASE_DB_URL 시크릿이 설정되지 않았습니다. (워크플로 상단 주석의 준비물 참고)"
+            exit 1
+          fi
+
+      - name: Install pg_dump (PostgreSQL 17 client)
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Run pg_dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          OUT="monster-tree-${STAMP}.dump"
+          echo "백업 시작: ${OUT}"
+          pg_dump "${SUPABASE_DB_URL}" \
+            --format=custom \
+            --no-owner --no-privileges \
+            --file="${OUT}"
+          ls -lh "${OUT}"
+          echo "OUT=${OUT}" >> "$GITHUB_ENV"
+
+      - name: Upload backup artifact (보관 90일)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          retention-days: 90
+          if-no-files-found: error
