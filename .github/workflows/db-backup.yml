@@ -48,6 +48,8 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           OUT="monster-tree-${STAMP}.dump"
           echo "백업 시작: ${OUT}"
