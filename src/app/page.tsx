@@ -8,6 +8,7 @@
 // src/lib/tv-data.ts 의 loadTvData() 로 일원화.
 
 import { TVScreen } from "./TVScreen";
+import { TVWakeLock } from "./tv/TVWakeLock";
 import { loadTvData } from "@/lib/tv-data";
 import { getBranchId } from "@/lib/branch";
 
@@ -32,21 +33,24 @@ export default async function Page({
   const data = await loadTvData(branchId);
 
   return (
-    <TVScreen
-      initialStudents={data.students}
-      initialTodayHarvest={data.todayHarvest}
-      branchId={branchId}
-      initialTreeStages={data.treeStages}
-      yardBackgroundImage={data.yardBackgroundImage}
-      decorationItems={data.decorationItems}
-      yardLayoutByStudent={data.yardLayoutByStudent}
-      weatherByStudent={data.weatherByStudent}
-      activeMonsterByStudent={data.activeMonsterByStudent}
-      evolvedMonstersByStudent={data.evolvedMonstersByStudent}
-      sceneLayoutByStudent={data.sceneLayoutByStudent}
-      monsterSpeciesById={data.monsterSpeciesById}
-      monsterStagesBySpecies={data.monsterStagesBySpecies}
-    />
+    <>
+      <TVWakeLock />
+      <TVScreen
+        initialStudents={data.students}
+        initialTodayHarvest={data.todayHarvest}
+        branchId={branchId}
+        initialTreeStages={data.treeStages}
+        yardBackgroundImage={data.yardBackgroundImage}
+        decorationItems={data.decorationItems}
+        yardLayoutByStudent={data.yardLayoutByStudent}
+        weatherByStudent={data.weatherByStudent}
+        activeMonsterByStudent={data.activeMonsterByStudent}
+        evolvedMonstersByStudent={data.evolvedMonstersByStudent}
+        sceneLayoutByStudent={data.sceneLayoutByStudent}
+        monsterSpeciesById={data.monsterSpeciesById}
+        monsterStagesBySpecies={data.monsterStagesBySpecies}
+      />
+    </>
   );
 }
 
