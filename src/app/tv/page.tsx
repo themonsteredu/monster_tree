@@ -8,6 +8,7 @@
 
 import { TVScreen } from "../TVScreen";
 import { TVAutoRefresh } from "./TVAutoRefresh";
+import { TVWakeLock } from "./TVWakeLock";
 import { loadTvData } from "@/lib/tv-data";
 import { getBranchId } from "@/lib/branch";
 
@@ -33,6 +34,7 @@ export default async function TvPublicPage({
 
   return (
     <TVAutoRefresh>
+      <TVWakeLock />
       <TVScreen
         initialStudents={data.students}
         initialTodayHarvest={data.todayHarvest}
