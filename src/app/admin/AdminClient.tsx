@@ -20,6 +20,7 @@ import {
   addPointsAction,
   cancelPendingAction,
   harvestStudentAction,
+  sendPendingPointsPushAction,
   undoLogAction,
 } from "./actions";
 
@@ -811,6 +812,21 @@ function RecentLogsSheet({
     (p) => pendingAge(p.created_at, now).severity === "warm",
   ).length;
 
+  // 🔔 미수령 알림 발송 — 알림을 켠(구독한) 학생 폰으로 웹 푸시.
+  const [pushSending, startPushTransition] = useTransition();
+  const [pushResult, setPushResult] = useState<string | null>(null);
+  const submitPush = () => {
+    setPushResult(null);
+    startPushTransition(async () => {
+      try {
+        const res = await sendPendingPointsPushAction();
+        setPushResult(res.message);
+      } catch (e) {
+        setPushResult(e instanceof Error ? e.message : "발송에 실패했어요.");
+      }
+    });
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-gray-900/30 flex items-end justify-center backdrop-blur-[1px]"
@@ -844,7 +860,22 @@ function RecentLogsSheet({
                 12h+ {warmCount}개
               </span>
             )}
+            {sortedPending.length > 0 && (
+              <button
+                type="button"
+                disabled={pushSending}
+                onClick={submitPush}
+                className="ml-auto text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1 hover:bg-emerald-100 transition disabled:opacity-50"
+              >
+                {pushSending ? "보내는 중..." : "🔔 미수령 알림 보내기"}
+              </button>
+            )}
           </div>
+          {pushResult && (
+            <p className="text-xs text-gray-500 mb-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              {pushResult}
+            </p>
+          )}
           {sortedPending.length === 0 ? (
             <p className="text-center text-gray-400 py-4 text-sm">대기 중인 포인트가 없어요.</p>
           ) : (

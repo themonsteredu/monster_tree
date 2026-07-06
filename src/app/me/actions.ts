@@ -997,3 +997,52 @@ export async function startRandomEggAction(args: { nickname: string }) {
   revalidatePath("/me/collection");
   return { ok: true as const };
 }
+
+/* ============== 웹 푸시 구독 (미수령 포인트 알림) ============== */
+
+// 학생이 "🔔 알림 켜기" 를 누르면 브라우저 PushSubscription 을 저장.
+// endpoint 는 브라우저가 발급하는 고유 URL — 같은 기기 재구독 시 upsert 로 갱신.
+export async function savePushSubscriptionAction(args: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}) {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+
+  const { endpoint, keys } = args ?? {};
+  if (
+    typeof endpoint !== "string" ||
+    !endpoint.startsWith("https://") ||
+    endpoint.length > 600 ||
+    typeof keys?.p256dh !== "string" ||
+    typeof keys?.auth !== "string" ||
+    keys.p256dh.length > 300 ||
+    keys.auth.length > 300
+  ) {
+    return { ok: false as const, message: "잘못된 구독 정보예요." };
+  }
+
+  const sb = createSupabaseServiceClient();
+  const row = await fetchStudentRow(sb, payload);
+  if (!row) {
+    return { ok: false as const, message: "본인 정보를 찾지 못했어요." };
+  }
+
+  const { error } = await sb
+    .from("garden_push_subscriptions")
+    .upsert(
+      {
+        student_id: row.id,
+        endpoint,
+        keys: { p256dh: keys.p256dh, auth: keys.auth },
+      },
+      { onConflict: "endpoint" },
+    );
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+  return { ok: true as const };
+}
