@@ -21,6 +21,8 @@ import {
   setGalleryItemActiveAction,
   deleteGalleryItemAction,
   updateGalleryItemPositionAction,
+  updateGalleryItemMetaAction,
+  generateAvatarItemAction,
 } from "../actions";
 
 // 가장자리 N 픽셀에서 색 히스토그램을 만들어, 빈도 합 ≥40% 인 우세 색 1~2 개를 키로 잡고
@@ -183,40 +185,78 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
     if (typeof window !== "undefined") window.location.reload();
   };
 
-  const handleUpload = (
+  // 파일 1개 처리+업로드. 성공 시 null, 실패 시 메시지 반환 (일괄 업로드에서 재사용).
+  const uploadOne = async (
     cat: AvatarGalleryCategory,
     file: File,
     label: string,
     removeBg: boolean,
+  ): Promise<string | null> => {
+    if (file.size > 4_194_304) return "이미지가 너무 커요 (4MB 이하)";
+    let processed: File;
+    try {
+      // removeBg=false (예: 흰색 아이템) 이면 누끼 건너뛰고 PNG 로만 변환.
+      processed = removeBg ? await stripBackgroundToPng(file) : await convertToPng(file);
+    } catch (e) {
+      return `이미지 처리 실패: ${(e as Error).message}`;
+    }
+    if (processed.size > 2_097_152) return "처리 결과가 2MB 초과";
+    const fd = new FormData();
+    fd.append("file", processed);
+    fd.append("category", cat);
+    if (label) fd.append("label", label);
+    const r = await uploadGalleryItemAction(fd);
+    return r.ok ? null : r.message;
+  };
+
+  // 일괄 업로드 — 여러 장 선택 시 순차 처리 + 진행률. 라벨은 파일명(확장자 제외).
+  const handleUploadMany = (
+    cat: AvatarGalleryCategory,
+    files: File[],
+    label: string,
+    removeBg: boolean,
   ) => {
     setError(null);
-    if (file.size > 4_194_304) {
-      setError("이미지가 너무 커요 (4MB 이하 원본만 처리해요).");
-      return;
-    }
+    if (files.length === 0) return;
+    setBulkProgress({ done: 0, total: files.length, failed: 0 });
     startTransition(async () => {
-      let processed: File;
-      try {
-        // removeBg=false (예: 흰색 아이템) 이면 누끼 건너뛰고 PNG 로만 변환.
-        processed = removeBg ? await stripBackgroundToPng(file) : await convertToPng(file);
-      } catch (e) {
-        setError(`이미지 처리 실패: ${(e as Error).message}`);
-        return;
+      let failed = 0;
+      const failures: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        // 한 장이면 입력한 라벨, 여러 장이면 파일명을 라벨로.
+        const autoLabel =
+          files.length === 1 && label
+            ? label
+            : f.name.replace(/\.[^.]+$/, "").slice(0, 60);
+        const msg = await uploadOne(cat, f, autoLabel, removeBg);
+        if (msg) {
+          failed++;
+          failures.push(`${f.name}: ${msg}`);
+        }
+        setBulkProgress({ done: i + 1, total: files.length, failed });
       }
-      if (processed.size > 2_097_152) {
-        setError("처리된 이미지가 2MB 를 초과해요. 더 작은 해상도로 다시 시도해주세요.");
-        return;
+      setBulkProgress(null);
+      if (failures.length > 0) {
+        setError(
+          `${failures.length}/${files.length}개 실패 — ${failures.slice(0, 3).join(" / ")}${failures.length > 3 ? " …" : ""}`,
+        );
       }
-      const fd = new FormData();
-      fd.append("file", processed);
-      fd.append("category", cat);
-      if (label) fd.append("label", label);
-      const r = await uploadGalleryItemAction(fd);
+      await refreshFromServer();
+    });
+  };
+
+  const handleSaveMeta = (id: string, price: number, isStyleRef: boolean) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await updateGalleryItemMetaAction({ id, price, is_style_ref: isStyleRef });
       if (!r.ok) {
         setError(r.message);
         return;
       }
-      await refreshFromServer();
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, price, is_style_ref: isStyleRef } : i)),
+      );
     });
   };
 
@@ -337,6 +377,12 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
             : `전체 항목 다시 크롭 (${items.length})`}
         </button>
       </div>
+      <AiGeneratorSection
+        pending={pending}
+        styleRefCount={items.filter((i) => i.is_style_ref).length}
+        onRegistered={refreshFromServer}
+        onError={setError}
+      />
       {CATEGORIES.map((c) => (
         <CategorySection
           key={c.key}
@@ -345,11 +391,12 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
           hint={c.hint}
           items={byCategory(c.key)}
           pending={pending}
-          onUpload={handleUpload}
+          onUpload={handleUploadMany}
           onToggle={handleToggle}
           onDelete={handleDelete}
           onReclean={handleReclean}
           onEditPosition={(it) => setEditingItem(it)}
+          onSaveMeta={handleSaveMeta}
         />
       ))}
       {editingItem && (
@@ -366,18 +413,19 @@ export function GalleryClient({ initialItems }: { initialItems: AvatarGalleryIte
 }
 
 function CategorySection({
-  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean, onEditPosition,
+  category, label, hint, items, pending, onUpload, onToggle, onDelete, onReclean, onEditPosition, onSaveMeta,
 }: {
   category: AvatarGalleryCategory;
   label: string;
   hint: string;
   items: AvatarGalleryItem[];
   pending: boolean;
-  onUpload: (cat: AvatarGalleryCategory, file: File, label: string, removeBg: boolean) => void;
+  onUpload: (cat: AvatarGalleryCategory, files: File[], label: string, removeBg: boolean) => void;
   onToggle: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
   onReclean: (it: AvatarGalleryItem) => void;
   onEditPosition: (it: AvatarGalleryItem) => void;
+  onSaveMeta: (id: string, price: number, isStyleRef: boolean) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -385,10 +433,10 @@ function CategorySection({
 
   const onPick = () => fileRef.current?.click();
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!f) return;
-    onUpload(category, f, draftLabel, removeBg);
+    if (files.length === 0) return;
+    onUpload(category, files, draftLabel, removeBg);
     setDraftLabel("");
   };
 
@@ -411,6 +459,7 @@ function CategorySection({
           ref={fileRef}
           type="file"
           accept="image/png,image/webp"
+          multiple
           onChange={onFile}
           style={{ display: "none" }}
         />
@@ -420,7 +469,7 @@ function CategorySection({
           disabled={pending}
           className="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50"
         >
-          {pending ? "업로드 중..." : "이미지 추가"}
+          {pending ? "업로드 중..." : "이미지 추가 (여러 장 가능)"}
         </button>
       </div>
       <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer select-none">
@@ -455,7 +504,12 @@ function CategorySection({
               </div>
               <div className="px-1.5 py-1 text-[11px] text-gray-700 truncate">
                 {it.label ?? "(라벨 없음)"}
+                {it.price > 0 && (
+                  <span className="ml-1 text-amber-600 font-bold">{it.price}P</span>
+                )}
+                {it.is_style_ref && <span className="ml-1">⭐</span>}
               </div>
+              <ItemMetaRow item={it} pending={pending} onSave={onSaveMeta} />
               <div className="flex border-t border-gray-100">
                 <button
                   type="button"
@@ -495,6 +549,254 @@ function CategorySection({
             </div>
           ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+// 아이템 가격/스타일기준 인라인 편집 줄.
+function ItemMetaRow({
+  item,
+  pending,
+  onSave,
+}: {
+  item: AvatarGalleryItem;
+  pending: boolean;
+  onSave: (id: string, price: number, isStyleRef: boolean) => void;
+}) {
+  const [price, setPrice] = useState(String(item.price ?? 0));
+  const dirty = Number(price) !== (item.price ?? 0);
+  return (
+    <div className="flex items-center gap-1 px-1.5 pb-1">
+      <input
+        type="number"
+        min={0}
+        max={100000}
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        className="w-14 px-1 py-0.5 rounded border border-gray-200 text-[11px] text-gray-800"
+        aria-label="가격 (P)"
+      />
+      <span className="text-[10px] text-gray-400">P</span>
+      {dirty && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            const v = Math.max(0, Math.min(100000, Math.floor(Number(price) || 0)));
+            setPrice(String(v));
+            onSave(item.id, v, item.is_style_ref ?? false);
+          }}
+          className="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[10px] font-bold disabled:opacity-50"
+        >
+          저장
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => onSave(item.id, item.price ?? 0, !(item.is_style_ref ?? false))}
+        className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold transition disabled:opacity-50 ${
+          item.is_style_ref
+            ? "bg-yellow-100 text-yellow-700 border border-yellow-300"
+            : "bg-gray-50 text-gray-400 border border-gray-200"
+        }`}
+        title="AI 생성 시 이 그림체를 기준으로 참조"
+      >
+        ⭐기준
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// AI 아이템 생성기 — 이름+카테고리 입력 → 같은 그림체로 생성 → 미리보기 → 등록.
+// OPENAI_API_KEY 미설정이면 설정 안내만 표시.
+// ============================================================
+function AiGeneratorSection({
+  pending,
+  styleRefCount,
+  onRegistered,
+  onError,
+}: {
+  pending: boolean;
+  styleRefCount: number;
+  onRegistered: () => Promise<void> | void;
+  onError: (msg: string) => void;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [category, setCategory] = useState<AvatarGalleryCategory>("hat");
+  const [generating, setGenerating] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [needKey, setNeedKey] = useState(false);
+  const [result, setResult] = useState<{ b64: string; refs: number } | null>(null);
+  const [price, setPrice] = useState("0");
+
+  const generate = async () => {
+    const p = prompt.trim();
+    if (p.length < 2) {
+      onError("만들 아이템을 입력해주세요 (예: 파란 야구모자)");
+      return;
+    }
+    onError("");
+    setGenerating(true);
+    setResult(null);
+    try {
+      const r = await generateAvatarItemAction({ prompt: p, category });
+      if (!r.ok) {
+        if (r.needKey) setNeedKey(true);
+        else onError(r.message);
+        return;
+      }
+      setResult({ b64: r.imageB64, refs: r.usedStyleRefs });
+    } catch (e) {
+      onError(`생성 실패: ${(e as Error).message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const register = async () => {
+    if (!result) return;
+    setRegistering(true);
+    try {
+      // b64 → File → 투명 여백 크롭(기존 파이프라인) → 업로드
+      const bin = atob(result.b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const raw = new File([bytes], `ai-${Date.now()}.png`, { type: "image/png" });
+      const processed = await stripBackgroundToPng(raw);
+      if (processed.size > 2_097_152) {
+        onError("생성 이미지가 2MB 를 초과했어요. 다시 생성해주세요.");
+        return;
+      }
+      const fd = new FormData();
+      fd.append("file", processed);
+      fd.append("category", category);
+      fd.append("label", prompt.trim().slice(0, 60));
+      const v = Math.max(0, Math.min(100000, Math.floor(Number(price) || 0)));
+      fd.append("price", String(v));
+      const r = await uploadGalleryItemAction(fd);
+      if (!r.ok) {
+        onError(r.message);
+        return;
+      }
+      setResult(null);
+      setPrompt("");
+      setPrice("0");
+      await onRegistered();
+    } catch (e) {
+      onError(`등록 실패: ${(e as Error).message}`);
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  return (
+    <section className="bg-gradient-to-br from-violet-50 to-fuchsia-50 border border-violet-200 shadow-sm rounded-xl p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="font-semibold text-violet-900">✨ AI 아이템 만들기</h2>
+        <span className="text-xs text-violet-500">
+          {styleRefCount > 0
+            ? `⭐스타일 기준 ${styleRefCount}장 참조`
+            : "⭐기준 이미지를 지정하면 그림체가 더 일정해져요"}
+        </span>
+      </div>
+      <p className="text-xs text-violet-700/70 mb-3">
+        이름만 입력하면 기존 아이템과 같은 그림체로 그려서 배경 투명 처리까지 자동으로 해줘요.
+      </p>
+      {needKey ? (
+        <div className="bg-white border border-violet-200 rounded-lg p-3 text-xs text-gray-600 leading-relaxed">
+          <b className="text-violet-700">OPENAI_API_KEY 가 설정되지 않았어요.</b>
+          <br />
+          1. platform.openai.com 에서 API 키 발급 (5분, 사용량만큼 과금 — 장당 수십 원)
+          <br />
+          2. Vercel → 이 프로젝트 → Settings → Environment Variables 에{" "}
+          <code className="bg-violet-50 px-1 rounded">OPENAI_API_KEY</code> 추가 후 재배포
+          <br />
+          설정되면 이 자리에서 바로 생성할 수 있어요.
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              placeholder="예: 파란 야구모자, 무지개 운동화"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !generating) generate();
+              }}
+              className="px-3 py-2 rounded-lg border border-violet-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-300 transition flex-1 min-w-[160px]"
+            />
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as AvatarGalleryCategory)}
+              className="px-2 py-2 rounded-lg border border-violet-200 text-sm text-gray-900 bg-white"
+              aria-label="카테고리"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={generate}
+              disabled={generating || pending}
+              className="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition disabled:opacity-50"
+            >
+              {generating ? "그리는 중… (10~30초)" : "✨ 생성"}
+            </button>
+          </div>
+          {result && (
+            <div className="mt-3 bg-white border border-violet-200 rounded-xl p-3 flex items-center gap-4 flex-wrap">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:image/png;base64,${result.b64}`}
+                alt="AI 생성 결과"
+                className="w-28 h-28 object-contain rounded-lg bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#ffffff_0%_50%)] bg-[length:16px_16px] border border-gray-100"
+              />
+              <div className="flex-1 min-w-[160px] space-y-2">
+                <p className="text-xs text-gray-500">
+                  마음에 들면 등록, 아니면 다시 생성하세요.
+                  {result.refs > 0 && ` (기준 이미지 ${result.refs}장 참조됨)`}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="text-xs text-gray-600 flex items-center gap-1">
+                    가격
+                    <input
+                      type="number"
+                      min={0}
+                      max={100000}
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className="w-16 px-1.5 py-1 rounded border border-gray-200 text-xs"
+                    />
+                    P <span className="text-gray-400">(0=무료)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={register}
+                    disabled={registering}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition disabled:opacity-50"
+                  >
+                    {registering ? "등록 중…" : "✅ 이대로 등록"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={generate}
+                    disabled={generating}
+                    className="px-3 py-1.5 rounded-lg border border-violet-300 text-violet-700 text-xs font-bold hover:bg-violet-50 transition disabled:opacity-50"
+                  >
+                    🔄 다시 생성
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

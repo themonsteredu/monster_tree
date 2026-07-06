@@ -19,6 +19,8 @@ type Props = {
   // 매핑이 없는 건물은 안내 토스트만 띄움.
   previewMode?: boolean;
   previewLinkOverrides?: Record<string, string>;
+  // 건의함 새 답장 여부 — true 면 우체통(building_key='mailbox')에 🔴 뱃지.
+  hasNewMail?: boolean;
 };
 
 // 마우스 leave 후 hover 해제 / 터치 종료 후 자동 닫힘 시간.
@@ -35,6 +37,7 @@ export function VillageClient({
   totalPoints,
   previewMode = false,
   previewLinkOverrides,
+  hasNewMail = false,
 }: Props) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
@@ -206,6 +209,8 @@ export function VillageClient({
 
               {locked && <LockBadge />}
 
+              {hasNewMail && b.building_key === "mailbox" && <NewMailBadge />}
+
               <Tooltip
                 name={b.name}
                 description={b.description}
@@ -355,6 +360,43 @@ function Tooltip({
           filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.15))",
         }}
       />
+    </div>
+  );
+}
+
+// 우체통 새 답장 뱃지 — 확인 안 한 선생님 답장이 있을 때 표시.
+function NewMailBadge() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: -6,
+        left: -6,
+        width: 18,
+        height: 18,
+        borderRadius: "50%",
+        background: "#ef4444",
+        border: "2px solid rgba(255,255,255,0.9)",
+        zIndex: 2,
+        pointerEvents: "none",
+        boxShadow: "0 0 8px rgba(239,68,68,0.9), 0 2px 4px rgba(0,0,0,0.4)",
+        animation: "mailpulse 1.4s ease-in-out infinite",
+      }}
+    >
+      <style jsx>{`
+        @keyframes mailpulse {
+          0%,
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.25);
+            opacity: 0.75;
+          }
+        }
+      `}</style>
     </div>
   );
 }

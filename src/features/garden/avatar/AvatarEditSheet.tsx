@@ -2,19 +2,30 @@
 
 // 학생 본인의 아바타를 편집하는 시트.
 // 관리자 갤러리(base/outfit/hat/accessory)에서 슬롯마다 1개씩 골라 합성한다.
-// 미리보기는 AvatarFigure 로 즉시 반영. 저장 시 updateAvatarAction 호출.
+// 미리보기는 AvatarEditCanvas 로 즉시 반영. 저장 시 updateAvatarAction 호출.
+//
+// - 유료 아이템(price>0)은 🔒 + 가격표 — 탭하면 구매 확인 모달 (garden_shop_deduct).
+// - 닫기/배경 탭 시 draft 가 저장본과 다르면(dirty) 자체 확인 모달로 유실 방지.
+// - [위치 원래대로] = 슬롯 위치/크기만 기본값으로 (선택 아이템 유지)
+//   [모두 벗기] = 모든 슬롯 비우기 (확인 모달)
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type {
   AvatarConfig,
   AvatarGalleryCategory,
   AvatarGalleryItem,
   AvatarGalleryItemPosition,
   AvatarGallerySlot,
+  BackgroundConfig,
 } from "@/lib/types";
 import { getGallerySlotPosition, getGallerySlotUrl } from "@/lib/types";
 import { AvatarEditCanvas } from "./AvatarEditCanvas";
-import { updateAvatarAction, listGalleryItemsAction } from "@/app/me/actions";
+import { BuyConfirmModal } from "./BuyConfirmModal";
+import {
+  updateAvatarAction,
+  listGalleryItemsAction,
+  buyAvatarItemAction,
+} from "@/app/me/actions";
 
 const GALLERY_CAT_LABELS: Record<AvatarGalleryCategory, string> = {
   base: "베이스",
@@ -43,7 +54,8 @@ type Props = {
   initial: AvatarConfig;
   onClose: () => void;
   onSaved: (next: AvatarConfig) => void;
-  onReset?: () => void;
+  // 학생의 현재 배경 — 미리보기 캔버스 배경으로 사용 (없으면 기존 크림).
+  previewBackground?: BackgroundConfig | null;
 };
 
 function toGalleryDraft(cfg: AvatarConfig): AvatarConfig {
@@ -51,15 +63,27 @@ function toGalleryDraft(cfg: AvatarConfig): AvatarConfig {
   return { kind: "gallery" };
 }
 
-export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Props) {
+export function AvatarEditSheet({ open, initial, onClose, onSaved, previewBackground }: Props) {
   const [draft, setDraft] = useState<AvatarConfig>(() => toGalleryDraft(initial));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [galleryItems, setGalleryItems] = useState<AvatarGalleryItem[]>([]);
   const [galleryLoaded, setGalleryLoaded] = useState(false);
-  // 카테고리별 펼침 상태 — 기본 전부 접힘. 헤더 누르면 토글.
+  // 보유 유료 아이템 id 집합 + 포인트 잔액 (구매 루프)
+  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => new Set());
+  const [balance, setBalance] = useState<number | null>(null);
+  // 구매 확인 모달 상태
+  const [buyTarget, setBuyTarget] = useState<AvatarGalleryItem | null>(null);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+  // 나가기/모두 벗기 확인 모달
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [confirmStripOpen, setConfirmStripOpen] = useState(false);
+  // 카테고리별 펼침 상태 — 첫 번째 카테고리만 기본 펼침. 헤더 누르면 토글.
   // collapsed[cat] === false (명시) 일 때만 펼침. undefined/true 면 접힘.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => ({
+    [GALLERY_CAT_ORDER[0]]: false,
+  }));
   const toggleCategory = (cat: AvatarGalleryCategory) =>
     setCollapsed((prev) => ({
       ...prev,
@@ -69,11 +93,19 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
   // 미리보기 캔버스에서 선택된 슬롯 (터치 조작 대상)
   const [selectedSlot, setSelectedSlot] = useState<AvatarGalleryCategory | null>(null);
 
+  // 저장본 스냅샷 — dirty 판정용 (열릴 때/저장 성공 시 갱신).
+  const savedSnapshotRef = useRef<string>(JSON.stringify(toGalleryDraft(initial)));
+
   useEffect(() => {
     if (!open) return;
-    setDraft(toGalleryDraft(initial));
+    const base = toGalleryDraft(initial);
+    setDraft(base);
+    savedSnapshotRef.current = JSON.stringify(base);
     setError(null);
     setSelectedSlot(null);
+    setConfirmLeaveOpen(false);
+    setConfirmStripOpen(false);
+    setBuyTarget(null);
   }, [open, initial]);
 
   useEffect(() => {
@@ -81,7 +113,11 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     let cancelled = false;
     listGalleryItemsAction().then((r) => {
       if (cancelled) return;
-      if (r.ok) setGalleryItems(r.items as AvatarGalleryItem[]);
+      if (r.ok) {
+        setGalleryItems(r.items as AvatarGalleryItem[]);
+        setOwnedIds(new Set(r.ownedGalleryIds ?? []));
+        setBalance(r.totalPoints ?? null);
+      }
       setGalleryLoaded(true);
     });
     return () => {
@@ -99,6 +135,20 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
 
   if (!open) return null;
 
+  const isDirty = () => JSON.stringify(draft) !== savedSnapshotRef.current;
+
+  // 닫기 요청 — dirty 면 자체 확인 모달 (window.confirm 금지).
+  const requestClose = () => {
+    if (pending || buyBusy) return;
+    if (isDirty()) {
+      setConfirmLeaveOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  const isOwned = (it: AvatarGalleryItem) => (it.price ?? 0) <= 0 || ownedIds.has(it.id);
+
   const setGallerySlot = (slot: AvatarGalleryCategory, url: string | undefined) => {
     if (draft.kind !== "gallery") {
       setDraft({ kind: "gallery", [slot]: url });
@@ -107,6 +157,40 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     const next = { ...draft, [slot]: url };
     if (!url) delete (next as Record<string, unknown>)[slot];
     setDraft(next);
+  };
+
+  // 아이템 칩 탭 — 미보유 유료 아이템이면 구매 확인 모달, 아니면 장착.
+  const onPickItem = (it: AvatarGalleryItem) => {
+    if (!isOwned(it)) {
+      setBuyError(null);
+      setBuyTarget(it);
+      return;
+    }
+    setGallerySlot(it.category, it.image_url);
+  };
+
+  const onBuyConfirm = () => {
+    if (!buyTarget || buyBusy) return;
+    const target = buyTarget;
+    setBuyBusy(true);
+    setBuyError(null);
+    buyAvatarItemAction({ galleryId: target.id }).then((r) => {
+      setBuyBusy(false);
+      if (!r.ok) {
+        if (r.balance !== undefined) setBalance(r.balance);
+        setBuyError(r.message);
+        return;
+      }
+      // 구매 성공 — 즉시 해금 + 장착 + 잔액 갱신.
+      setOwnedIds((prev) => {
+        const next = new Set(prev);
+        next.add(target.id);
+        return next;
+      });
+      setBalance(r.newTotal);
+      setGallerySlot(target.category, target.image_url);
+      setBuyTarget(null);
+    });
   };
 
   // 슬롯의 position 만 갱신 (URL 은 유지). url 없으면 no-op.
@@ -130,6 +214,26 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
     if (!url) return;
     const next = { ...draft, [slot]: url };
     setDraft(next);
+  };
+
+  // [위치 원래대로] — 모든 슬롯의 위치/크기만 기본값으로 (선택 아이템 유지).
+  const resetAllPositions = () => {
+    if (draft.kind !== "gallery") return;
+    const next: AvatarConfig = { kind: "gallery" };
+    for (const cat of GALLERY_CAT_ORDER) {
+      const url = getGallerySlotUrl(
+        (draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined,
+      );
+      if (url) (next as Record<string, unknown>)[cat] = url;
+    }
+    setDraft(next);
+  };
+
+  // [모두 벗기] — 모든 슬롯 비우기 (확인 모달 통과 후).
+  const stripAllItems = () => {
+    setDraft({ kind: "gallery" });
+    setSelectedSlot(null);
+    setConfirmStripOpen(false);
   };
 
   // 레이어 순서 변경 — 현재 effective zIndex 에서 ±1.
@@ -158,6 +262,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
         setError(result.message);
         return;
       }
+      savedSnapshotRef.current = JSON.stringify(result.avatar);
       onSaved(result.avatar);
       onClose();
     });
@@ -177,7 +282,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
         justifyContent: "center",
         zIndex: 100,
       }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -195,21 +300,39 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 18, color: "#3d2818", fontWeight: 800 }}>아바타 꾸미기</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            style={{
-              border: "none",
-              background: "transparent",
-              fontSize: 22,
-              color: "#9a8b6c",
-              cursor: "pointer",
-              padding: 4,
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {balance !== null && (
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#3d2818",
+                  background: "#fff5d6",
+                  border: "1.5px solid #f0c050",
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                내 포인트 {balance} P
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label="닫기"
+              style={{
+                border: "none",
+                background: "transparent",
+                fontSize: 22,
+                color: "#9a8b6c",
+                cursor: "pointer",
+                padding: 4,
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* 미리보기 (스크롤해도 따라옴) */}
@@ -235,6 +358,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
             selectedSlot={selectedSlot}
             onSelectSlot={setSelectedSlot}
             onPositionChange={setSlotPosition}
+            previewBackground={previewBackground}
           />
         </div>
 
@@ -335,13 +459,14 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
             </div>
           ) : (
             GALLERY_CAT_ORDER.map((cat) => {
-              const inCat = galleryItems.filter((it) => it.category === cat);
+              // 스타일 기준 이미지(is_style_ref)는 학생 착용 목록에서 제외.
+              const inCat = galleryItems.filter((it) => it.category === cat && !it.is_style_ref);
               const slotValue =
                 draft.kind === "gallery"
                   ? ((draft as Record<string, unknown>)[cat] as AvatarGallerySlot | undefined)
                   : undefined;
               const selectedUrl = getGallerySlotUrl(slotValue);
-              const isOpen = collapsed[cat] === false; // 기본 접힘. 명시적으로 false 일 때만 펼침.
+              const isOpen = collapsed[cat] === false; // 첫 카테고리만 기본 펼침. 명시적으로 false 일 때만 펼침.
               return (
                 <div key={cat} style={{ marginBottom: 10 }}>
                   {/* 카테고리 헤더 — 클릭하면 접기/펼치기 */}
@@ -425,19 +550,20 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                           fontSize: 11,
                           fontWeight: 700,
                           cursor: "pointer",
+                          alignSelf: "start",
                         }}
                       >
                         선택 안함
                       </button>
                       {inCat.map((it) => {
                         const isActive = selectedUrl === it.image_url;
+                        const locked = !isOwned(it);
                         return (
                           <button
                             key={it.id}
                             type="button"
-                            onClick={() => setGallerySlot(cat, it.image_url)}
+                            onClick={() => onPickItem(it)}
                             style={{
-                              aspectRatio: "1",
                               border: isActive ? "2px solid #F26522" : "1.5px solid #d6c2a0",
                               background: "#fff",
                               borderRadius: 8,
@@ -445,20 +571,71 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
                               cursor: "pointer",
                               overflow: "hidden",
                               position: "relative",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "stretch",
+                              alignSelf: "start",
                             }}
                             title={it.label ?? ""}
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={it.image_url}
-                              alt={it.label ?? ""}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "contain",
-                                display: "block",
-                              }}
-                            />
+                            <div style={{ aspectRatio: "1", position: "relative", width: "100%" }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={it.image_url}
+                                alt={it.label ?? ""}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                  display: "block",
+                                  opacity: locked ? 0.45 : 1,
+                                }}
+                              />
+                              {locked && (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 2,
+                                  }}
+                                >
+                                  <span style={{ fontSize: 16 }} aria-hidden>🔒</span>
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 800,
+                                      background: "#3d2818",
+                                      color: "#ffd873",
+                                      padding: "1px 6px",
+                                      borderRadius: 999,
+                                      fontVariantNumeric: "tabular-nums",
+                                    }}
+                                  >
+                                    {it.price} P
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {it.label ? (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  color: "#8a6f52",
+                                  textAlign: "center",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  padding: "1px 2px 2px",
+                                }}
+                              >
+                                {it.label}
+                              </span>
+                            ) : null}
                           </button>
                         );
                       })}
@@ -487,33 +664,45 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
         )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          {onReset && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("아바타를 리셋할까요? 저장된 아바타가 사라집니다.")) {
-                  onReset();
-                }
-              }}
-              disabled={pending}
-              style={{
-                flex: 1,
-                padding: "12px 0",
-                border: "1.5px solid #f5cdc4",
-                background: "#fff",
-                color: "#b04020",
-                borderRadius: 10,
-                fontWeight: 600,
-                cursor: pending ? "default" : "pointer",
-                fontSize: 13,
-              }}
-            >
-              리셋
-            </button>
-          )}
           <button
             type="button"
-            onClick={onClose}
+            onClick={resetAllPositions}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "12px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#8a6f52",
+              borderRadius: 10,
+              fontWeight: 600,
+              cursor: pending ? "default" : "pointer",
+              fontSize: 12,
+            }}
+          >
+            위치 원래대로
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmStripOpen(true)}
+            disabled={pending}
+            style={{
+              flex: 1,
+              padding: "12px 0",
+              border: "1.5px solid #f5cdc4",
+              background: "#fff",
+              color: "#b04020",
+              borderRadius: 10,
+              fontWeight: 600,
+              cursor: pending ? "default" : "pointer",
+              fontSize: 12,
+            }}
+          >
+            모두 벗기
+          </button>
+          <button
+            type="button"
+            onClick={requestClose}
             disabled={pending}
             style={{
               flex: 1,
@@ -524,6 +713,7 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
               borderRadius: 10,
               fontWeight: 700,
               cursor: pending ? "default" : "pointer",
+              fontSize: 13,
             }}
           >
             취소
@@ -548,7 +738,154 @@ export function AvatarEditSheet({ open, initial, onClose, onSaved, onReset }: Pr
           </button>
         </div>
       </div>
+
+      {/* 저장 안 하고 나가기 확인 */}
+      {confirmLeaveOpen && (
+        <ConfirmModal
+          message="저장하지 않고 나갈까요?"
+          detail="바뀐 내용이 사라져요."
+          confirmLabel="나가기"
+          cancelLabel="계속 꾸미기"
+          danger
+          onConfirm={() => {
+            setConfirmLeaveOpen(false);
+            onClose();
+          }}
+          onCancel={() => setConfirmLeaveOpen(false)}
+        />
+      )}
+
+      {/* 모두 벗기 확인 */}
+      {confirmStripOpen && (
+        <ConfirmModal
+          message="아이템을 모두 벗을까요?"
+          detail="구매한 아이템은 사라지지 않아요 — 언제든 다시 입을 수 있어요."
+          confirmLabel="모두 벗기"
+          cancelLabel="취소"
+          danger
+          onConfirm={stripAllItems}
+          onCancel={() => setConfirmStripOpen(false)}
+        />
+      )}
+
+      {/* 유료 아이템 구매 확인 */}
+      {buyTarget && (
+        <BuyConfirmModal
+          itemName={buyTarget.label ?? GALLERY_CAT_LABELS[buyTarget.category]}
+          imageUrl={buyTarget.image_url}
+          price={buyTarget.price}
+          balance={balance}
+          busy={buyBusy}
+          errorMessage={buyError}
+          onConfirm={onBuyConfirm}
+          onCancel={() => {
+            if (!buyBusy) {
+              setBuyTarget(null);
+              setBuyError(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
+// 자체 확인 모달 — window.confirm 대체. 시트 위(z 300)에 뜬다.
+function ConfirmModal({
+  message,
+  detail,
+  confirmLabel,
+  cancelLabel,
+  danger,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  detail?: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={message}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(61,40,24,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        zIndex: 300,
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCancel();
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fffaf2",
+          border: "2px solid #e8d8b8",
+          borderRadius: 18,
+          padding: "20px 18px",
+          width: "100%",
+          maxWidth: 300,
+          textAlign: "center",
+          boxShadow: "0 20px 60px rgba(61,40,24,0.35)",
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#3d2818", marginBottom: 6 }}>
+          {message}
+        </div>
+        {detail && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#8a6f52", marginBottom: 14, lineHeight: 1.5 }}>
+            {detail}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              flex: 1,
+              padding: "11px 0",
+              border: "1.5px solid #d6c2a0",
+              background: "#fff",
+              color: "#3d2818",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              flex: 1,
+              padding: "11px 0",
+              border: "none",
+              background: danger ? "#b04020" : "#F26522",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

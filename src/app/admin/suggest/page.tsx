@@ -72,7 +72,7 @@ export default async function AdminSuggestPage({
       sb
         .from("garden_suggestions")
         .select(
-          "id, branch_id, student_id, student_name_snapshot, is_anonymous, category, title, body, status, reply, replied_at, created_at, updated_at",
+          "id, branch_id, student_id, student_name_snapshot, is_anonymous, visibility, category, title, body, status, reply, replied_at, created_at, updated_at",
         )
         .eq("branch_id", branchId!)
         .order("created_at", { ascending: false })

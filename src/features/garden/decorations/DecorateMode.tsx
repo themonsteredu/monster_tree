@@ -3,9 +3,11 @@
 // 마이룸 꾸미기 모드 — 마당 안의 소품을 탭→핸들 패턴으로 편집.
 // - 본체 드래그 = 이동 (x/y %)
 // - 우하단 ↘ 핸들 = 크기 (width%)
+// - 두 손가락 핀치 = 선택된 소품/나무/아바타/몬스터 크기
 // - 상단 ↻ 핸들 = 회전 (deg)
 // - 🗑️/⬆/⬇ 플로팅 버튼 = 삭제, z-index up/down
 // - 하단 서랍에서 활성 소품을 탭해 가운데에 추가
+//   (유료 소품은 🔒 + 가격표 — 탭하면 구매 확인 모달)
 // - 상단 우측 ✓ 저장 / ✕ 취소
 // 저장 시 부모가 replaceYardLayoutAction 호출.
 
@@ -21,6 +23,8 @@ import {
   DECORATION_CATEGORIES,
   DECORATION_CATEGORY_LABEL,
 } from "@/lib/types";
+import { BuyConfirmModal } from "@/features/garden/avatar/BuyConfirmModal";
+import { buyDecorationAction, getYardShopContextAction } from "@/app/me/actions";
 
 type SceneActorKey = "tree" | "avatar" | "monster";
 
@@ -119,6 +123,33 @@ export function DecorateMode({
   const [error, setError] = useState<string | null>(null);
   const yardRef = useRef<HTMLDivElement | null>(null);
 
+  // ===== 구매 루프 — 보유 소품 + 포인트 잔액 =====
+  const [ownedIds, setOwnedIds] = useState<Set<string> | null>(null); // null = 로딩 중
+  const [balance, setBalance] = useState<number | null>(null);
+  const [buyTarget, setBuyTarget] = useState<DecorationItem | null>(null);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getYardShopContextAction().then((r) => {
+      if (cancelled) return;
+      if (r.ok) {
+        setOwnedIds(new Set(r.ownedItemIds));
+        setBalance(r.totalPoints);
+      } else {
+        // 실패해도 무료 소품은 계속 사용 가능 — 유료는 잠금 유지.
+        setOwnedIds(new Set());
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isOwnedItem = (item: DecorationItem) =>
+    (item.price ?? 0) <= 0 || (ownedIds !== null && ownedIds.has(item.id));
+
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const visibleItems = useMemo(() => {
@@ -152,6 +183,40 @@ export function DecorateMode({
     setSelectedId(newItem.instance_id);
   };
 
+  // 서랍 탭 — 미보유 유료 소품이면 구매 확인 모달, 아니면 바로 추가.
+  const onPick = (item: DecorationItem) => {
+    if (!isOwnedItem(item)) {
+      setBuyError(null);
+      setBuyTarget(item);
+      return;
+    }
+    onAdd(item);
+  };
+
+  const onBuyConfirm = () => {
+    if (!buyTarget || buyBusy) return;
+    const target = buyTarget;
+    setBuyBusy(true);
+    setBuyError(null);
+    buyDecorationAction({ itemId: target.id }).then((r) => {
+      setBuyBusy(false);
+      if (!r.ok) {
+        if (r.balance !== undefined) setBalance(r.balance);
+        setBuyError(r.message);
+        return;
+      }
+      // 구매 성공 — 즉시 해금 + 마당에 추가 + 잔액 갱신.
+      setOwnedIds((prev) => {
+        const next = new Set(prev ?? []);
+        next.add(target.id);
+        return next;
+      });
+      setBalance(r.newTotal);
+      setBuyTarget(null);
+      onAdd(target);
+    });
+  };
+
   const onDelete = (instanceId: string) => {
     setLayout((prev) => prev.filter((l) => l.instance_id !== instanceId));
     if (selectedId === instanceId) setSelectedId(null);
@@ -168,6 +233,84 @@ export function DecorateMode({
     });
   };
 
+  /* ============== 두 손가락 핀치 = 크기 ==============
+   * 마당 레이어(capture 단계)에서 모든 포인터를 추적. 두 번째 손가락이 내려오면
+   * 선택된 소품/씬 액터의 크기를 두 포인터 거리 비율로 조절한다.
+   * 자식 요소들이 stopPropagation 해도 capture 핸들러는 먼저 실행되므로 안전.
+   */
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{
+    active: boolean;
+    startDist: number;
+    startWidth: number;
+    target:
+      | { type: "deco"; instanceId: string }
+      | { type: "scene"; key: SceneActorKey }
+      | null;
+  }>({ active: false, startDist: 0, startWidth: 0, target: null });
+
+  const pointerDist = () => {
+    const pts = Array.from(pointersRef.current.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  const onYardPointerDownCapture = (e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size !== 2 || !selectedId) return;
+    const dist = pointerDist();
+    if (dist <= 0) return;
+    if (selectedId.startsWith("scene:")) {
+      const key = selectedId.slice("scene:".length) as SceneActorKey;
+      pinchRef.current = {
+        active: true,
+        startDist: dist,
+        startWidth: sceneLayout[key].width,
+        target: { type: "scene", key },
+      };
+    } else {
+      const li = layout.find((l) => l.instance_id === selectedId);
+      if (!li) return;
+      pinchRef.current = {
+        active: true,
+        startDist: dist,
+        startWidth: li.width_percent,
+        target: { type: "deco", instanceId: selectedId },
+      };
+    }
+    // 진행 중이던 단일 포인터 드래그는 취소 — 핀치 종료 후 점프 방지.
+    setDrag(null);
+  };
+
+  const onYardPointerMoveCapture = (e: React.PointerEvent) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = pinchRef.current;
+    if (!p.active || !p.target || pointersRef.current.size < 2) return;
+    const dist = pointerDist();
+    if (dist <= 0 || p.startDist <= 0) return;
+    const factor = dist / p.startDist;
+    if (p.target.type === "scene") {
+      const key = p.target.key;
+      const maxWidthByKey = key === "tree" ? 90 : 60; // 드래그 리사이즈와 동일 클램프
+      const nextWidth = clamp(p.startWidth * factor, 5, maxWidthByKey);
+      setSceneLayout((prev) => ({ ...prev, [key]: { ...prev[key], width: nextWidth } }));
+    } else {
+      const instanceId = p.target.instanceId;
+      const nextWidth = clamp(p.startWidth * factor, 3, 80); // 드래그 리사이즈와 동일 클램프
+      setLayout((prev) =>
+        prev.map((l) => (l.instance_id === instanceId ? { ...l, width_percent: nextWidth } : l)),
+      );
+    }
+  };
+
+  const onYardPointerEndCapture = (e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2 && pinchRef.current.active) {
+      pinchRef.current = { active: false, startDist: 0, startWidth: 0, target: null };
+    }
+  };
+
   /* ============== 포인터 드래그 ============== */
 
   const handlePointerDown = (
@@ -175,6 +318,7 @@ export function DecorateMode({
     li: EditableItem,
     mode: DragMode,
   ) => {
+    if (pinchRef.current.active) return; // 핀치 중엔 새 드래그 시작 안 함
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -213,6 +357,7 @@ export function DecorateMode({
     key: SceneActorKey,
     mode: "move" | "resize",
   ) => {
+    if (pinchRef.current.active) return; // 핀치 중엔 새 드래그 시작 안 함
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -235,6 +380,7 @@ export function DecorateMode({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (pinchRef.current.active) return; // 핀치 중엔 드래그 이동 무시
     if (!drag || drag.pointerId !== e.pointerId) return;
     const yard = yardRef.current;
     if (!yard) return;
@@ -383,7 +529,14 @@ export function DecorateMode({
           zIndex: 50,
           touchAction: "none",
         }}
-        onPointerDown={() => setSelectedId(null)} // 빈 곳 탭 → 선택 해제
+        onPointerDownCapture={onYardPointerDownCapture}
+        onPointerMoveCapture={onYardPointerMoveCapture}
+        onPointerUpCapture={onYardPointerEndCapture}
+        onPointerCancelCapture={onYardPointerEndCapture}
+        onPointerDown={() => {
+          // 빈 곳 탭 → 선택 해제. 단, 두 번째 손가락(핀치)은 해제 아님.
+          if (pointersRef.current.size <= 1) setSelectedId(null);
+        }}
       >
         {/* 씬 액터: 나무 */}
         <SceneActorEditable
@@ -693,8 +846,29 @@ export function DecorateMode({
         items={visibleItems}
         tab={tab}
         onTab={setTab}
-        onPick={onAdd}
+        onPick={onPick}
+        isOwned={isOwnedItem}
+        balance={balance}
       />
+
+      {/* 유료 소품 구매 확인 모달 */}
+      {buyTarget && (
+        <BuyConfirmModal
+          itemName={buyTarget.name}
+          imageUrl={buyTarget.image_url}
+          price={buyTarget.price}
+          balance={balance}
+          busy={buyBusy}
+          errorMessage={buyError}
+          onConfirm={onBuyConfirm}
+          onCancel={() => {
+            if (!buyBusy) {
+              setBuyTarget(null);
+              setBuyError(null);
+            }
+          }}
+        />
+      )}
 
       {error && (
         <div
@@ -739,11 +913,15 @@ function DecorationDrawer({
   tab,
   onTab,
   onPick,
+  isOwned,
+  balance,
 }: {
   items: DecorationItem[];
   tab: TabKey;
   onTab: (t: TabKey) => void;
   onPick: (item: DecorationItem) => void;
+  isOwned: (item: DecorationItem) => boolean;
+  balance: number | null;
 }) {
   return (
     <div
@@ -751,7 +929,7 @@ function DecorationDrawer({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="max-w-3xl mx-auto px-3 py-2">
-        {/* 카테고리 탭 */}
+        {/* 카테고리 탭 + 포인트 잔액 */}
         <div className="flex items-center gap-1 overflow-x-auto pb-2 -mx-1 px-1">
           {TABS.map((t) => {
             const active = t === tab;
@@ -771,6 +949,11 @@ function DecorationDrawer({
               </button>
             );
           })}
+          {balance !== null && (
+            <span className="ml-auto shrink-0 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 tabular-nums">
+              내 포인트 {balance} P
+            </span>
+          )}
         </div>
 
         {/* 소품 가로 스크롤 그리드 */}
@@ -780,32 +963,46 @@ function DecorationDrawer({
           </div>
         ) : (
           <div className="flex gap-2 overflow-x-auto py-2 -mx-1 px-1">
-            {items.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => onPick(it)}
-                className="shrink-0 w-20 flex flex-col items-center gap-1 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl p-2 transition"
-              >
-                <div className="w-14 h-14 flex items-center justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={it.image_url}
-                    alt={it.name}
-                    draggable={false}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                </div>
-                <span className="text-[10px] font-semibold text-gray-700 truncate w-full text-center">
-                  {it.name}
-                </span>
-              </button>
-            ))}
+            {items.map((it) => {
+              const locked = !isOwned(it);
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => onPick(it)}
+                  className="shrink-0 w-20 flex flex-col items-center gap-1 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl p-2 transition"
+                >
+                  <div className="w-14 h-14 flex items-center justify-center relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={it.image_url}
+                      alt={it.name}
+                      draggable={false}
+                      className={[
+                        "max-w-full max-h-full object-contain",
+                        locked ? "opacity-40" : "",
+                      ].join(" ")}
+                    />
+                    {locked && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                        <span className="text-base leading-none" aria-hidden>🔒</span>
+                        <span className="text-[10px] font-extrabold text-amber-300 bg-gray-900/90 rounded-full px-1.5 py-px tabular-nums">
+                          {it.price} P
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold text-gray-700 truncate w-full text-center">
+                    {it.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
         <p className="text-center text-[10px] text-gray-400 pb-1">
-          탭하면 마당 가운데에 추가돼요 · 마당의 소품을 탭하면 핸들이 보여요
+          탭하면 마당 가운데에 추가돼요 · 소품을 탭하면 핸들 · 두 손가락 = 크기
         </p>
       </div>
     </div>

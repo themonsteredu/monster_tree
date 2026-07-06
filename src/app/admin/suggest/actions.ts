@@ -49,12 +49,15 @@ export async function replyToSuggestionAction(input: {
       reply,
       replied_at: new Date().toISOString(),
       status,
+      // 새 답장 — 학생이 [내 쪽지] 탭에서 확인할 때까지 마을 우체통에 🔴 뱃지.
+      reply_seen: false,
     })
     .eq("id", input.id);
   if (error) return { ok: false, message: `답변 저장 실패: ${error.message}` };
 
   revalidatePath("/admin/suggest");
   revalidatePath("/me/suggest");
+  revalidatePath("/me/village");
   return { ok: true };
 }
 

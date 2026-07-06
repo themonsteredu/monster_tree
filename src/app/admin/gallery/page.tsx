@@ -30,7 +30,7 @@ export default async function GalleryAdminPage({
   const sb = createSupabaseServiceClient();
   const { data } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, position, sort_order, active, created_at")
+    .select("id, category, label, image_url, position, sort_order, active, created_at, price, is_style_ref")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
 

@@ -162,8 +162,7 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
     const face = slot(a.face);
     const hat = slot(a.hat);
     const accessory = slot(a.accessory);
-    // 최소 1개 슬롯은 있어야 함
-    if (!base && !outfit && !bottom && !shoes && !hair && !face && !hat && !accessory) return null;
+    // 빈 갤러리(슬롯 0개)도 허용 — "모두 벗기" 후 저장 지원.
     return {
       kind: "gallery",
       ...(base && { base }),
@@ -179,19 +178,228 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
   return null;
 }
 
+// 학생 본인 행 조회 헬퍼 — JWT payload 로 (id, total_points) 반환. 없으면 null.
+async function fetchStudentRow(
+  sb: ReturnType<typeof createSupabaseServiceClient>,
+  payload: { branchId: string; studentLocalId: string | number },
+): Promise<{ id: string; total_points: number } | null> {
+  const { data } = await sb
+    .from("garden_students")
+    .select("id, total_points")
+    .eq("branch_id", payload.branchId)
+    .eq("external_student_id", payload.studentLocalId)
+    .maybeSingle();
+  if (!data?.id) return null;
+  return { id: data.id as string, total_points: (data.total_points as number) ?? 0 };
+}
+
 // 갤러리 조회 — 학생/관리자 양쪽이 사용. active=true 만 sort_order 순으로.
+// 학생 JWT 가 있으면 보유 아이템(gallery_id) 목록 + 포인트 잔액도 함께 반환
+// (없으면 ownedGalleryIds=[], totalPoints=null — 위치 캐시 용도 등은 items 만 사용).
 export async function listGalleryItemsAction() {
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, position, sort_order, active, created_at")
+    .select("id, category, label, image_url, position, sort_order, active, created_at, price, is_style_ref")
     .eq("active", true)
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {
     return { ok: false as const, message: `갤러리 조회 실패: ${error.message}` };
   }
-  return { ok: true as const, items: data ?? [] };
+
+  let ownedGalleryIds: string[] = [];
+  let totalPoints: number | null = null;
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (payload) {
+    const student = await fetchStudentRow(sb, payload);
+    if (student) {
+      totalPoints = student.total_points;
+      const { data: owned } = await sb
+        .from("garden_avatar_ownership")
+        .select("gallery_id")
+        .eq("student_id", student.id);
+      ownedGalleryIds = (owned ?? []).map((r) => r.gallery_id as string);
+    }
+  }
+
+  return { ok: true as const, items: data ?? [], ownedGalleryIds, totalPoints };
+}
+
+// 마당 소품 구매 컨텍스트 — 학생 본인의 보유 소품(item_id) 목록 + 포인트 잔액.
+export async function getYardShopContextAction() {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  const sb = createSupabaseServiceClient();
+  const student = await fetchStudentRow(sb, payload);
+  if (!student) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+  const { data: owned, error } = await sb
+    .from("student_decorations")
+    .select("decoration_item_id")
+    .eq("student_id", student.id);
+  if (error) return { ok: false as const, message: `조회 실패: ${error.message}` };
+
+  return {
+    ok: true as const,
+    ownedItemIds: (owned ?? []).map((r) => r.decoration_item_id as string),
+    totalPoints: student.total_points,
+  };
+}
+
+/* ============== 포인트 구매 — 아바타 아이템 / 마당 소품 ==============
+ * 차감은 garden_shop_deduct RPC (0040) — 원자적, 잔액 부족 시 거부.
+ * 차감된 포인트는 나무 성장 포인트와 동일하므로 나무 단계가 내려갈 수 있음
+ * (기존 상점 대리구매와 동일 정책).
+ */
+
+type BuyResult =
+  | { ok: true; newTotal: number; alreadyOwned?: boolean; free?: boolean }
+  | { ok: false; message: string; insufficient?: boolean; balance?: number };
+
+export async function buyAvatarItemAction(args: { galleryId: string }): Promise<BuyResult> {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  if (!args.galleryId) return { ok: false, message: "잘못된 요청이에요." };
+
+  const sb = createSupabaseServiceClient();
+  const student = await fetchStudentRow(sb, payload);
+  if (!student) return { ok: false, message: "본인 행을 찾지 못했어요." };
+
+  const { data: item, error: itemErr } = await sb
+    .from("garden_avatar_gallery")
+    .select("id, label, price, active")
+    .eq("id", args.galleryId)
+    .maybeSingle();
+  if (itemErr) return { ok: false, message: `조회 실패: ${itemErr.message}` };
+  if (!item || !item.active) return { ok: false, message: "구매할 수 없는 아이템이에요." };
+
+  const price = (item.price as number) ?? 0;
+  if (price <= 0) {
+    // 무료 아이템 — 구매 불필요.
+    return { ok: true, newTotal: student.total_points, free: true };
+  }
+
+  // 이미 보유하면 그대로 ok.
+  const { data: ownedRow } = await sb
+    .from("garden_avatar_ownership")
+    .select("gallery_id")
+    .eq("student_id", student.id)
+    .eq("gallery_id", item.id)
+    .maybeSingle();
+  if (ownedRow) return { ok: true, newTotal: student.total_points, alreadyOwned: true };
+
+  const { data, error } = await sb.rpc("garden_shop_deduct", {
+    p_student_id: student.id,
+    p_points: price,
+    p_reason: `아바타 아이템: ${(item.label as string | null) ?? "이름 없음"}`,
+  });
+  if (error) return { ok: false, message: `차감 실패: ${error.message}` };
+
+  const result = data as
+    | { ok: true; log_id: string; new_total: number; new_stage: number }
+    | { ok: false; insufficient: boolean; balance: number };
+  if (!result.ok) {
+    return {
+      ok: false,
+      insufficient: true,
+      balance: result.balance,
+      message: `포인트가 부족해요 (내 잔액 ${result.balance} P)`,
+    };
+  }
+
+  const { error: insErr } = await sb
+    .from("garden_avatar_ownership")
+    .upsert(
+      { student_id: student.id, gallery_id: item.id },
+      { onConflict: "student_id,gallery_id", ignoreDuplicates: true },
+    );
+  if (insErr) {
+    // 차감은 됐는데 보유 기록 실패 — 차감 복구해서 정합성 유지.
+    await sb.rpc("garden_undo_log", { p_log_id: result.log_id });
+    return { ok: false, message: `구매 기록 실패(차감 복구함): ${insErr.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true, newTotal: result.new_total };
+}
+
+export async function buyDecorationAction(args: { itemId: string }): Promise<BuyResult> {
+  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const payload = await verifyStudentJwt(token);
+  if (!payload) {
+    return { ok: false, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
+  }
+  if (!args.itemId) return { ok: false, message: "잘못된 요청이에요." };
+
+  const sb = createSupabaseServiceClient();
+  const student = await fetchStudentRow(sb, payload);
+  if (!student) return { ok: false, message: "본인 행을 찾지 못했어요." };
+
+  const { data: item, error: itemErr } = await sb
+    .from("decoration_items")
+    .select("id, name, price, is_active")
+    .eq("id", args.itemId)
+    .maybeSingle();
+  if (itemErr) return { ok: false, message: `조회 실패: ${itemErr.message}` };
+  if (!item || !item.is_active) return { ok: false, message: "구매할 수 없는 소품이에요." };
+
+  const price = (item.price as number) ?? 0;
+  if (price <= 0) {
+    return { ok: true, newTotal: student.total_points, free: true };
+  }
+
+  const { data: ownedRow } = await sb
+    .from("student_decorations")
+    .select("decoration_item_id")
+    .eq("student_id", student.id)
+    .eq("decoration_item_id", item.id)
+    .maybeSingle();
+  if (ownedRow) return { ok: true, newTotal: student.total_points, alreadyOwned: true };
+
+  const { data, error } = await sb.rpc("garden_shop_deduct", {
+    p_student_id: student.id,
+    p_points: price,
+    p_reason: `마당 소품: ${item.name as string}`,
+  });
+  if (error) return { ok: false, message: `차감 실패: ${error.message}` };
+
+  const result = data as
+    | { ok: true; log_id: string; new_total: number; new_stage: number }
+    | { ok: false; insufficient: boolean; balance: number };
+  if (!result.ok) {
+    return {
+      ok: false,
+      insufficient: true,
+      balance: result.balance,
+      message: `포인트가 부족해요 (내 잔액 ${result.balance} P)`,
+    };
+  }
+
+  const { error: insErr } = await sb
+    .from("student_decorations")
+    .upsert(
+      { student_id: student.id, decoration_item_id: item.id, quantity: 1 },
+      { onConflict: "student_id,decoration_item_id", ignoreDuplicates: true },
+    );
+  if (insErr) {
+    await sb.rpc("garden_undo_log", { p_log_id: result.log_id });
+    return { ok: false, message: `구매 기록 실패(차감 복구함): ${insErr.message}` };
+  }
+
+  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true, newTotal: result.new_total };
 }
 
 export async function updateAvatarAction(args: { avatar: unknown }) {
@@ -207,6 +415,62 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
   }
 
   const sb = createSupabaseServiceClient();
+
+  // 유료 아이템 보유 검증 — 선택된 갤러리 아이템 중 price>0 && 미보유가 있으면 거부.
+  if (avatar.kind === "gallery") {
+    const student = await fetchStudentRow(sb, payload);
+    if (!student) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+
+    const slots = ["base", "outfit", "bottom", "shoes", "hair", "face", "hat", "accessory"] as const;
+    const urls = Array.from(
+      new Set(
+        slots
+          .map((s) => {
+            const v = (avatar as Record<string, unknown>)[s];
+            return typeof v === "string" ? v : (v as { url?: string } | undefined)?.url;
+          })
+          .filter((u): u is string => typeof u === "string" && u.length > 0),
+      ),
+    );
+
+    if (urls.length > 0) {
+      const { data: priced } = await sb
+        .from("garden_avatar_gallery")
+        .select("id, label, image_url, price")
+        .in("image_url", urls)
+        .gt("price", 0);
+      const pricedRows = (priced ?? []) as Array<{
+        id: string;
+        label: string | null;
+        image_url: string;
+        price: number;
+      }>;
+      if (pricedRows.length > 0) {
+        const { data: ownedRows } = await sb
+          .from("garden_avatar_ownership")
+          .select("gallery_id")
+          .eq("student_id", student.id)
+          .in("gallery_id", pricedRows.map((p) => p.id));
+        const ownedSet = new Set((ownedRows ?? []).map((r) => r.gallery_id as string));
+        // 같은 image_url 을 쓰는 행이 여러 개면 하나라도 보유 시 통과.
+        const unownedLabels: string[] = [];
+        for (const url of urls) {
+          const rows = pricedRows.filter((p) => p.image_url === url);
+          if (rows.length === 0) continue; // 무료(또는 갤러리에 없는 레거시) 아이템
+          if (!rows.some((r) => ownedSet.has(r.id))) {
+            unownedLabels.push(rows[0].label ?? "이름 없는 아이템");
+          }
+        }
+        if (unownedLabels.length > 0) {
+          return {
+            ok: false as const,
+            message: `아직 구매하지 않은 아이템이 있어요: ${unownedLabels.join(", ")}`,
+          };
+        }
+      }
+    }
+  }
+
   const { error } = await sb
     .from("garden_students")
     .update({ avatar })
@@ -504,13 +768,32 @@ export async function replaceYardLayoutAction(args: {
   if (ids.length > 0) {
     const { data: validItems } = await sb
       .from("decoration_items")
-      .select("id")
+      .select("id, name, price")
       .in("id", ids)
       .eq("is_active", true);
-    const validIdSet = new Set((validItems ?? []).map((r) => r.id as string));
+    const validRows = (validItems ?? []) as Array<{ id: string; name: string; price: number }>;
+    const validIdSet = new Set(validRows.map((r) => r.id));
     for (const id of ids) {
       if (!validIdSet.has(id)) {
         return { ok: false as const, message: "사용할 수 없는 소품이 포함됐어요." };
+      }
+    }
+
+    // 유료 소품 보유 검증 — 배치된 소품 전체를 검사 (price>0 && 미보유 → 거부).
+    const pricedRows = validRows.filter((r) => (r.price ?? 0) > 0);
+    if (pricedRows.length > 0) {
+      const { data: ownedRows } = await sb
+        .from("student_decorations")
+        .select("decoration_item_id")
+        .eq("student_id", row.id)
+        .in("decoration_item_id", pricedRows.map((r) => r.id));
+      const ownedSet = new Set((ownedRows ?? []).map((r) => r.decoration_item_id as string));
+      const unowned = pricedRows.filter((r) => !ownedSet.has(r.id));
+      if (unowned.length > 0) {
+        return {
+          ok: false as const,
+          message: `아직 구매하지 않은 소품이 있어요: ${unowned.map((r) => r.name).join(", ")}`,
+        };
       }
     }
   }

@@ -10,6 +10,7 @@ import {
   type SuggestionBlock,
   type SuggestionCategory,
   type SuggestionStatus,
+  type SuggestionVisibility,
 } from "@/lib/types";
 import {
   blockStudentAction,
@@ -26,7 +27,18 @@ const CATEGORY_COLORS: Record<SuggestionCategory, string> = {
   praise: "bg-rose-100 text-rose-700 border-rose-200",
   suggestion: "bg-sky-100 text-sky-700 border-sky-200",
   complaint: "bg-amber-100 text-amber-800 border-amber-200",
-  etc: "bg-gray-100 text-gray-700 border-gray-200",
+  // 학생측 포스트잇(emerald)과 색 통일.
+  etc: "bg-emerald-100 text-emerald-700 border-emerald-200",
+};
+
+const VISIBILITY_LABELS: Record<SuggestionVisibility, string> = {
+  public: "공개",
+  private: "🔒 비밀",
+};
+
+const VISIBILITY_COLORS: Record<SuggestionVisibility, string> = {
+  public: "bg-sky-50 text-sky-600 border-sky-200",
+  private: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 const STATUS_COLORS: Record<SuggestionStatus, string> = {
@@ -68,6 +80,7 @@ export function SuggestAdminClient({
   const router = useRouter();
   const [categoryFilter, setCategoryFilter] = useState<SuggestionCategory | "all">("all");
   const [statusFilter, setStatusFilter] = useState<SuggestionStatus | "all">("all");
+  const [visibilityFilter, setVisibilityFilter] = useState<SuggestionVisibility | "all">("all");
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -89,13 +102,15 @@ export function SuggestAdminClient({
     return initialSuggestions.filter((s) => {
       if (categoryFilter !== "all" && s.category !== categoryFilter) return false;
       if (statusFilter !== "all" && s.status !== statusFilter) return false;
+      if (visibilityFilter !== "all" && (s.visibility ?? "public") !== visibilityFilter)
+        return false;
       if (kw) {
         const hay = `${s.title} ${s.body} ${s.student_name_snapshot}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       return true;
     });
-  }, [initialSuggestions, categoryFilter, statusFilter, search]);
+  }, [initialSuggestions, categoryFilter, statusFilter, visibilityFilter, search]);
 
   const nowIso = new Date().toISOString();
   const activeBlocks = useMemo(
@@ -275,6 +290,36 @@ export function SuggestAdminClient({
             ))}
           </div>
         </div>
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-2">공개 범위</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setVisibilityFilter("all")}
+              className={`px-3 py-1 rounded-full text-sm border ${
+                visibilityFilter === "all"
+                  ? "bg-gray-900 text-white border-gray-900"
+                  : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              전체
+            </button>
+            {(["public", "private"] as SuggestionVisibility[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVisibilityFilter(v)}
+                className={`px-3 py-1 rounded-full text-sm border ${
+                  visibilityFilter === v
+                    ? `${VISIBILITY_COLORS[v]} ring-2 ring-offset-1 ring-current font-semibold`
+                    : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {VISIBILITY_LABELS[v]}
+              </button>
+            ))}
+          </div>
+        </div>
         <input
           type="text"
           value={search}
@@ -366,6 +411,11 @@ export function SuggestAdminClient({
                     className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[s.status]}`}
                   >
                     {SUGGESTION_STATUS_LABELS[s.status]}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs border ${VISIBILITY_COLORS[s.visibility ?? "public"]}`}
+                  >
+                    {VISIBILITY_LABELS[s.visibility ?? "public"]}
                   </span>
                   <span className="text-sm text-gray-700">
                     {s.is_anonymous ? (

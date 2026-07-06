@@ -41,7 +41,7 @@ import { STAGE_ACCENT } from "@/features/garden/stage-accent";
 import { SprayWaterMe } from "@/features/garden/effects/SprayWater";
 import { fireConfetti, firePtCelebration } from "@/features/garden/effects/confetti";
 import { useStudentRealtime } from "@/features/garden/hooks/useStudentRealtime";
-import { claimPointAction, resetAvatarAction, replaceYardLayoutAction } from "./actions";
+import { claimPointAction, replaceYardLayoutAction } from "./actions";
 
 type Row = {
   id: string;
@@ -968,15 +968,8 @@ export function MeTreeClient({
         initial={currentAvatar}
         onClose={() => setAvatarSheetOpen(false)}
         onSaved={(next) => setRow((prev) => (prev ? { ...prev, avatar: next } : prev))}
-        onReset={async () => {
-          const r = await resetAvatarAction();
-          if (r.ok) {
-            setRow((prev) => (prev ? { ...prev, avatar: null } : prev));
-            setAvatarSheetOpen(false);
-          } else {
-            window.alert(r.message);
-          }
-        }}
+        // 학생의 현재 배경을 미리보기 캔버스 배경으로 사용
+        previewBackground={currentBackground}
       />
 
 

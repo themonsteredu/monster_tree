@@ -10,6 +10,7 @@
 //     · 모서리 (4개): 가로·세로 동시 변경
 //     · 가로 엣지 (좌·우): scaleX 만 변경 (좌우 길이)
 //     · 세로 엣지 (위·아래): scaleY 만 변경 (위아래 길이)
+// - 두 손가락 핀치: 캔버스 어디서든 — 선택된 레이어의 scaleX/scaleY 동시 조절
 // - 마우스 휠: 양쪽 동시 / Shift+휠 = scaleX / Alt+휠 = scaleY
 //
 // 모든 변환은 CSS transform / position 단위 %. canvas 미사용.
@@ -21,12 +22,14 @@ import type {
   AvatarGalleryCategory,
   AvatarGalleryItemPosition,
   AvatarGallerySlot,
+  BackgroundConfig,
 } from "@/lib/types";
 import {
   DEFAULT_GALLERY_POSITION_BY_CATEGORY,
   getGallerySlotPosition,
   getGallerySlotUrl,
 } from "@/lib/types";
+import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { useFittedImage } from "./AvatarFigure";
 
 type GallerySlot = "base" | "outfit" | "bottom" | "shoes" | "hair" | "face" | "hat" | "accessory";
@@ -53,6 +56,17 @@ type Layer = {
   zIndex: number;
 };
 
+// 캔버스 전역 핀치 제스처 상태 — LayerNode 의 드래그와 조율하기 위해
+// ref 로 공유한다 (핀치 시작 시 진행 중이던 드래그는 취소).
+export type PinchState = {
+  active: boolean;
+  startDist: number;
+  startPos: AvatarGalleryItemPosition | null;
+  slot: GallerySlot | null;
+  rafId: number | null;
+  pending: AvatarGalleryItemPosition | null;
+};
+
 export function AvatarEditCanvas({
   draft,
   size,
@@ -60,6 +74,7 @@ export function AvatarEditCanvas({
   selectedSlot,
   onSelectSlot,
   onPositionChange,
+  previewBackground,
 }: {
   draft: AvatarConfig;
   size: number;
@@ -67,6 +82,8 @@ export function AvatarEditCanvas({
   selectedSlot: GallerySlot | null;
   onSelectSlot: (slot: GallerySlot | null) => void;
   onPositionChange: (slot: GallerySlot, next: AvatarGalleryItemPosition) => void;
+  // 학생의 현재 배경 — 있으면 미리보기 캔버스 배경으로 사용 (없으면 기존 크림).
+  previewBackground?: BackgroundConfig | null;
 }) {
   // 갤러리 형태가 아니면 편집 불가 — 그냥 빈 영역 렌더
   const isGallery = draft.kind === "gallery";
@@ -97,13 +114,94 @@ export function AvatarEditCanvas({
   const innerWidth = ratio >= 1 ? size / ratio : size;
   const innerHeight = ratio >= 1 ? size : size * ratio;
 
+  // ===== 두 손가락 핀치 = 선택 레이어 크기 =====
+  // 캔버스(container) 레벨 capture 핸들러로 모든 포인터를 추적한다.
+  // 자식(LayerNode)이 stopPropagation 해도 capture 단계는 먼저 실행되므로 안전.
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<PinchState>({
+    active: false,
+    startDist: 0,
+    startPos: null,
+    slot: null,
+    rafId: null,
+    pending: null,
+  });
+  // 최신 layers / 콜백을 핸들러에서 읽기 위한 ref
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  const selectedSlotRef = useRef(selectedSlot);
+  selectedSlotRef.current = selectedSlot;
+  const onPositionChangeRef = useRef(onPositionChange);
+  onPositionChangeRef.current = onPositionChange;
+
+  const pointerDist = () => {
+    const pts = Array.from(pointersRef.current.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  };
+
+  const clampScale = (v: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, v));
+
+  const onCanvasPointerDownCapture = (e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const slot = selectedSlotRef.current;
+    if (pointersRef.current.size === 2 && slot) {
+      const layer = layersRef.current.find((l) => l.key === slot);
+      const dist = pointerDist();
+      if (layer && dist > 0) {
+        pinchRef.current.active = true;
+        pinchRef.current.startDist = dist;
+        pinchRef.current.startPos = { ...layer.position };
+        pinchRef.current.slot = slot;
+      }
+    }
+  };
+
+  const onCanvasPointerMoveCapture = (e: React.PointerEvent) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = pinchRef.current;
+    if (!p.active || !p.startPos || !p.slot || pointersRef.current.size < 2) return;
+    const dist = pointerDist();
+    if (dist <= 0 || p.startDist <= 0) return;
+    const factor = dist / p.startDist;
+    p.pending = {
+      ...p.startPos,
+      scaleX: clampScale(p.startPos.scaleX * factor),
+      scaleY: clampScale(p.startPos.scaleY * factor),
+    };
+    if (p.rafId != null) return;
+    p.rafId = requestAnimationFrame(() => {
+      p.rafId = null;
+      if (p.pending && p.slot) onPositionChangeRef.current(p.slot, p.pending);
+    });
+  };
+
+  const onCanvasPointerEndCapture = (e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2 && pinchRef.current.active) {
+      pinchRef.current.active = false;
+      pinchRef.current.startPos = null;
+      pinchRef.current.slot = null;
+    }
+  };
+
+  useEffect(() => {
+    const p = pinchRef.current;
+    return () => {
+      if (p.rafId != null) cancelAnimationFrame(p.rafId);
+    };
+  }, []);
+
   return (
     <div
       style={{
         position: "relative",
         width: size,
         height: size,
-        background: "linear-gradient(180deg, #fff5d6 0%, #ffe9b0 100%)",
+        background: previewBackground
+          ? "transparent"
+          : "linear-gradient(180deg, #fff5d6 0%, #ffe9b0 100%)",
         borderRadius: 14,
         overflow: "hidden",
         border: "1.5px solid #f0c050",
@@ -111,10 +209,17 @@ export function AvatarEditCanvas({
         userSelect: "none",
         WebkitUserSelect: "none",
       }}
+      onPointerDownCapture={onCanvasPointerDownCapture}
+      onPointerMoveCapture={onCanvasPointerMoveCapture}
+      onPointerUpCapture={onCanvasPointerEndCapture}
+      onPointerCancelCapture={onCanvasPointerEndCapture}
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onSelectSlot(null);
+        // 두 번째 손가락(핀치)은 선택 해제로 처리하지 않는다.
+        if (pointersRef.current.size <= 1 && e.target === e.currentTarget) onSelectSlot(null);
       }}
     >
+      {/* 학생의 현재 배경 미리보기 (있을 때만) */}
+      {previewBackground && <BackgroundCanvas config={previewBackground} rounded={14} />}
       {/* inner 박스 — base 이미지 비율 기준. AvatarFigure 와 동일한 좌표계. */}
       <div
         style={{
@@ -126,8 +231,8 @@ export function AvatarEditCanvas({
           transform: "translate(-50%, -50%)",
         }}
         onPointerDown={(e) => {
-          // inner 박스의 빈 공간 탭도 선택 해제로 처리.
-          if (e.target === e.currentTarget) onSelectSlot(null);
+          // inner 박스의 빈 공간 탭도 선택 해제로 처리 (핀치 두 번째 손가락 제외).
+          if (pointersRef.current.size <= 1 && e.target === e.currentTarget) onSelectSlot(null);
         }}
       >
         {layers.map((layer) => (
@@ -140,6 +245,7 @@ export function AvatarEditCanvas({
             interactive={selectedSlot === null || selectedSlot === layer.key}
             onSelect={() => onSelectSlot(layer.key)}
             onPositionChange={onPositionChange}
+            pinchRef={pinchRef}
           />
         ))}
       </div>
@@ -155,6 +261,7 @@ function LayerNode({
   interactive,
   onSelect,
   onPositionChange,
+  pinchRef,
 }: {
   layer: Layer;
   innerWidth: number;
@@ -163,6 +270,8 @@ function LayerNode({
   interactive: boolean;
   onSelect: () => void;
   onPositionChange: (slot: GallerySlot, next: AvatarGalleryItemPosition) => void;
+  // 캔버스 전역 핀치 상태 — 핀치 중엔 드래그/리사이즈를 중단한다.
+  pinchRef: React.MutableRefObject<PinchState>;
 }) {
   // 화면상 좌표 (CSS %): 중심점 (x, y), 크기 scaleX×scaleY% of size
   const { position, key } = layer;
@@ -198,6 +307,8 @@ function LayerNode({
 
   // 본체 드래그 — 위치 이동 (x, y)
   const onPointerDown = (e: React.PointerEvent) => {
+    // 핀치(두 손가락 크기 조절) 진행 중이면 새 드래그 시작 안 함.
+    if (pinchRef.current.active) return;
     // 이미 다른 제스처(handle resize 등) 진행 중이면 무시 — 멀티 터치가
     // mode state 를 덮어쓰지 않도록 보호.
     if (stateRef.current.mode !== "idle") return;
@@ -213,6 +324,12 @@ function LayerNode({
 
   const onPointerMove = (e: React.PointerEvent) => {
     const s = stateRef.current;
+    // 핀치가 시작되면 진행 중이던 드래그/리사이즈는 취소 — 핀치 종료 후
+    // 원래 시작점 기준으로 점프하는 것을 막는다.
+    if (pinchRef.current.active) {
+      s.mode = "idle";
+      return;
+    }
     if (s.mode === "idle") return;
     const rect = getCanvasRect();
     if (!rect) return;
@@ -251,6 +368,8 @@ function LayerNode({
 
   // 핸들에서 시작하는 resize 제스처
   const onHandleDown = (e: React.PointerEvent, dir: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) => {
+    // 핀치 진행 중이면 무시
+    if (pinchRef.current.active) return;
     // 이미 다른 제스처 진행 중이면 무시 (멀티 터치 보호)
     if (stateRef.current.mode !== "idle") return;
     e.stopPropagation();
