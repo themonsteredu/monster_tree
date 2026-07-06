@@ -56,6 +56,13 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/tree/icons/monster-symbol.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/tree/icons/monster-symbol.png" />
         <link rel="icon" type="image/png" href="/tree/icons/monster-symbol.png" />
+        {/* 서비스워커 등록 — 웹 푸시(미수령 포인트 알림) 수신용. basePath 포함 경로 필수 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/tree/sw.js").catch(function(){})})}',
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

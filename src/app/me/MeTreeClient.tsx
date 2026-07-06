@@ -18,6 +18,7 @@ import { WeatherPickerSheet } from "@/features/garden/weather/WeatherPickerSheet
 import { YardLayer } from "@/features/garden/decorations/YardLayer";
 import { DecorateMode } from "@/features/garden/decorations/DecorateMode";
 import { useTreeStages } from "@/features/garden/tree/useTreeStages";
+import { NotifyBell } from "./NotifyBell";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
@@ -764,6 +765,9 @@ export function MeTreeClient({
                 onClaim={onClaim}
               />
             )}
+
+            {/* 🔔 웹 푸시 알림 켜기 — 미수령 포인트 리마인더 (키 미설정 시 자동 숨김) */}
+            <NotifyBell />
 
             {/* 단계 + 프로그레스 바 */}
             <div className="bg-[#F5F0E6] rounded-2xl px-3.5 py-3 mb-2.5">

@@ -11,6 +11,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAdminBranchId, clearAdminBranchCookie } from "@/lib/branch";
+import { sendPendingPointsPushes } from "@/lib/push";
 import { isAdminAuthenticated, setAdminCookie, clearAdminCookie, isAdminKey } from "./auth";
 
 function ensureAuth() {
@@ -664,4 +665,18 @@ export async function updateGalleryItemPositionAction(args: {
   revalidatePath("/me");
   revalidatePath("/");
   return { ok: true as const, position: args.position };
+}
+
+/* ============== 웹 푸시 — 미수령 포인트 알림 ============== */
+
+// "미수령 알림 보내기" 버튼 — 지금 지점의 미수령 학생들에게 리마인더 발송.
+// VAPID 키 미설정이면 안내 메시지만 반환 (push.ts 에서 처리).
+export async function sendPendingPointsPushAction() {
+  ensureAuth();
+  const branch = ensureBranch();
+  if (!branch.ok) {
+    return { ok: false as const, message: branch.message };
+  }
+  const result = await sendPendingPointsPushes({ branchId: branch.branchId });
+  return { ok: result.ok, message: result.message };
 }
