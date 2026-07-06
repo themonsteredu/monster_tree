@@ -363,6 +363,11 @@ export async function uploadGalleryItemAction(formData: FormData) {
   const file = formData.get("file");
   const category = formData.get("category");
   const label = formData.get("label");
+  const priceRaw = formData.get("price");
+  const price =
+    typeof priceRaw === "string" && /^\d{1,6}$/.test(priceRaw.trim())
+      ? Math.min(100_000, Number(priceRaw.trim()))
+      : 0;
   if (!(file instanceof File)) {
     return { ok: false as const, message: "파일이 없어요." };
   }
@@ -411,6 +416,7 @@ export async function uploadGalleryItemAction(formData: FormData) {
     position: GALLERY_DEFAULT_POSITION[category],
     sort_order,
     active: true,
+    price,
   });
   if (dbErr) {
     await sb.storage.from("avatars").remove([path]);
@@ -467,13 +473,165 @@ export async function deleteGalleryItemAction(args: { id: string }) {
   return { ok: true as const };
 }
 
+// 관리자: 갤러리 항목 가격/스타일기준 수정 (0045 획득 루프 + AI 생성기).
+export async function updateGalleryItemMetaAction(args: {
+  id: string;
+  price?: number;
+  is_style_ref?: boolean;
+}) {
+  ensureAuth();
+  if (typeof args.id !== "string" || args.id.length === 0) {
+    return { ok: false as const, message: "잘못된 ID." };
+  }
+  const patch: Record<string, unknown> = {};
+  if (args.price !== undefined) {
+    if (!Number.isInteger(args.price) || args.price < 0 || args.price > 100_000) {
+      return { ok: false as const, message: "가격은 0~100,000 P 사이의 정수여야 해요." };
+    }
+    patch.price = args.price;
+  }
+  if (args.is_style_ref !== undefined) {
+    patch.is_style_ref = !!args.is_style_ref;
+  }
+  if (Object.keys(patch).length === 0) {
+    return { ok: false as const, message: "바꿀 내용이 없어요." };
+  }
+  const sb = createSupabaseServiceClient();
+  const { error } = await sb.from("garden_avatar_gallery").update(patch).eq("id", args.id);
+  if (error) {
+    return { ok: false as const, message: `저장 실패: ${error.message}` };
+  }
+  revalidatePath("/admin/gallery");
+  return { ok: true as const };
+}
+
+// ============================================================
+// AI 아바타 아이템 생성 (OPENAI_API_KEY 필요)
+//
+// 흐름: 관리자가 이름+카테고리 입력 → ⭐스타일 기준 이미지(있으면 최대 3장)를
+// 참조해 같은 그림체로 1장 생성 (background=transparent) → b64 로 반환 →
+// 클라이언트가 미리보기 후 기존 업로드 파이프라인(크롭·등록)으로 저장.
+// 키가 없으면 needKey=true 로 안내만 반환 (기능 자체는 조용히 비활성).
+// ============================================================
+export async function generateAvatarItemAction(args: {
+  prompt: string;
+  category: string;
+}): Promise<
+  | { ok: true; imageB64: string; usedStyleRefs: number }
+  | { ok: false; needKey?: boolean; message: string }
+> {
+  ensureAuth();
+  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  if (!apiKey) {
+    return {
+      ok: false as const,
+      needKey: true,
+      message:
+        "OPENAI_API_KEY 환경변수가 없어요. Vercel → Settings → Environment Variables 에 추가하면 AI 생성이 켜집니다.",
+    };
+  }
+  const prompt = (args.prompt ?? "").trim().slice(0, 200);
+  if (prompt.length < 2) {
+    return { ok: false as const, message: "만들 아이템을 2자 이상 입력해주세요." };
+  }
+  if (!isGalleryCategory(args.category)) {
+    return { ok: false as const, message: "잘못된 카테고리." };
+  }
+  const categoryLabelMap: Record<string, string> = {
+    base: "full body character (베이스 캐릭터, 전신)",
+    outfit: "top clothing item only, no body (상의)",
+    bottom: "bottom clothing item only, no body (하의)",
+    shoes: "pair of shoes only (신발)",
+    hair: "hairstyle only, no face (헤어)",
+    face: "facial expression only — eyes, nose, mouth (얼굴 표정)",
+    hat: "hat / headwear only (모자)",
+    accessory: "small accessory item only (액세서리)",
+  };
+  const fullPrompt =
+    `${prompt} — cute avatar part for a kids' game: ${categoryLabelMap[args.category]}. ` +
+    `Single item centered, fully transparent background, no text, no watermark. ` +
+    `Match the exact art style, line weight and coloring of the reference images (same character universe).`;
+
+  // ⭐ 스타일 기준 이미지 (전역, 최대 3장). 없으면 같은 카테고리 최신 2장.
+  const sb = createSupabaseServiceClient();
+  const { data: refRows } = await sb
+    .from("garden_avatar_gallery")
+    .select("image_url, is_style_ref, category, created_at")
+    .eq("active", true)
+    .order("created_at", { ascending: false })
+    .limit(60);
+  const rows = refRows ?? [];
+  let refs = rows.filter((r) => r.is_style_ref).slice(0, 3);
+  if (refs.length === 0) {
+    refs = rows.filter((r) => r.category === args.category).slice(0, 2);
+  }
+
+  try {
+    let res: Response;
+    if (refs.length > 0) {
+      // 참조 이미지와 함께 편집(edits) 엔드포인트 — 그림체 유지의 핵심.
+      const fd = new FormData();
+      fd.append("model", "gpt-image-1");
+      fd.append("prompt", fullPrompt);
+      fd.append("size", "1024x1024");
+      fd.append("background", "transparent");
+      fd.append("n", "1");
+      for (let i = 0; i < refs.length; i++) {
+        const imgRes = await fetch(refs[i].image_url, { cache: "no-store" });
+        if (!imgRes.ok) continue;
+        const blob = await imgRes.blob();
+        fd.append("image[]", new File([blob], `ref${i}.png`, { type: blob.type || "image/png" }));
+      }
+      res = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: fd,
+      });
+    } else {
+      res = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-image-1",
+          prompt: fullPrompt,
+          size: "1024x1024",
+          background: "transparent",
+          n: 1,
+        }),
+      });
+    }
+    if (!res.ok) {
+      const errBody = await res.text();
+      let msg = `생성 실패 (${res.status})`;
+      try {
+        const j = JSON.parse(errBody) as { error?: { message?: string } };
+        if (j.error?.message) msg = `생성 실패: ${j.error.message.slice(0, 200)}`;
+      } catch {
+        // 원문 유지
+      }
+      return { ok: false as const, message: msg };
+    }
+    const json = (await res.json()) as { data?: Array<{ b64_json?: string }> };
+    const b64 = json.data?.[0]?.b64_json;
+    if (!b64) {
+      return { ok: false as const, message: "생성 응답에 이미지가 없어요. 다시 시도해주세요." };
+    }
+    return { ok: true as const, imageB64: b64, usedStyleRefs: refs.length };
+  } catch (e) {
+    return { ok: false as const, message: `생성 요청 실패: ${(e as Error).message}` };
+  }
+}
+
 // 관리자: 전체 목록 (활성/비활성 모두) 조회.
 export async function listAllGalleryItemsAction() {
   ensureAuth();
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
-    .select("id, category, label, image_url, position, sort_order, active, created_at")
+    .select("id, category, label, image_url, position, sort_order, active, created_at, price, is_style_ref")
     .order("category", { ascending: true })
     .order("sort_order", { ascending: true });
   if (error) {

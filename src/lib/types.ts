@@ -115,6 +115,10 @@ export type AvatarGalleryItem = {
   sort_order: number;
   active: boolean;
   created_at: string;
+  // 0045: 획득 루프. price=0 → 전원 무료(기존 동작), price>0 → 구매 필요.
+  price: number;
+  // AI 아이템 생성기의 스타일 기준 이미지로 사용할지
+  is_style_ref: boolean;
 };
 
 export const DEFAULT_AVATAR: AvatarConfig = {
@@ -447,6 +451,20 @@ export const SUGGESTION_STATUS_LABELS: Record<SuggestionStatus, string> = {
 export const SUGGESTION_TITLE_MAX = 60;
 export const SUGGESTION_BODY_MAX = 1000;
 export const SUGGESTION_REPLY_MAX = 1000;
+
+// 건의 작성 보상 — garden_award_external 의 source_key 를
+// `suggest-reward:{studentId}:{KST날짜}` 로 만들어 하루 1회만 지급된다.
+export const SUGGESTION_REWARD_POINTS = 2;
+
+// 공감 스티커 (garden_suggestion_reactions.kind)
+export type SuggestionReactionKind = "heart" | "thumbs";
+export const SUGGESTION_REACTION_META: Record<
+  SuggestionReactionKind,
+  { emoji: string; label: string }
+> = {
+  heart: { emoji: "❤️", label: "최고예요" },
+  thumbs: { emoji: "👍", label: "동의해요" },
+};
 
 export type GardenSuggestion = {
   id: string;
