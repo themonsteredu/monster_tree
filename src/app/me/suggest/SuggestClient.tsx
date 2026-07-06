@@ -1,10 +1,13 @@
 "use client";
 
-// 학생 건의함 — "건의 우체통 📮".
+// 학생 건의함 — "몬스터 우체국 📮".
 // 진입 기본 = 읽기 모드. 상단 탭([전체]/카테고리/[내 쪽지])으로 필터하고,
 // 쓰기는 우하단 플로팅 버튼 → 바텀시트로 진행한다.
-// 공개글은 접힌 미리보기 카드 그리드 → 탭하면 상세(본문 전체 + 답장 + 공감)로 펼침.
-// 남의 비밀글은 그리드에서 제거하고 상단에 "N통 전달" 요약만 표시.
+// 공개글은 크림색 "편지봉투" 카드 목록 → 탭하면 편지지(본문 전체 + 답장 + 공감)로 펼침.
+// 남의 비밀글은 목록에서 제거하고 상단에 "N통 전달" 요약만 표시.
+//
+// 디자인 언어: 마을(#0f172a→#064e3b 그라데이션) + 게임센터(Stars/Jua/칩/글로우)와 통일.
+// 다크 밤하늘 위에 밝은 크림 편지봉투가 떠 있는 구성.
 //
 // student 모드: 같은 지점 친구들과 공유. 본인 글은 수정/삭제 가능. 공감 스티커 사용.
 // previewMode: 관리자가 학생 화면을 그냥 미리보기 (제출/수정/삭제/공감 차단).
@@ -74,29 +77,57 @@ const CATEGORIES: SuggestionCategory[] = ["praise", "suggestion", "complaint", "
 const STATUSES: SuggestionStatus[] = ["received", "reviewing", "done"];
 const REACTION_KINDS: SuggestionReactionKind[] = ["heart", "thumbs"];
 
-const POSTIT_COLORS: Record<
+// ===== 몬스터 우체국 프레젠테이션 상수 =====
+
+const JUA = "'Jua','Pretendard Variable',sans-serif";
+// 손글씨는 편지 본문에만 사용 (헤더/칩/버튼은 Jua).
+const HANDWRITING = "'Gaegu','Nanum Pen Script','Comic Sans MS',cursive";
+
+// 마을(VillageClient)과 동일한 밤하늘 그라데이션.
+const POSTOFFICE_BG = "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)";
+// 밝은 크림 편지봉투 / 편지지.
+const ENVELOPE_BG = "linear-gradient(180deg, #fdf6e3 0%, #f6ead0 100%)";
+const LETTER_BG = "#fdf6e3";
+const ENVELOPE_SHADOW =
+  "0 12px 28px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.65) inset";
+// 봉투 상단의 에어메일(빨강/파랑 빗금) 테두리.
+const AIRMAIL_EDGE =
+  "repeating-linear-gradient(-45deg, #dc2626 0 8px, transparent 8px 16px, #2563eb 16px 24px, transparent 24px 32px)";
+// 편지지 줄노트 (line-height 1.9rem 기준).
+const LINED_PAPER =
+  "repeating-linear-gradient(transparent 0 calc(1.9rem - 1px), rgba(120,80,30,0.22) calc(1.9rem - 1px) 1.9rem)";
+const EMERALD_GLOW = "0 0 14px rgba(52,211,153,0.55)";
+
+// 카테고리 "우표" — 봉투 우상단 스탬프 + 쓰기/수정 시 우표 고르기.
+const STAMP_META: Record<
   SuggestionCategory,
-  { bg: string; ring: string; text: string }
+  { emoji: string; bg: string; border: string; text: string }
 > = {
-  praise: { bg: "bg-rose-200", ring: "ring-rose-300/60", text: "text-rose-900" },
-  suggestion: { bg: "bg-sky-200", ring: "ring-sky-300/60", text: "text-sky-900" },
-  complaint: { bg: "bg-amber-200", ring: "ring-amber-300/60", text: "text-amber-900" },
-  etc: { bg: "bg-emerald-200", ring: "ring-emerald-300/60", text: "text-emerald-900" },
+  praise: { emoji: "📣", bg: "bg-rose-100", border: "border-rose-400", text: "text-rose-800" },
+  suggestion: { emoji: "💡", bg: "bg-sky-100", border: "border-sky-400", text: "text-sky-800" },
+  complaint: { emoji: "😣", bg: "bg-amber-100", border: "border-amber-500", text: "text-amber-800" },
+  etc: { emoji: "💬", bg: "bg-violet-100", border: "border-violet-400", text: "text-violet-800" },
 };
 
-const STATUS_COLORS: Record<SuggestionStatus, string> = {
-  received: "bg-white/80 text-gray-700",
-  reviewing: "bg-amber-100 text-amber-800",
-  done: "bg-emerald-100 text-emerald-800",
+// 상태 스탬프 칩 (크림 봉투/편지지 위).
+const STATUS_STAMP: Record<SuggestionStatus, string> = {
+  received: "bg-stone-200/90 text-stone-700 border-stone-500/40",
+  reviewing: "bg-amber-200 text-amber-900 border-amber-600/40",
+  done: "bg-emerald-200 text-emerald-900 border-emerald-700/40",
 };
 
-// 미리보기 카드에만 살짝 기울기.
+// adminMode 상태 칩 (다크 유리 패널 안, 활성 시).
+const ADMIN_STATUS_ACTIVE: Record<SuggestionStatus, string> = {
+  received: "bg-stone-200 text-stone-800 border-stone-300",
+  reviewing: "bg-amber-400 text-amber-950 border-amber-300",
+  done: "bg-emerald-400 text-emerald-950 border-emerald-300",
+};
+
+// 봉투 카드에만 살짝 기울기.
 const TILTS = ["-rotate-1", "rotate-1", "rotate-0", "rotate-1", "-rotate-1", "rotate-0"];
 function tiltFor(i: number): string {
   return TILTS[i % TILTS.length];
 }
-
-const HANDWRITING = "'Gaegu','Nanum Pen Script','Comic Sans MS',cursive";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -501,42 +532,95 @@ export function SuggestClient({
 
   return (
     <main
-      className="min-h-screen pb-28 relative text-white"
-      style={{
-        background:
-          "linear-gradient(180deg, #0f172a 0%, #0c2f33 55%, #064e3b 100%)",
-      }}
+      className="relative min-h-screen pb-32 text-white"
+      style={{ background: POSTOFFICE_BG, fontFamily: JUA }}
     >
-      {/* ===== 헤더 (다크 반투명) ===== */}
-      <header className="sticky top-0 z-30 bg-slate-900/85 backdrop-blur border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <Stars />
+
+      {/* ===== 상단: 뱃지 / 돌아가기 / 헤더 / 인트로 ===== */}
+      <div className="relative z-10 mx-auto w-full max-w-md px-4 pt-5">
+        {/* 관리자 모드 뱃지 — 게임센터 amber 패턴 */}
+        {adminMode && (
+          <div
+            className="mb-4 flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
+            style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
+          >
+            <span aria-hidden>🛠</span>
+            <span>관리자 모드 — 쪽지를 탭해서 답장/상태/삭제/차단</span>
+          </div>
+        )}
+        {previewMode && (
+          <div
+            className="mb-4 flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
+            style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
+          >
+            <span aria-hidden>🛠</span>
+            <span>테스트 모드 — 기록 저장 안 됨</span>
+          </div>
+        )}
+
+        {/* 돌아가기 칩 */}
+        <div className="mb-3">
           <Link
             href={adminMode ? "/admin" : "/me/village"}
-            className="shrink-0 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-1.5 transition"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.06] px-4 py-1.5 text-sm font-bold text-white/80 backdrop-blur-sm transition hover:bg-white/10 hover:text-white active:scale-95"
           >
-            ← {adminMode ? "관리" : "마을"}
+            <span aria-hidden>←</span>
+            <span>{adminMode ? "관리" : "마을"}로 돌아가기</span>
           </Link>
-          <h1
-            className="text-lg font-bold text-white"
-            style={{ textShadow: "0 0 12px rgba(52,211,153,0.35)" }}
-          >
-            건의 우체통 📮
-          </h1>
-          {previewMode && (
-            <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 text-xs font-medium border border-amber-300/30">
-              미리보기
-            </span>
-          )}
-          {adminMode && (
-            <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-400/20 text-rose-200 text-xs font-medium border border-rose-300/30">
-              관리자 모드
-            </span>
-          )}
         </div>
 
-        {/* ===== 탭 ===== */}
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 pb-2 overflow-x-auto">
-          <div className="flex gap-1.5 min-w-max">
+        {/* 헤더 */}
+        <header className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className="shrink-0 text-3xl"
+              style={{
+                filter:
+                  "drop-shadow(0 0 12px rgba(52,211,153,0.9)) drop-shadow(0 0 24px rgba(16,185,129,0.4))",
+              }}
+              aria-hidden
+            >
+              📮
+            </span>
+            <h1
+              className="truncate text-3xl font-extrabold tracking-tight text-white"
+              style={{ textShadow: "0 0 18px rgba(52,211,153,0.35)" }}
+            >
+              몬스터 우체국
+            </h1>
+          </div>
+          <span
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/30 bg-white/[0.06] px-3 py-1.5 text-sm font-semibold backdrop-blur-sm"
+            style={{ boxShadow: "0 0 16px rgba(52,211,153,0.25)" }}
+          >
+            <span className="text-yellow-300" aria-hidden>
+              👑
+            </span>
+            <span className="max-w-[6rem] truncate text-white/90">{studentName}</span>
+          </span>
+        </header>
+
+        {/* 인트로 */}
+        {!adminMode && (
+          <div className="mb-2 text-center">
+            <div
+              className="text-base text-white/90"
+              style={{ textShadow: "0 0 10px rgba(52,211,153,0.3)" }}
+            >
+              {studentName}님, 학원에 하고 싶은 말을 우체통에 넣어보세요 📮
+            </div>
+            <div className="mt-0.5 text-sm text-white/60">
+              공개 쪽지는 친구들도 함께 읽어요. 마음을 담아 적어주세요 💌
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== 탭 (sticky, 다크 유리) ===== */}
+      <div className="sticky top-0 z-30 border-b border-white/10 bg-slate-900/80 backdrop-blur">
+        <div className="mx-auto w-full max-w-md overflow-x-auto px-4 py-2.5">
+          <div className="flex min-w-max gap-2">
             {TAB_ITEMS.map((t) => {
               const active = tab === t.key;
               const isMineTab = t.key === "mine";
@@ -545,64 +629,37 @@ export function SuggestClient({
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}
-                  className={`relative px-3.5 py-1.5 rounded-full text-sm font-bold transition border ${
+                  className={`relative min-h-[40px] rounded-full border px-4 py-2 text-sm font-bold transition active:scale-95 ${
                     active
-                      ? "bg-emerald-400/90 text-emerald-950 border-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.4)]"
-                      : "bg-white/5 text-white/70 border-white/15 hover:bg-white/10 hover:text-white"
+                      ? "border-emerald-300 bg-emerald-500 text-emerald-950"
+                      : "border-white/15 bg-white/[0.06] text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
-                  style={{ fontFamily: HANDWRITING, letterSpacing: "0.03em" }}
+                  style={active ? { boxShadow: EMERALD_GLOW } : undefined}
                 >
                   {isMineTab ? "💌 내 쪽지" : t.label}
                   {isMineTab && unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-xs font-bold flex items-center justify-center shadow">
-                      {unreadCount}
-                    </span>
+                    <span
+                      className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-rose-500 ring-2 ring-slate-900"
+                      aria-hidden
+                    />
                   )}
                 </button>
               );
             })}
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-5">
-        {/* ===== 인트로 ===== */}
-        {!adminMode && (
-          <div className="text-center mb-4">
-            <div
-              className="text-white/90 text-base sm:text-lg"
-              style={{
-                fontFamily: HANDWRITING,
-                textShadow: "0 0 10px rgba(52,211,153,0.3)",
-              }}
-            >
-              {studentName}님, 학원에 하고 싶은 말을 우체통에 넣어보세요 📮
-            </div>
-            <div
-              className="text-white/60 text-sm mt-0.5"
-              style={{ fontFamily: HANDWRITING }}
-            >
-              공개 쪽지는 친구들도 함께 읽어요. 마음을 담아 적어주세요 💌
-            </div>
-          </div>
-        )}
-
-        {adminMode && (
-          <div className="mx-auto max-w-xl text-center mb-4 px-4 py-2.5 rounded-xl border border-rose-300/30 bg-rose-950/40">
-            <div className="text-rose-100 text-sm" style={{ fontFamily: HANDWRITING }}>
-              🔧 쪽지를 탭해서 펼치면 답장/상태/삭제/차단을 처리할 수 있어요.
-            </div>
-          </div>
-        )}
-
-        {/* ===== 차단 안내 ===== */}
+      {/* ===== 본문 ===== */}
+      <div className="relative z-10 mx-auto w-full max-w-md px-4 py-5">
+        {/* 차단 안내 */}
         {activeBlock && (
-          <div className="mx-auto max-w-lg mb-5 rounded-xl p-4 shadow-lg bg-rose-200 text-rose-900">
-            <div className="font-bold mb-1">⚠ 건의함 사용이 제한되었어요</div>
+          <div className="mb-5 rounded-2xl border border-rose-400/40 bg-rose-500/15 p-4 text-rose-100 backdrop-blur-sm">
+            <div className="mb-1 font-bold">⚠ 건의함 사용이 제한되었어요</div>
             {activeBlock.reason && (
-              <div className="text-sm mb-1">사유: {activeBlock.reason}</div>
+              <div className="mb-1 text-sm">사유: {activeBlock.reason}</div>
             )}
-            <div className="text-xs text-rose-700">
+            <div className="text-xs text-rose-200/80">
               {activeBlock.blocked_until
                 ? `해제 예정: ${formatDate(activeBlock.blocked_until)}`
                 : "영구 제한"}
@@ -610,112 +667,118 @@ export function SuggestClient({
           </div>
         )}
 
-        {/* ===== 비밀 쪽지 요약 (남의 비밀글은 그리드에서 제외) ===== */}
+        {/* 비밀 쪽지 요약 — 다크 유리 칩 (남의 비밀글은 목록에서 제외) */}
         {!adminMode && hiddenSecretCount > 0 && tab !== "mine" && (
-          <div
-            className="mx-auto max-w-xl text-center mb-4 px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white/75 text-sm"
-            style={{ fontFamily: HANDWRITING }}
-          >
+          <div className="mx-auto mb-4 w-fit rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-center text-sm text-white/75 backdrop-blur-sm">
             🔒 비밀 쪽지 {hiddenSecretCount}통이 선생님께 전달됐어요
           </div>
         )}
 
-        {/* ===== 카드 그리드 ===== */}
+        {/* 편지봉투 목록 */}
         {visibleSuggestions.length === 0 ? (
-          <div
-            className="text-center text-white/55 text-base py-16"
-            style={{ fontFamily: HANDWRITING }}
-          >
+          <div className="py-16 text-center text-base text-white/55">
             {tab === "mine"
               ? "아직 보낸 쪽지가 없어요. 첫 쪽지를 보내보세요! ✉️"
               : adminMode
                 ? "아직 도착한 쪽지가 없어요."
-                : "아직 붙은 쪽지가 없어요. 첫 번째로 보내보세요!"}
+                : "아직 도착한 쪽지가 없어요. 첫 번째로 보내보세요!"}
           </div>
         ) : (
-          <ul className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {visibleSuggestions.map((s, i) => {
-              const col = POSTIT_COLORS[s.category];
               const isSecret = s.visibility === "private";
               const newReply = s.is_mine && hasNewReply(s);
               const r = getReaction(s);
               const reactionTotal = r.counts.heart + r.counts.thumbs;
               return (
-                <li key={s.id} className="relative" style={{ fontFamily: HANDWRITING }}>
+                <li key={s.id} className={`relative ${tiltFor(i)}`}>
                   <button
                     type="button"
                     onClick={() => setSelectedId(s.id)}
-                    className={`relative w-full h-full min-h-[164px] text-left rounded-sm p-3 pt-4 shadow-lg flex flex-col transition hover:-translate-y-0.5 hover:shadow-xl ${tiltFor(i)} ${col.bg} ${col.text} ${
-                      s.is_mine ? "ring-2 ring-amber-500/50" : ""
+                    className={`relative flex min-h-[128px] w-full flex-col rounded-2xl p-4 pt-5 text-left text-amber-950 transition hover:-translate-y-0.5 active:scale-[0.99] ${
+                      s.is_mine ? "ring-2 ring-emerald-400/60" : ""
                     }`}
-                    style={{ boxShadow: "0 4px 10px rgba(0,0,0,0.35)" }}
+                    style={{ background: ENVELOPE_BG, boxShadow: ENVELOPE_SHADOW }}
                   >
-                    {/* 압정 */}
+                    {/* 에어메일 봉투 테두리 */}
                     <span
-                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-red-500 shadow z-10"
-                      style={{
-                        boxShadow:
-                          "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
-                      }}
+                      aria-hidden
+                      className="absolute inset-x-0 top-0 h-1.5 rounded-t-2xl opacity-70"
+                      style={{ background: AIRMAIL_EDGE }}
                     />
+
+                    {/* 카테고리 우표 */}
+                    <span className="absolute right-3 top-3.5">
+                      <CategoryStamp category={s.category} />
+                    </span>
 
                     {/* 새 답장 도착 강조 */}
                     {newReply && (
-                      <span className="absolute -top-2 -right-1.5 px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs font-bold shadow-md animate-pulse z-10">
+                      <span className="absolute -top-2 left-3 z-10 animate-pulse rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white shadow-md">
                         💌 답장 도착
                       </span>
                     )}
 
-                    <span className="flex flex-wrap items-center gap-1 mb-1.5">
-                      <span className="px-1.5 py-0.5 rounded-full text-xs bg-white/70 font-bold">
-                        {SUGGESTION_CATEGORY_LABELS[s.category]}
-                      </span>
+                    <span className="mb-1.5 flex flex-wrap items-center gap-1 pr-14">
                       <span
-                        className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${STATUS_COLORS[s.status]}`}
+                        className={`rounded-full border px-2 py-0.5 text-xs font-bold ${STATUS_STAMP[s.status]}`}
                       >
                         {SUGGESTION_STATUS_LABELS[s.status]}
                       </span>
                       {isSecret && (
-                        <span className="px-1.5 py-0.5 rounded-full text-xs bg-rose-700 text-white font-bold">
+                        <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
                           🔒 비밀
                         </span>
                       )}
                     </span>
 
                     {isSecret && !adminMode ? (
-                      // 내 비밀글 — 접힌 편지 연출
-                      <span className="flex-1 flex flex-col items-center justify-center gap-1 py-1">
-                        <span className="text-3xl leading-none">✉️</span>
-                        <span className="text-sm font-extrabold text-center leading-snug line-clamp-1 px-1">
+                      // 내 비밀글 — 접힌 편지 연출 (크림 톤)
+                      <span className="flex flex-1 flex-col items-center justify-center gap-1 py-1">
+                        <span className="text-3xl leading-none" aria-hidden>
+                          ✉️
+                        </span>
+                        <span className="line-clamp-1 px-1 text-center text-sm font-extrabold leading-snug">
                           {s.title || "비밀 쪽지"}
                         </span>
-                        <span className="text-xs opacity-70">선생님만 볼 수 있어요</span>
+                        <span className="text-xs text-amber-900/60">
+                          선생님만 볼 수 있어요
+                        </span>
                       </span>
                     ) : (
                       <>
-                        <span className="block font-extrabold text-base leading-snug break-words line-clamp-2">
+                        <span className="line-clamp-2 block break-words pr-14 text-base font-extrabold leading-snug">
                           {s.title}
                         </span>
-                        <span className="block text-sm leading-snug mt-0.5 opacity-85 break-words line-clamp-2">
+                        <span
+                          className="mt-0.5 line-clamp-2 block break-words text-base leading-snug text-amber-900/75"
+                          style={{ fontFamily: HANDWRITING }}
+                        >
                           {firstLine(s.body)}
                         </span>
                         <span className="flex-1" />
                       </>
                     )}
 
-                    <span className="mt-2 flex items-end justify-between gap-1 text-xs opacity-75">
-                      <span className="truncate">
-                        ✍ {authorLabelFor(s) || "익명"}
-                      </span>
+                    <span className="mt-2 flex items-end justify-between gap-1 text-xs text-amber-900/70">
+                      <span className="truncate">✍ {authorLabelFor(s) || "익명"}</span>
                       <span className="shrink-0">
                         {formatDate(s.created_at).slice(0, 10)}
                       </span>
                     </span>
                     {(s.reply || reactionTotal > 0) && (
-                      <span className="mt-1 flex items-center gap-2 text-xs font-bold">
-                        {s.reply && <span>💬 답장</span>}
-                        {r.counts.heart > 0 && <span>❤️ {r.counts.heart}</span>}
-                        {r.counts.thumbs > 0 && <span>👍 {r.counts.thumbs}</span>}
+                      <span className="mt-1.5 flex items-center gap-1.5 text-xs font-bold">
+                        {s.reply && (
+                          <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white shadow-sm">
+                            💌 선생님 답장
+                          </span>
+                        )}
+                        {r.counts.heart > 0 && (
+                          <span className="text-rose-600">❤️ {r.counts.heart}</span>
+                        )}
+                        {r.counts.thumbs > 0 && (
+                          <span className="text-sky-700">👍 {r.counts.thumbs}</span>
+                        )}
                       </span>
                     )}
                   </button>
@@ -726,7 +789,7 @@ export function SuggestClient({
         )}
       </div>
 
-      {/* ===== 플로팅 버튼 ===== */}
+      {/* ===== 쪽지 쓰기 플로팅 버튼 ===== */}
       {!adminMode && (
         <div className="fixed bottom-6 right-5 z-40">
           <button
@@ -738,8 +801,11 @@ export function SuggestClient({
               }
               setWriteOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-5 py-3.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-[0_8px_24px_rgba(16,185,129,0.45)] transition text-base font-extrabold active:scale-95"
-            style={{ fontFamily: HANDWRITING, letterSpacing: "0.03em" }}
+            className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-emerald-500 px-6 py-3.5 text-base font-extrabold text-emerald-950 transition hover:bg-emerald-400 active:scale-95"
+            style={{
+              boxShadow:
+                "0 8px 24px rgba(16,185,129,0.5), 0 0 16px rgba(52,211,153,0.4)",
+            }}
           >
             ✉️ 쪽지 쓰기
           </button>
@@ -751,7 +817,7 @@ export function SuggestClient({
         <div className={`fixed bottom-6 z-40 ${adminMode ? "right-5" : "left-5"}`}>
           <Link
             href={adminLink}
-            className="inline-flex items-center gap-2 px-4 py-3 rounded-full bg-gray-900 text-white shadow-2xl hover:bg-gray-800 transition text-sm font-semibold border border-white/20"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/20 bg-slate-900/90 px-4 py-3 text-sm font-bold text-white shadow-2xl backdrop-blur-sm transition hover:bg-slate-800"
           >
             <span>리스트 관리</span>
             <span aria-hidden>→</span>
@@ -759,11 +825,10 @@ export function SuggestClient({
         </div>
       )}
 
-      {/* ===== 상세 모달 (접힌 카드 → 펼침) ===== */}
+      {/* ===== 상세 모달 (편지봉투 → 편지지 펼침) ===== */}
       {selected &&
         (() => {
           const s = selected;
-          const col = POSTIT_COLORS[s.category];
           const isSecret = s.visibility === "private";
           const wasEdited =
             new Date(s.updated_at).getTime() - new Date(s.created_at).getTime() >
@@ -777,93 +842,106 @@ export function SuggestClient({
             !isSecret && (isStudent || s.reaction_counts != null);
           return (
             <div
-              className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center px-3 py-6 overflow-y-auto"
+              className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-6 backdrop-blur-sm"
               onClick={closeDetail}
             >
               <div
-                className={`relative w-full max-w-lg my-auto rounded-md p-5 pt-6 shadow-2xl ${col.bg} ${col.text}`}
+                className="relative my-auto w-full max-w-md rounded-2xl p-5 text-amber-950"
                 style={{
-                  fontFamily: HANDWRITING,
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                  background: LETTER_BG,
+                  boxShadow:
+                    "0 24px 60px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.6) inset",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* 압정 + 닫기 */}
-                <div
-                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-red-500 shadow-md"
-                  style={{
-                    boxShadow:
-                      "inset -1px -1px 2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
-                  }}
+                {/* 에어메일 상단 테두리 */}
+                <span
+                  aria-hidden
+                  className="absolute inset-x-0 top-0 h-1.5 rounded-t-2xl opacity-70"
+                  style={{ background: AIRMAIL_EDGE }}
                 />
+
+                {/* 닫기 — 다크 유리 원형 */}
                 <button
                   type="button"
                   onClick={closeDetail}
                   aria-label="닫기"
-                  className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/10 hover:bg-black/20 text-current text-sm font-bold flex items-center justify-center transition"
+                  className="absolute -right-2 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-slate-900/90 text-sm font-bold text-white shadow-lg backdrop-blur-sm transition hover:bg-slate-800 active:scale-95"
                 >
                   ✕
                 </button>
 
                 {!editing && (
                   <>
-                    <div className="flex flex-wrap items-center gap-1.5 mb-2 pr-8">
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-white/70 font-bold">
-                        {SUGGESTION_CATEGORY_LABELS[s.category]}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-bold ${STATUS_COLORS[s.status]}`}
-                      >
-                        {SUGGESTION_STATUS_LABELS[s.status]}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-white/60">
-                        ✍ {authorLabelFor(s) || "익명"}
-                      </span>
-                      {isSecret && (
-                        <span className="px-2 py-0.5 rounded-full text-xs bg-rose-700 text-white font-bold">
-                          🔒 비밀
+                    <div className="mb-2 flex items-start justify-between gap-2 pt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-bold ${STATUS_STAMP[s.status]}`}
+                        >
+                          {SUGGESTION_STATUS_LABELS[s.status]}
                         </span>
-                      )}
-                      {wasEdited && (
-                        <span className="px-2 py-0.5 rounded-full text-xs bg-white/50 opacity-80">
-                          수정됨
+                        <span className="rounded-full border border-amber-900/15 bg-white/70 px-2 py-0.5 text-xs font-bold text-amber-900">
+                          ✍ {authorLabelFor(s) || "익명"}
                         </span>
-                      )}
-                      {adminMode && studentBlocked && (
-                        <span className="px-2 py-0.5 rounded-full text-xs bg-rose-700 text-white font-bold">
-                          차단됨
-                        </span>
-                      )}
+                        {isSecret && (
+                          <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                            🔒 비밀
+                          </span>
+                        )}
+                        {wasEdited && (
+                          <span className="rounded-full bg-amber-900/10 px-2 py-0.5 text-xs text-amber-900/70">
+                            수정됨
+                          </span>
+                        )}
+                        {adminMode && studentBlocked && (
+                          <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                            차단됨
+                          </span>
+                        )}
+                      </div>
+                      <CategoryStamp category={s.category} />
                     </div>
 
-                    <div className="font-extrabold text-xl leading-snug break-words">
+                    <div className="break-words text-xl font-extrabold leading-snug">
                       {s.title || "비밀 쪽지"}
                     </div>
-                    <div className="text-base leading-relaxed mt-1.5 whitespace-pre-wrap break-words">
+                    {/* 편지지 줄노트 본문 (손글씨) */}
+                    <div
+                      className="mt-1.5 whitespace-pre-wrap break-words"
+                      style={{
+                        fontFamily: HANDWRITING,
+                        fontSize: "1.1rem",
+                        lineHeight: "1.9rem",
+                        backgroundImage: LINED_PAPER,
+                      }}
+                    >
                       {s.body}
                     </div>
-                    <div className="text-xs opacity-70 mt-2">
+                    <div className="mt-2 text-xs text-amber-900/60">
                       {formatDate(s.created_at)}
                     </div>
 
-                    {/* 선생님 답장 */}
+                    {/* 선생님 답장 — 초록 테두리 카드 */}
                     {s.reply && (
                       <div
-                        className={`mt-3 rounded-md bg-white/85 p-3 border ${
+                        className={`mt-3 rounded-xl border-2 bg-emerald-50 p-3 ${
                           hasNewReply(s)
                             ? "border-rose-400 ring-2 ring-rose-300/60"
-                            : "border-amber-900/20"
+                            : "border-emerald-600/50"
                         }`}
                       >
-                        <div className="text-xs font-bold text-amber-900 mb-1">
-                          {hasNewReply(s) ? "💌 답장 도착! " : "선생님 답장 "}
+                        <div className="mb-1 text-xs font-bold text-emerald-900">
+                          {hasNewReply(s) ? "💌 답장 도착! " : "🍎 선생님의 답장 "}
                           {s.replied_at && (
-                            <span className="font-normal opacity-70">
+                            <span className="font-normal text-emerald-900/60">
                               · {formatDate(s.replied_at)}
                             </span>
                           )}
                         </div>
-                        <div className="text-sm text-amber-950 whitespace-pre-wrap break-words leading-relaxed">
+                        <div
+                          className="whitespace-pre-wrap break-words text-sm leading-relaxed text-emerald-950"
+                          style={{ fontFamily: HANDWRITING, fontSize: "1rem" }}
+                        >
                           {s.reply}
                         </div>
                       </div>
@@ -882,13 +960,13 @@ export function SuggestClient({
                               type="button"
                               disabled={!isStudent}
                               onClick={() => onToggleReaction(s, kind)}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold border-2 transition ${
+                              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border-2 px-3.5 py-1.5 text-sm font-bold transition ${
                                 active
-                                  ? "bg-white text-amber-900 border-amber-700 shadow"
-                                  : "bg-white/50 border-amber-900/15 hover:bg-white/80"
+                                  ? "scale-110 border-emerald-500 bg-white text-emerald-800 shadow-[0_0_14px_rgba(16,185,129,0.4)]"
+                                  : "border-amber-900/15 bg-white/60 text-amber-900 hover:bg-white/90"
                               } ${!isStudent ? "cursor-default opacity-90" : "active:scale-95"}`}
                             >
-                              <span>{meta.emoji}</span>
+                              <span aria-hidden>{meta.emoji}</span>
                               <span>{meta.label}</span>
                               <span className="min-w-[1ch]">{count}</span>
                             </button>
@@ -904,7 +982,7 @@ export function SuggestClient({
                           type="button"
                           onClick={() => startEdit(s)}
                           disabled={!!activeBlock || pending || previewMode}
-                          className="flex-1 py-2 rounded-md bg-white/80 hover:bg-white text-amber-900 text-sm font-bold border border-amber-900/20 shadow-sm disabled:opacity-50"
+                          className="min-h-[44px] flex-1 rounded-full border border-amber-900/20 bg-white/80 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
                           ✏️ 수정
                         </button>
@@ -912,18 +990,21 @@ export function SuggestClient({
                           type="button"
                           onClick={() => requestDelete(s, false)}
                           disabled={!!activeBlock || pending || previewMode}
-                          className="flex-1 py-2 rounded-md bg-rose-200/90 hover:bg-rose-300 text-rose-900 text-sm font-bold border border-rose-700/30 shadow-sm disabled:opacity-50"
+                          className="min-h-[44px] flex-1 rounded-full border border-rose-700/30 bg-rose-200/90 py-2 text-sm font-bold text-rose-900 shadow-sm transition hover:bg-rose-300 disabled:opacity-50"
                         >
                           🗑️ 삭제
                         </button>
                       </div>
                     )}
 
-                    {/* 관리자 모드: 인라인 관리 컨트롤 */}
+                    {/* 관리자 모드: 인라인 관리 컨트롤 — 다크 유리 패널 */}
                     {adminMode && (
-                      <div className="mt-4 pt-3 border-t border-amber-900/20 space-y-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold opacity-80">상태</span>
+                      <div
+                        className="mt-4 space-y-2 rounded-xl border border-white/10 bg-slate-900/90 p-3 text-white"
+                        style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-bold text-white/70">상태</span>
                           {STATUSES.map((st) => {
                             const active = s.status === st;
                             return (
@@ -932,10 +1013,10 @@ export function SuggestClient({
                                 type="button"
                                 disabled={pending}
                                 onClick={() => onChangeStatus(s.id, st)}
-                                className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
                                   active
-                                    ? `${STATUS_COLORS[st]} border-amber-900/40`
-                                    : "bg-white/40 text-amber-900/70 border-amber-900/20 hover:bg-white/70"
+                                    ? ADMIN_STATUS_ACTIVE[st]
+                                    : "border-white/15 bg-white/[0.06] text-white/60 hover:bg-white/10"
                                 }`}
                               >
                                 {SUGGESTION_STATUS_LABELS[st]}
@@ -951,7 +1032,7 @@ export function SuggestClient({
                           placeholder="학생에게 보낼 답장…"
                           rows={2}
                           disabled={pending}
-                          className="w-full text-sm px-2.5 py-2 rounded-md bg-white/80 text-amber-950 focus:outline-none focus:bg-white resize-none"
+                          className="w-full resize-none rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-white placeholder:text-white/40 focus:border-emerald-400 focus:outline-none"
                           style={{ lineHeight: "1.5rem" }}
                         />
 
@@ -960,7 +1041,7 @@ export function SuggestClient({
                             type="button"
                             disabled={pending}
                             onClick={() => onReply(s.id, s.reply)}
-                            className="flex-1 min-w-[80px] py-2 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-sm font-bold disabled:opacity-50"
+                            className="min-h-[40px] min-w-[80px] flex-1 rounded-lg bg-emerald-500 py-2 text-sm font-bold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-50"
                           >
                             💬 답장
                           </button>
@@ -968,7 +1049,7 @@ export function SuggestClient({
                             type="button"
                             disabled={pending}
                             onClick={() => requestDelete(s, true)}
-                            className="flex-1 min-w-[60px] py-2 rounded-md bg-rose-200 hover:bg-rose-300 text-rose-900 text-sm font-bold border border-rose-700/30 disabled:opacity-50"
+                            className="min-h-[40px] min-w-[60px] flex-1 rounded-lg border border-rose-400/40 bg-rose-500/20 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-500/30 disabled:opacity-50"
                           >
                             🗑️ 삭제
                           </button>
@@ -984,7 +1065,7 @@ export function SuggestClient({
                                       s.student_name_snapshot,
                                   )
                                 }
-                                className="flex-1 min-w-[80px] py-2 rounded-md bg-emerald-200 hover:bg-emerald-300 text-emerald-900 text-sm font-bold border border-emerald-700/30 disabled:opacity-50"
+                                className="min-h-[40px] min-w-[80px] flex-1 rounded-lg border border-emerald-400/40 bg-emerald-500/20 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                               >
                                 🔓 해제
                               </button>
@@ -999,7 +1080,7 @@ export function SuggestClient({
                                       s.student_name_snapshot,
                                   )
                                 }
-                                className="flex-1 min-w-[60px] py-2 rounded-md bg-gray-800 hover:bg-gray-900 text-white text-sm font-bold disabled:opacity-50"
+                                className="min-h-[40px] min-w-[60px] flex-1 rounded-lg border border-white/20 bg-black/50 py-2 text-sm font-bold text-white transition hover:bg-black/70 disabled:opacity-50"
                               >
                                 🚫 차단
                               </button>
@@ -1008,7 +1089,7 @@ export function SuggestClient({
                         </div>
 
                         {studentBlocked && (
-                          <div className="text-xs text-rose-700 bg-rose-50 rounded px-2 py-1">
+                          <div className="rounded-lg bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
                             {studentBlocked.reason && `사유: ${studentBlocked.reason} · `}
                             {studentBlocked.blockedUntil
                               ? `해제 예정: ${formatDate(studentBlocked.blockedUntil)}`
@@ -1020,28 +1101,39 @@ export function SuggestClient({
                   </>
                 )}
 
-                {/* 학생 모드 인라인 수정 */}
+                {/* 학생 모드 인라인 수정 — 크림 편지지 톤 */}
                 {editing && !adminMode && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-bold opacity-80 mb-1">
+                  <div className="space-y-2.5 pt-2">
+                    <div className="mb-1 text-sm font-bold text-amber-900/80">
                       ✏️ 쪽지 수정 중
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="grid grid-cols-4 gap-2">
                       {CATEGORIES.map((c) => {
                         const active = editCategory === c;
+                        const st = STAMP_META[c];
                         return (
                           <button
                             key={c}
                             type="button"
                             disabled={pending}
                             onClick={() => setEditCategory(c)}
-                            className={`px-2.5 py-1 rounded-md text-xs border ${
+                            className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-md border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
                               active
-                                ? "bg-white text-amber-900 border-amber-900 font-bold"
-                                : "bg-white/50 text-amber-900/70 border-amber-900/20"
-                            }`}
+                                ? "scale-105 ring-2 ring-emerald-500"
+                                : "opacity-60 hover:opacity-90"
+                            } disabled:cursor-not-allowed`}
+                            style={
+                              active
+                                ? { boxShadow: "0 0 12px rgba(16,185,129,0.45)" }
+                                : undefined
+                            }
                           >
-                            {SUGGESTION_CATEGORY_LABELS[c]}
+                            <span className="text-lg leading-none" aria-hidden>
+                              {st.emoji}
+                            </span>
+                            <span className="text-xs font-bold">
+                              {SUGGESTION_CATEGORY_LABELS[c]}
+                            </span>
                           </button>
                         );
                       })}
@@ -1052,7 +1144,7 @@ export function SuggestClient({
                       maxLength={SUGGESTION_TITLE_MAX}
                       disabled={pending}
                       onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-md bg-white/80 text-amber-950 border-b-2 border-amber-900/40 focus:outline-none focus:bg-white"
+                      className="w-full rounded-lg border-b-2 border-amber-900/40 bg-white/70 px-3 py-2 text-amber-950 focus:border-amber-900 focus:bg-white focus:outline-none"
                       style={{ fontSize: "1rem" }}
                       placeholder="제목"
                     />
@@ -1062,8 +1154,14 @@ export function SuggestClient({
                       disabled={pending}
                       onChange={(e) => setEditBody(e.target.value)}
                       rows={5}
-                      className="w-full px-2.5 py-2 rounded-md bg-white/80 text-amber-950 focus:outline-none focus:bg-white resize-none"
-                      style={{ fontSize: "1rem", lineHeight: "1.7rem" }}
+                      className="w-full resize-none rounded-lg bg-white/70 px-3 py-2 text-amber-950 focus:bg-white focus:outline-none"
+                      style={{
+                        fontFamily: HANDWRITING,
+                        fontSize: "1.05rem",
+                        lineHeight: "1.9rem",
+                        backgroundImage: LINED_PAPER,
+                        backgroundAttachment: "local",
+                      }}
                       placeholder="내용"
                     />
                     <div className="flex gap-1.5">
@@ -1071,10 +1169,10 @@ export function SuggestClient({
                         type="button"
                         disabled={pending}
                         onClick={() => setEditPublic(true)}
-                        className={`flex-1 px-2 py-1.5 rounded text-xs border ${
+                        className={`min-h-[40px] flex-1 rounded-full border-2 px-2 py-1.5 text-xs transition ${
                           editPublic
-                            ? "bg-amber-200 text-amber-900 border-amber-700 font-bold"
-                            : "bg-white/60 text-amber-900/60 border-amber-900/20"
+                            ? "border-emerald-600 bg-emerald-100 font-bold text-emerald-900"
+                            : "border-amber-900/20 bg-white/60 text-amber-900/60"
                         }`}
                       >
                         👀 친구들도
@@ -1083,10 +1181,10 @@ export function SuggestClient({
                         type="button"
                         disabled={pending}
                         onClick={() => setEditPublic(false)}
-                        className={`flex-1 px-2 py-1.5 rounded text-xs border ${
+                        className={`min-h-[40px] flex-1 rounded-full border-2 px-2 py-1.5 text-xs transition ${
                           !editPublic
-                            ? "bg-rose-200 text-rose-900 border-rose-700 font-bold"
-                            : "bg-white/60 text-amber-900/60 border-amber-900/20"
+                            ? "border-rose-600 bg-rose-100 font-bold text-rose-900"
+                            : "border-amber-900/20 bg-white/60 text-amber-900/60"
                         }`}
                       >
                         🔒 비밀
@@ -1103,7 +1201,7 @@ export function SuggestClient({
                       <span className={!editPublic ? "opacity-50" : ""}>익명</span>
                     </label>
                     {editError && (
-                      <div className="text-xs text-rose-700 bg-rose-50 rounded px-2 py-1">
+                      <div className="rounded-lg bg-rose-100 px-2 py-1 text-xs text-rose-700">
                         {editError}
                       </div>
                     )}
@@ -1112,7 +1210,7 @@ export function SuggestClient({
                         type="button"
                         onClick={() => submitEdit(s.id)}
                         disabled={pending}
-                        className="flex-1 py-2 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-sm font-bold disabled:opacity-50"
+                        className="min-h-[44px] flex-1 rounded-full bg-emerald-600 py-2 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
                       >
                         💾 저장
                       </button>
@@ -1120,7 +1218,7 @@ export function SuggestClient({
                         type="button"
                         onClick={cancelEdit}
                         disabled={pending}
-                        className="flex-1 py-2 rounded-md bg-white/70 hover:bg-white text-amber-900 text-sm font-bold border border-amber-900/20 disabled:opacity-50"
+                        className="min-h-[44px] flex-1 rounded-full border border-amber-900/20 bg-white/70 py-2 text-sm font-bold text-amber-900 transition hover:bg-white disabled:opacity-50"
                       >
                         취소
                       </button>
@@ -1132,26 +1230,23 @@ export function SuggestClient({
           );
         })()}
 
-      {/* ===== 쪽지 쓰기 바텀시트 ===== */}
+      {/* ===== 쪽지 쓰기 바텀시트 — 다크 유리 + 크림 편지지 입력 ===== */}
       {writeOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/70 flex items-end justify-center"
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm"
           onClick={() => setWriteOpen(false)}
         >
           <div
-            className="w-full max-w-xl max-h-[88dvh] overflow-y-auto rounded-t-2xl p-5 pb-8"
-            style={{
-              background: "linear-gradient(180deg, #fff7a8 0%, #ffe97a 100%)",
-              boxShadow: "0 -12px 40px rgba(0,0,0,0.5)",
-            }}
+            className="max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border-x border-t border-white/15 bg-slate-900/95 p-5 pb-8 text-white backdrop-blur"
+            style={{ boxShadow: "0 -16px 48px rgba(0,0,0,0.6)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 그립바 */}
-            <div className="mx-auto w-12 h-1.5 rounded-full bg-amber-900/25 mb-3" />
-            <div className="flex items-center justify-between mb-3">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/20" />
+            <div className="mb-4 flex items-center justify-between">
               <div
-                className="text-lg font-extrabold text-amber-900"
-                style={{ fontFamily: HANDWRITING }}
+                className="text-lg font-extrabold"
+                style={{ textShadow: "0 0 12px rgba(52,211,153,0.35)" }}
               >
                 ✉️ 쪽지 쓰기
               </div>
@@ -1159,36 +1254,44 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setWriteOpen(false)}
                 aria-label="닫기"
-                className="w-8 h-8 rounded-full bg-amber-900/10 hover:bg-amber-900/20 text-amber-900 text-sm font-bold flex items-center justify-center transition"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-sm font-bold text-white transition hover:bg-white/20"
               >
                 ✕
               </button>
             </div>
 
+            {/* 카테고리 = 우표 고르기 */}
             <div className="mb-4">
-              <div
-                className="text-sm font-bold text-amber-900 mb-2"
-                style={{ fontFamily: HANDWRITING }}
-              >
-                어떤 이야기인가요?
+              <div className="mb-2 text-sm font-bold text-white/85">
+                어떤 이야기인가요? 우표를 골라요
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {CATEGORIES.map((c) => {
                   const active = category === c;
-                  const col = POSTIT_COLORS[c];
+                  const st = STAMP_META[c];
                   return (
                     <button
                       key={c}
                       type="button"
                       disabled={pending || !!activeBlock}
                       onClick={() => setCategory(c)}
-                      className={`px-3 py-1.5 rounded-md text-sm border-2 transition shadow-sm ${
+                      className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
                         active
-                          ? `${col.bg} ${col.text} border-amber-900/30 font-bold ring-2 ${col.ring}`
-                          : "bg-white/70 text-gray-600 border-amber-900/10 hover:bg-white"
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          ? "scale-105 ring-2 ring-emerald-400"
+                          : "opacity-55 hover:opacity-85"
+                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                      style={
+                        active
+                          ? { boxShadow: "0 0 16px rgba(52,211,153,0.55)" }
+                          : undefined
+                      }
                     >
-                      {SUGGESTION_CATEGORY_LABELS[c]}
+                      <span className="text-xl leading-none" aria-hidden>
+                        {st.emoji}
+                      </span>
+                      <span className="text-xs font-bold">
+                        {SUGGESTION_CATEGORY_LABELS[c]}
+                      </span>
                     </button>
                   );
                 })}
@@ -1196,10 +1299,7 @@ export function SuggestClient({
             </div>
 
             <div className="mb-3">
-              <label
-                className="block text-sm font-bold text-amber-900 mb-1"
-                style={{ fontFamily: HANDWRITING }}
-              >
+              <label className="mb-1 block text-sm font-bold text-white/85">
                 제목
               </label>
               <input
@@ -1209,19 +1309,16 @@ export function SuggestClient({
                 disabled={pending || !!activeBlock}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="짧게 한 줄로!"
-                className="w-full px-3 py-2 rounded-md bg-white/70 border-b-2 border-amber-900/40 focus:outline-none focus:bg-white focus:border-amber-900 disabled:bg-white/40 text-amber-950 placeholder:text-amber-900/40"
-                style={{ fontFamily: HANDWRITING, fontSize: "1.05rem" }}
+                className="w-full rounded-lg border-b-2 border-amber-700/60 bg-[#fdf6e3] px-3 py-2.5 text-amber-950 placeholder:text-amber-900/40 focus:border-amber-900 focus:outline-none disabled:opacity-60"
+                style={{ fontSize: "1.05rem" }}
               />
-              <div className="text-right text-xs text-amber-900/60 mt-0.5">
+              <div className="mt-0.5 text-right text-xs text-white/50">
                 {title.length}/{SUGGESTION_TITLE_MAX}
               </div>
             </div>
 
             <div className="mb-3">
-              <label
-                className="block text-sm font-bold text-amber-900 mb-1"
-                style={{ fontFamily: HANDWRITING }}
-              >
+              <label className="mb-1 block text-sm font-bold text-white/85">
                 내용
               </label>
               <textarea
@@ -1231,27 +1328,23 @@ export function SuggestClient({
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="자세한 이야기를 적어주세요"
                 rows={6}
-                className="w-full px-3 py-2 rounded-md bg-white/60 focus:outline-none focus:bg-white disabled:bg-white/40 resize-none text-amber-950 placeholder:text-amber-900/40"
+                className="w-full resize-none rounded-lg bg-[#fdf6e3] px-3 py-2 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
                 style={{
                   fontFamily: HANDWRITING,
                   fontSize: "1.05rem",
                   lineHeight: "1.9rem",
-                  backgroundImage:
-                    "repeating-linear-gradient(transparent 0 calc(1.9rem - 1px), rgba(120,80,30,0.25) calc(1.9rem - 1px) 1.9rem)",
+                  backgroundImage: LINED_PAPER,
                   backgroundAttachment: "local",
                 }}
               />
-              <div className="text-right text-xs text-amber-900/60 mt-0.5">
+              <div className="mt-0.5 text-right text-xs text-white/50">
                 {body.length}/{SUGGESTION_BODY_MAX}
               </div>
             </div>
 
             {/* 공개 / 비공개 토글 */}
-            <div className="mb-3 rounded-md bg-white/60 p-2.5 border border-amber-900/15">
-              <div
-                className="text-sm font-bold text-amber-900 mb-2"
-                style={{ fontFamily: HANDWRITING }}
-              >
+            <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+              <div className="mb-2 text-sm font-bold text-white/85">
                 누가 볼 수 있어요?
               </div>
               <div className="flex gap-2">
@@ -1259,12 +1352,12 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(true)}
-                  className={`flex-1 px-3 py-2 rounded-md text-sm border-2 transition ${
+                  className={`min-h-[44px] flex-1 rounded-full border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     isPublic
-                      ? "bg-amber-200 text-amber-900 border-amber-700 font-bold"
-                      : "bg-white/70 text-amber-900/60 border-amber-900/15"
-                  } disabled:opacity-50`}
-                  style={{ fontFamily: HANDWRITING }}
+                      ? "border-emerald-400 bg-emerald-500/25 font-bold text-emerald-100"
+                      : "border-white/15 bg-white/[0.06] text-white/55"
+                  }`}
+                  style={isPublic ? { boxShadow: EMERALD_GLOW } : undefined}
                 >
                   👀 친구들도 보기
                 </button>
@@ -1272,44 +1365,42 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(false)}
-                  className={`flex-1 px-3 py-2 rounded-md text-sm border-2 transition ${
+                  className={`min-h-[44px] flex-1 rounded-full border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     !isPublic
-                      ? "bg-rose-200 text-rose-900 border-rose-700 font-bold"
-                      : "bg-white/70 text-amber-900/60 border-amber-900/15"
-                  } disabled:opacity-50`}
-                  style={{ fontFamily: HANDWRITING }}
+                      ? "border-rose-400 bg-rose-500/25 font-bold text-rose-100"
+                      : "border-white/15 bg-white/[0.06] text-white/55"
+                  }`}
+                  style={
+                    !isPublic
+                      ? { boxShadow: "0 0 14px rgba(244,63,94,0.45)" }
+                      : undefined
+                  }
                 >
                   🔒 선생님만 (비밀)
                 </button>
               </div>
-              <div
-                className="text-xs text-amber-900/70 mt-1.5"
-                style={{ fontFamily: HANDWRITING }}
-              >
+              <div className="mt-1.5 text-xs text-white/55">
                 {isPublic
                   ? "친구들이 우체통에서 같이 읽을 수 있어요."
                   : "다른 친구들에게는 보이지 않아요. 선생님만 펼쳐서 봐요."}
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-amber-900 mb-4 select-none">
+            <label className="mb-4 flex select-none items-center gap-2 text-sm text-white/85">
               <input
                 type="checkbox"
                 checked={isAnonymous}
                 disabled={pending || !!activeBlock || !isPublic}
                 onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="rounded border-amber-700/40 disabled:opacity-50"
+                className="rounded border-white/30 disabled:opacity-50"
               />
-              <span
-                style={{ fontFamily: HANDWRITING }}
-                className={!isPublic ? "opacity-50" : ""}
-              >
+              <span className={!isPublic ? "opacity-50" : ""}>
                 익명으로 보내기 (이름이 가려져요)
               </span>
             </label>
 
             {error && (
-              <div className="mb-3 text-sm text-rose-700 bg-rose-100 border border-rose-200 rounded-md px-3 py-2">
+              <div className="mb-3 rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200">
                 {error}
               </div>
             )}
@@ -1318,12 +1409,16 @@ export function SuggestClient({
               type="button"
               onClick={onSubmit}
               disabled={pending || !!activeBlock}
-              className="w-full py-3 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md"
-              style={{
-                fontFamily: HANDWRITING,
-                fontSize: "1.1rem",
-                letterSpacing: "0.05em",
-              }}
+              className="min-h-[48px] w-full rounded-full bg-emerald-500 py-3 text-base font-extrabold text-emerald-950 transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/40"
+              style={
+                pending || !!activeBlock
+                  ? { letterSpacing: "0.05em" }
+                  : {
+                      letterSpacing: "0.05em",
+                      boxShadow:
+                        "0 8px 24px rgba(16,185,129,0.45), 0 0 16px rgba(52,211,153,0.35)",
+                    }
+              }
             >
               {pending ? "보내는 중..." : "📮 우체통에 넣기"}
             </button>
@@ -1331,18 +1426,20 @@ export function SuggestClient({
         </div>
       )}
 
-      {/* ===== 삭제 확인 모달 ===== */}
+      {/* ===== 삭제 확인 모달 — 다크 유리 ===== */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 text-gray-900">
-            <div className="text-3xl text-center mb-2">🗑️</div>
-            <h3 className="text-base font-bold text-center mb-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
+            <div className="mb-2 text-center text-3xl" aria-hidden>
+              🗑️
+            </div>
+            <h3 className="mb-1 text-center text-base font-bold">
               쪽지를 정말 삭제할까요?
             </h3>
-            <p className="text-sm text-gray-500 text-center mb-1 break-words line-clamp-2">
+            <p className="mb-1 line-clamp-2 break-words text-center text-sm text-white/60">
               &ldquo;{confirmDelete.title}&rdquo;
             </p>
-            <p className="text-xs text-gray-400 text-center mb-4">
+            <p className="mb-4 text-center text-xs text-white/40">
               삭제하면 되돌릴 수 없어요.
             </p>
             <div className="flex gap-2">
@@ -1350,7 +1447,7 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setConfirmDelete(null)}
                 disabled={pending}
-                className="flex-1 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                className="min-h-[44px] flex-1 rounded-full border border-white/15 bg-white/[0.06] py-2.5 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 남겨두기
               </button>
@@ -1358,7 +1455,7 @@ export function SuggestClient({
                 type="button"
                 onClick={doDelete}
                 disabled={pending}
-                className="flex-1 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50"
+                className="min-h-[44px] flex-1 rounded-full bg-rose-500 py-2.5 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
               >
                 삭제하기
               </button>
@@ -1367,17 +1464,17 @@ export function SuggestClient({
         </div>
       )}
 
-      {/* ===== 차단 모달 (adminMode) ===== */}
+      {/* ===== 차단 모달 (adminMode) — 다크 유리 ===== */}
       {blockTarget && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 text-gray-900">
-            <h3 className="text-base font-bold text-gray-900 mb-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
+            <h3 className="mb-1 text-base font-bold">
               🚫 {blockTarget.name} 건의함 제한
             </h3>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="mb-4 text-xs text-white/55">
               제한 기간 동안 이 학생은 새 글을 쓸 수 없어요. (기존 글은 유지)
             </p>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="mb-1 block text-xs font-bold text-white/75">
               사유 (선택)
             </label>
             <input
@@ -1385,10 +1482,10 @@ export function SuggestClient({
               value={blockReason}
               onChange={(e) => setBlockReason(e.target.value)}
               placeholder="예: 반복적인 부적절한 표현"
-              className="w-full px-3 py-2 mb-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+              className="mb-3 w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-amber-400 focus:outline-none"
             />
-            <div className="text-xs font-medium text-gray-700 mb-2">기간</div>
-            <div className="grid grid-cols-4 gap-2 mb-5">
+            <div className="mb-2 text-xs font-bold text-white/75">기간</div>
+            <div className="mb-5 grid grid-cols-4 gap-2">
               {(
                 [
                   ["1", "1일"],
@@ -1401,11 +1498,16 @@ export function SuggestClient({
                   key={v}
                   type="button"
                   onClick={() => setBlockDuration(v)}
-                  className={`py-2 rounded-lg text-sm font-medium border transition ${
+                  className={`min-h-[40px] rounded-full border py-2 text-sm font-bold transition ${
                     blockDuration === v
-                      ? "bg-amber-500 text-white border-amber-600"
-                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                      ? "border-amber-300 bg-amber-400 text-amber-950"
+                      : "border-white/15 bg-white/[0.06] text-white/70 hover:bg-white/10"
                   }`}
+                  style={
+                    blockDuration === v
+                      ? { boxShadow: "0 0 12px rgba(245,158,11,0.4)" }
+                      : undefined
+                  }
                 >
                   {label}
                 </button>
@@ -1416,7 +1518,7 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setBlockTarget(null)}
                 disabled={pending}
-                className="flex-1 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                className="min-h-[44px] flex-1 rounded-full border border-white/15 bg-white/[0.06] py-2 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 취소
               </button>
@@ -1424,7 +1526,7 @@ export function SuggestClient({
                 type="button"
                 onClick={submitBlock}
                 disabled={pending}
-                className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50"
+                className="min-h-[44px] flex-1 rounded-full bg-rose-500 py-2 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
               >
                 제한하기
               </button>
@@ -1433,11 +1535,65 @@ export function SuggestClient({
         </div>
       )}
 
+      {/* ===== 토스트 — 다크 유리 (보상 토스트는 에메랄드 글로우 강조) ===== */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-gray-900 text-white text-sm shadow-lg border border-white/20">
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border bg-slate-900/90 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm ${
+            toast.includes("🍎") ? "border-emerald-400/60" : "border-white/20"
+          }`}
+          style={
+            toast.includes("🍎")
+              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: JUA }
+              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: JUA }
+          }
+        >
           {toast}
         </div>
       )}
     </main>
+  );
+}
+
+// ===== 프레젠테이션 보조 컴포넌트 =====
+
+// 카테고리 "우표" — 점선 테두리 사각형 + 이모지 + 라벨.
+function CategoryStamp({ category }: { category: SuggestionCategory }) {
+  const st = STAMP_META[category];
+  return (
+    <span
+      className={`flex h-12 w-11 shrink-0 flex-col items-center justify-center rounded-[3px] border-2 border-dashed ${st.border} ${st.bg} ${st.text}`}
+      style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.18)" }}
+    >
+      <span className="text-base leading-none" aria-hidden>
+        {st.emoji}
+      </span>
+      <span className="text-xs font-bold leading-tight">
+        {SUGGESTION_CATEGORY_LABELS[category]}
+      </span>
+    </span>
+  );
+}
+
+// 밤하늘 별 — GameCenterClient 의 Stars 와 동일한 패턴.
+function Stars() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 z-0 opacity-70"
+      style={{
+        backgroundImage:
+          "radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,0.7) 50%, transparent 51%)," +
+          "radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
+          "radial-gradient(1.2px 1.2px at 40% 80%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
+          "radial-gradient(1px 1px at 85% 20%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
+          "radial-gradient(1.4px 1.4px at 12% 70%, rgba(255,255,255,0.45) 50%, transparent 51%)," +
+          "radial-gradient(1px 1px at 55% 15%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
+          "radial-gradient(1.8px 1.8px at 90% 75%, rgba(255,255,255,0.4) 50%, transparent 51%)," +
+          "radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.5) 50%, transparent 51%)",
+        backgroundSize: "320px 320px",
+      }}
+    />
   );
 }
