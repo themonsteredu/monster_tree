@@ -83,6 +83,22 @@ export default async function AdminSuggestPreviewPage({
     ]);
 
   const suggestions = (suggestionRows ?? []) as GardenSuggestion[];
+
+  // 공감 카운트 일괄 조회 (학생 화면과 동일 표시 — adminMode 는 읽기전용 카운트)
+  const suggestionIds = suggestions.map((s) => s.id);
+  const reactionCounts = new Map<string, { heart: number; thumbs: number }>();
+  if (suggestionIds.length > 0) {
+    const { data: reactionRows } = await sb
+      .from("garden_suggestion_reactions")
+      .select("suggestion_id, kind")
+      .in("suggestion_id", suggestionIds);
+    for (const r of (reactionRows ?? []) as Array<{ suggestion_id: string; kind: string }>) {
+      const counts = reactionCounts.get(r.suggestion_id) ?? { heart: 0, thumbs: 0 };
+      if (r.kind === "heart") counts.heart += 1;
+      else if (r.kind === "thumbs") counts.thumbs += 1;
+      reactionCounts.set(r.suggestion_id, counts);
+    }
+  }
   const blocks = (blockRows ?? []) as SuggestionBlock[];
   const students = (studentRows ?? []) as Pick<
     GardenStudent,
@@ -122,6 +138,8 @@ export default async function AdminSuggestPreviewPage({
     created_at: s.created_at,
     updated_at: s.updated_at,
     admin_student_id: s.student_id ?? null,
+    reaction_counts: reactionCounts.get(s.id) ?? { heart: 0, thumbs: 0 },
+    my_reaction: null,
   }));
 
   const displayName = branchName ? `${branchName} 관리자` : "관리자";

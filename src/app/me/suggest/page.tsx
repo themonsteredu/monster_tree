@@ -9,7 +9,11 @@ import {
   createSupabaseServerAnonClient,
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
-import type { GardenSuggestion, SuggestionBlock } from "@/lib/types";
+import type {
+  GardenSuggestion,
+  SuggestionBlock,
+  SuggestionReactionKind,
+} from "@/lib/types";
 import { SuggestClient, type SuggestionView } from "./SuggestClient";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +39,7 @@ export default async function SuggestPage() {
     sbSvc
       .from("garden_suggestions")
       .select(
-        "id, branch_id, student_id, student_name_snapshot, is_anonymous, visibility, category, title, body, status, reply, replied_at, created_at, updated_at",
+        "id, branch_id, student_id, student_name_snapshot, is_anonymous, visibility, category, title, body, status, reply, replied_at, reply_seen, created_at, updated_at",
       )
       .eq("branch_id", payload!.branchId)
       .order("created_at", { ascending: false })
@@ -51,31 +55,63 @@ export default async function SuggestPage() {
       : Promise.resolve({ data: null } as { data: null }),
   ]);
 
-  const suggestions: SuggestionView[] = ((rows ?? []) as GardenSuggestion[]).map(
-    (s) => {
-      const isMine = !!studentId && s.student_id === studentId;
-      const visibility = s.visibility ?? "public";
-      // 비공개 글 + 남의 글이면 본문/답장/이름을 서버에서 아예 비워서 전달 (privacy).
-      // 공개 글은 익명 처리만 하고 본문은 노출 (다른 학생도 읽을 수 있음).
-      const hideContent = !isMine && visibility === "private";
-      const maskName = !isMine && s.is_anonymous;
-      return {
-        id: s.id,
-        is_mine: isMine,
-        is_anonymous: !!s.is_anonymous,
-        visibility,
-        student_name_snapshot: hideContent || maskName ? "" : s.student_name_snapshot,
-        category: s.category,
-        title: hideContent ? "" : s.title,
-        body: hideContent ? "" : s.body,
-        status: s.status,
-        reply: hideContent ? null : s.reply,
-        replied_at: hideContent ? null : s.replied_at,
-        created_at: s.created_at,
-        updated_at: s.updated_at,
-      };
-    },
-  );
+  type SuggestionRow = GardenSuggestion & { reply_seen?: boolean | null };
+  const rowList = (rows ?? []) as SuggestionRow[];
+
+  // 공감 스티커 — suggestion_id in (...) 일괄 조회 (N+1 금지).
+  const suggestionIds = rowList.map((s) => s.id);
+  let reactionRows: Array<{
+    suggestion_id: string;
+    student_id: string;
+    kind: SuggestionReactionKind;
+  }> = [];
+  if (suggestionIds.length > 0) {
+    const { data: reactions } = await sbSvc
+      .from("garden_suggestion_reactions")
+      .select("suggestion_id, student_id, kind")
+      .in("suggestion_id", suggestionIds);
+    reactionRows = (reactions ?? []) as typeof reactionRows;
+  }
+
+  const reactionCounts = new Map<string, { heart: number; thumbs: number }>();
+  const myReactions = new Map<string, SuggestionReactionKind>();
+  for (const r of reactionRows) {
+    const counts =
+      reactionCounts.get(r.suggestion_id) ?? { heart: 0, thumbs: 0 };
+    if (r.kind === "heart") counts.heart += 1;
+    else if (r.kind === "thumbs") counts.thumbs += 1;
+    reactionCounts.set(r.suggestion_id, counts);
+    if (studentId && r.student_id === studentId) {
+      myReactions.set(r.suggestion_id, r.kind);
+    }
+  }
+
+  const suggestions: SuggestionView[] = rowList.map((s) => {
+    const isMine = !!studentId && s.student_id === studentId;
+    const visibility = s.visibility ?? "public";
+    // 비공개 글 + 남의 글이면 본문/답장/이름을 서버에서 아예 비워서 전달 (privacy).
+    // 공개 글은 익명 처리만 하고 본문은 노출 (다른 학생도 읽을 수 있음).
+    const hideContent = !isMine && visibility === "private";
+    const maskName = !isMine && s.is_anonymous;
+    return {
+      id: s.id,
+      is_mine: isMine,
+      is_anonymous: !!s.is_anonymous,
+      visibility,
+      student_name_snapshot: hideContent || maskName ? "" : s.student_name_snapshot,
+      category: s.category,
+      title: hideContent ? "" : s.title,
+      body: hideContent ? "" : s.body,
+      status: s.status,
+      reply: hideContent ? null : s.reply,
+      replied_at: hideContent ? null : s.replied_at,
+      created_at: s.created_at,
+      updated_at: s.updated_at,
+      reaction_counts: reactionCounts.get(s.id) ?? { heart: 0, thumbs: 0 },
+      my_reaction: myReactions.get(s.id) ?? null,
+      reply_seen: isMine ? s.reply_seen !== false : true,
+    };
+  });
 
   let activeBlock: SuggestionBlock | null = null;
   if (block) {
