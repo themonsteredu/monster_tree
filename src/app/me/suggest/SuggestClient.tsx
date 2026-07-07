@@ -1,13 +1,10 @@
 "use client";
 
-// 학생 건의함 — "몬스터 우체국 📮".
-// 진입 기본 = 읽기 모드. 상단 탭([전체]/카테고리/[내 쪽지])으로 필터하고,
-// 쓰기는 우하단 플로팅 버튼 → 바텀시트로 진행한다.
-// 공개글은 크림색 "편지봉투" 카드 목록 → 탭하면 편지지(본문 전체 + 답장 + 공감)로 펼침.
-// 남의 비밀글은 목록에서 제거하고 상단에 "N통 전달" 요약만 표시.
-//
-// 디자인 언어: 마을(#0f172a→#064e3b 그라데이션) + 게임센터(Stars/Jua/칩/글로우)와 통일.
-// 다크 밤하늘 위에 밝은 크림 편지봉투가 떠 있는 구성.
+// 학생 건의함 — 칠판에 포스트잇을 붙이는 비주얼 (원장님 픽).
+// 진입 기본 = 읽기 모드. 칠판 위 분필 칩 탭([전체]/카테고리/[내 쪽지])으로 필터하고,
+// 쓰기는 우하단 플로팅 버튼 → 라이트 종이 바텀시트로 진행한다.
+// 공개글은 카테고리색 포스트잇 그리드 → 탭하면 종이 모달(본문 전체 + 답장 + 공감)로 펼침.
+// 남의 비밀글은 목록에서 제거하고 칠판에 "N통 전달" 요약만 표시.
 //
 // student 모드: 같은 지점 친구들과 공유. 본인 글은 수정/삭제 가능. 공감 스티커 사용.
 // previewMode: 관리자가 학생 화면을 그냥 미리보기 (제출/수정/삭제/공감 차단).
@@ -77,52 +74,44 @@ const CATEGORIES: SuggestionCategory[] = ["praise", "suggestion", "complaint", "
 const STATUSES: SuggestionStatus[] = ["received", "reviewing", "done"];
 const REACTION_KINDS: SuggestionReactionKind[] = ["heart", "thumbs"];
 
-// ===== 몬스터 우체국 프레젠테이션 상수 — 마인크래프트 픽셀 테마 =====
-// 도트 폰트(Galmuri11) + 각진 베벨 + 종이 쪽지 그리드. 로직은 이전 테마와 동일.
+// ===== 건의함 프레젠테이션 상수 — 칠판 + 포스트잇 테마 =====
+// 원목 프레임 초록 칠판 위에 분필 글씨(Gaegu), 카테고리색 포스트잇을 붙이는 비주얼.
+// (원장님 피드백으로 칠판 버전 복귀 — 공감/내쪽지/답장 등 기능은 최신 그대로)
 
-const PIXEL = "'Galmuri11','Pretendard Variable',sans-serif";
+const CHALK = "'Gaegu','Nanum Pen Script','Comic Sans MS',cursive";
 const BODY_FONT = "'Pretendard Variable','Pretendard',-apple-system,sans-serif";
 
-// 밤하늘 (시안: 남보라 → 짙은 남색 → 어두운 청록 숲).
+// 따뜻한 나무 책상 배경.
 const POSTOFFICE_BG =
- "linear-gradient(180deg, #2a2150 0%, #1a1a3d 45%, #0d2b26 100%)";
-// 종이 쪽지.
-const LETTER_BG = "#f7f1e0";
-const PAPER_BORDER = "#3d2f1e";
-// 픽셀 카드: 두꺼운 각진 테두리 + 하드 오프셋 그림자 (부드러운 blur 없음).
-const ENVELOPE_SHADOW =
- "0 5px 0 rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.6)";
-// 픽셀 베벨 (버튼/패널 공용) — 좌상단 하이라이트 + 우하단 그림자.
-const BEVEL =
- "inset 2px 2px 0 rgba(255,255,255,0.3), inset -2px -2px 0 rgba(0,0,0,0.3)";
-const BEVEL_DOWN =
- "inset -2px -2px 0 rgba(255,255,255,0.15), inset 2px 2px 0 rgba(0,0,0,0.35)";
-// 잔디 초록 (활성 탭/답장 버튼).
-const GRASS = "#5db24a";
-const GRASS_DARK = "#2c5e1f";
-// 돌/목재 톤.
-const STONE = "#3a4048";
-const STONE_DARK = "#22262d";
-const WOOD = "#6b4a2b";
-const WOOD_DARK = "#3a2812";
+  "radial-gradient(circle at 20% 0%, #f5deb3 0%, #d8a574 35%, #a06a3a 100%)";
+// 원목 프레임 / 칠판.
+const FRAME_BG =
+  "linear-gradient(135deg, #8b5a2b 0%, #5b3416 40%, #8b5a2b 100%)";
+const BOARD_BG =
+  "radial-gradient(ellipse at center, #2f5240 0%, #233f31 70%, #1c3225 100%)";
+const BOARD_INSET = "inset 0 0 60px rgba(0,0,0,0.45)";
+// 종이(상세 모달/입력칸).
+const LETTER_BG = "#fdf9ec";
+// 포스트잇 그림자.
+const ENVELOPE_SHADOW = "0 10px 20px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2)";
 const EMERALD_GLOW = "0 0 14px rgba(52,211,153,0.55)";
 
-// 카테고리 픽셀 뱃지 — 쪽지 좌상단 + 우상단 아이콘 + 쓰기/수정 시 고르기.
+// 카테고리 포스트잇 색 + 이모지 (쓰기/수정 고르기에서도 사용).
 const STAMP_META: Record<
   SuggestionCategory,
   { emoji: string; bg: string; border: string; text: string }
 > = {
-  praise: { emoji: "📣", bg: "bg-rose-100", border: "border-rose-500", text: "text-rose-800" },
-  suggestion: { emoji: "💡", bg: "bg-sky-100", border: "border-sky-500", text: "text-sky-800" },
-  complaint: { emoji: "😣", bg: "bg-violet-100", border: "border-violet-500", text: "text-violet-800" },
-  etc: { emoji: "💬", bg: "bg-amber-100", border: "border-amber-500", text: "text-amber-800" },
+  praise: { emoji: "📣", bg: "bg-rose-200", border: "border-rose-400", text: "text-rose-900" },
+  suggestion: { emoji: "💡", bg: "bg-sky-200", border: "border-sky-400", text: "text-sky-900" },
+  complaint: { emoji: "😣", bg: "bg-amber-200", border: "border-amber-400", text: "text-amber-900" },
+  etc: { emoji: "💬", bg: "bg-emerald-200", border: "border-emerald-400", text: "text-emerald-900" },
 };
 
-// 상태 칩 (종이 위 — 각진 픽셀 프레임).
+// 상태 칩 (포스트잇/종이 위).
 const STATUS_STAMP: Record<SuggestionStatus, string> = {
-  received: "bg-stone-200/90 text-stone-700 border-stone-500/60",
-  reviewing: "bg-amber-200 text-amber-900 border-amber-600/60",
-  done: "bg-emerald-200 text-emerald-900 border-emerald-700/60",
+  received: "bg-white/80 text-gray-700 border-gray-400/40",
+  reviewing: "bg-amber-100 text-amber-800 border-amber-500/40",
+  done: "bg-emerald-100 text-emerald-800 border-emerald-600/40",
 };
 
 // adminMode 상태 칩 (다크 패널 안, 활성 시).
@@ -132,20 +121,19 @@ const ADMIN_STATUS_ACTIVE: Record<SuggestionStatus, string> = {
   done: "bg-emerald-400 text-emerald-950 border-emerald-300",
 };
 
-// 종이 쪽지 접힌 모서리 (우상단) — 카드/편지 공용 오버레이.
-function FoldedCorner({ size = 18 }: { size?: number }) {
+// 포스트잇 기울기 (칠판에 손으로 붙인 느낌).
+const TILTS = ["-rotate-2", "rotate-1", "-rotate-1", "rotate-2", "rotate-0", "rotate-1"];
+function tiltFor(i: number): string {
+  return TILTS[i % TILTS.length];
+}
+
+// 포스트잇 상단 마스킹테이프 조각.
+function TapeStrip() {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute right-0 top-0"
-      style={{
-        width: 0,
-        height: 0,
-        borderStyle: "solid",
-        borderWidth: `0 ${size}px ${size}px 0`,
-        borderColor: "transparent #ddcda4 transparent transparent",
-        filter: "drop-shadow(-2px 2px 0 rgba(0,0,0,0.15))",
-      }}
+      className="pointer-events-none absolute -top-2 left-1/2 h-4 w-14 -translate-x-1/2 -rotate-2 bg-white/60"
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
     />
   );
 }
@@ -553,342 +541,277 @@ export function SuggestClient({
 
   return (
     <main
-      className="relative min-h-screen pb-32 text-white"
-      style={{ background: POSTOFFICE_BG, fontFamily: PIXEL }}
+      className="relative min-h-screen pb-28"
+      style={{ background: POSTOFFICE_BG, fontFamily: CHALK }}
     >
-      <Stars />
-
-      {/* ===== 상단: 뱃지 / 돌아가기 / 헤더 / 인트로 ===== */}
-      <div className="relative z-10 mx-auto w-full max-w-4xl px-4 pt-5">
-        {/* 관리자 모드 뱃지 — 게임센터 amber 패턴 */}
-        {adminMode && (
-          <div
-            className="mb-4 flex items-center gap-1.5 border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
-            style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
-          >
-            <span aria-hidden>🛠</span>
-            <span>관리자 모드 — 쪽지를 탭해서 답장/상태/삭제/차단</span>
-          </div>
-        )}
-        {previewMode && (
-          <div
-            className="mb-4 flex items-center gap-1.5 border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
-            style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
-          >
-            <span aria-hidden>🛠</span>
-            <span>테스트 모드 — 기록 저장 안 됨</span>
-          </div>
-        )}
-
-        {/* 돌아가기 / 이름 — 픽셀 버튼 행 */}
-        <div className="mb-4 flex items-center justify-between gap-2">
+      {/* ===== 헤더 (라이트 바) ===== */}
+      <header className="sticky top-0 z-30 border-b border-amber-200/50 bg-white/70 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
           <Link
             href={adminMode ? "/admin" : "/me/village"}
-            className="inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-white/85 transition hover:brightness-110 active:translate-y-0.5"
-            style={{
-              background: STONE,
-              border: `3px solid ${STONE_DARK}`,
-              boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
-            }}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-amber-900 transition hover:bg-amber-100/70 hover:text-amber-700"
+            style={{ fontFamily: BODY_FONT }}
           >
-            <span aria-hidden>←</span>
-            <span>{adminMode ? "관리" : "마을"}로</span>
+            ← {adminMode ? "관리" : "마을"}
           </Link>
-          <span
-            className="flex min-h-[40px] shrink-0 items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold"
-            style={{
-              background: WOOD,
-              border: `3px solid ${WOOD_DARK}`,
-              boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
-            }}
+          <h1
+            className="text-lg font-bold text-amber-900"
+            style={{ fontFamily: BODY_FONT }}
           >
-            <span className="text-yellow-300" aria-hidden>
-              👑
-            </span>
-            <span className="max-w-[7rem] truncate text-amber-50">{studentName}</span>
-          </span>
-        </div>
-
-        {/* 헤더 — 벽돌 플랫폼 위 나무 간판 */}
-        <header className="relative mb-5">
-          <div className="relative mx-auto w-fit">
-            <div
-              className="relative flex items-center gap-3 px-6 py-3.5"
-              style={{
-                background:
- "linear-gradient(180deg, #7a5533 0%, #6b4a2b 50%, #57391d 100%)",
-                border: `4px solid ${WOOD_DARK}`,
-                boxShadow: `${BEVEL}, 0 6px 0 rgba(0,0,0,0.45)`,
-              }}
+            건의함 📮
+          </h1>
+          {adminMode ? (
+            <span
+              className="ml-auto rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-bold text-rose-700"
+              style={{ fontFamily: BODY_FONT }}
             >
-              <span
-                className="shrink-0 text-3xl"
-                style={{ filter: "drop-shadow(2px 2px 0 rgba(0,0,0,0.5))" }}
-                aria-hidden
-              >
-                📮
-              </span>
-              <h1 className="whitespace-nowrap text-2xl font-extrabold tracking-tight sm:text-3xl">
-                <span
-                  style={{ color: "#7ee04e", textShadow: "2px 2px 0 #1c3a10" }}
-                >
-                  몬스터
-                </span>{" "}
-                <span style={{ color: "#f7f1e0", textShadow: "2px 2px 0 #3a2812" }}>
-                  우체국
-                </span>
-              </h1>
-            </div>
-            {/* 간판 아래 잔디+흙 플랫폼 스트립 */}
+              관리자 모드
+            </span>
+          ) : previewMode ? (
+            <span
+              className="ml-auto rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700"
+              style={{ fontFamily: BODY_FONT }}
+            >
+              🛠 테스트 모드 — 기록 저장 안 됨
+            </span>
+          ) : (
+            <span
+              className="ml-auto max-w-[8rem] truncate text-sm font-semibold text-amber-900/80"
+              style={{ fontFamily: BODY_FONT }}
+            >
+              👑 {studentName}
+            </span>
+          )}
+        </div>
+      </header>
+
+      {/* ===== 원목 프레임 + 칠판 ===== */}
+      <div className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-6">
+        <div className="rounded-2xl p-3 shadow-2xl sm:p-4" style={{ background: FRAME_BG }}>
+          <div
+            className="relative overflow-hidden rounded-xl p-4 sm:p-8"
+            style={{ background: BOARD_BG, boxShadow: BOARD_INSET }}
+          >
+            {/* 분필 텍스처 */}
             <div
-              aria-hidden
-              className="mx-auto h-3 w-[92%]"
+              className="pointer-events-none absolute inset-0 opacity-[0.08]"
               style={{
-                background:
- "repeating-linear-gradient(90deg, #5db24a 0 14px, #4d9c3c 14px 28px)",
-                borderLeft: `3px solid ${WOOD_DARK}`,
-                borderRight: `3px solid ${WOOD_DARK}`,
-                borderBottom: `3px solid ${WOOD_DARK}`,
+                backgroundImage:
+                  "repeating-linear-gradient(45deg, rgba(255,255,255,0.6) 0 1px, transparent 1px 3px)",
               }}
             />
-          </div>
-        </header>
 
-        {/* 인트로 */}
-        {!adminMode && (
-          <div className="mb-2 text-center">
-            <div
-              className="text-sm text-white/90 sm:text-base"
-              style={{ textShadow: "0 0 10px rgba(52,211,153,0.3)" }}
-            >
-              {studentName}님, 학원에 하고 싶은 말을 우체통에 넣어보세요 📮
+            {/* 칠판 제목 (분필 글씨) */}
+            <div className="relative mb-3 text-center">
+              <div
+                className="text-2xl font-extrabold tracking-wide text-white sm:text-3xl"
+                style={{
+                  textShadow:
+                    "0 0 2px rgba(255,255,255,0.4), 1px 1px 0 rgba(0,0,0,0.2)",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                ✦ 오늘의 건의함 ✦
+              </div>
+              {!adminMode && (
+                <div className="mt-1 text-sm text-white/80">
+                  {studentName}님, 학원에 하고 싶은 말이 있나요?
+                </div>
+              )}
             </div>
-            <div className="mt-0.5 text-xs text-white/60 sm:text-sm">
-              공개 쪽지는 친구들도 함께 읽어요. 마음을 담아 적어주세요 💌
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* ===== 탭 (sticky, 돌담 바) ===== */}
-      <div
-        className="sticky top-0 z-30 backdrop-blur"
-        style={{
-          background: "rgba(20,22,40,0.88)",
-          borderBottom: `3px solid ${STONE_DARK}`,
-        }}
-      >
-        <div className="mx-auto w-full max-w-4xl overflow-x-auto px-4 py-2.5">
-          <div className="flex min-w-max gap-2">
-            {TAB_ITEMS.map((t) => {
-              const active = tab === t.key;
-              const isMineTab = t.key === "mine";
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setTab(t.key)}
-                  className={`relative min-h-[40px] px-4 py-2 text-sm font-bold transition hover:brightness-110 active:translate-y-0.5 ${
-                    active ? "text-white" : "text-white/70 hover:text-white"
-                  }`}
-                  style={
-                    active
-                      ? {
-                          background: GRASS,
-                          border: `3px solid ${GRASS_DARK}`,
-                          boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
-                          textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
-                        }
-                      : {
-                          background: STONE,
-                          border: `3px solid ${STONE_DARK}`,
-                          boxShadow: `${BEVEL_DOWN}, 0 3px 0 rgba(0,0,0,0.4)`,
-                        }
-                  }
-                >
-                  {isMineTab ? "💌 내 쪽지" : t.label}
-                  {isMineTab && unreadCount > 0 && (
-                    <span
-                      className="absolute -right-1 -top-1 h-3 w-3 animate-pulse bg-rose-500"
-                      style={{ border: "2px solid #141628" }}
-                      aria-hidden
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ===== 본문 ===== */}
-      <div className="relative z-10 mx-auto w-full max-w-4xl px-4 py-5">
-        {/* 차단 안내 */}
-        {activeBlock && (
-          <div className="mb-5 border-[3px] border-rose-800 bg-rose-500/20 p-4 text-rose-100 backdrop-blur-sm">
-            <div className="mb-1 font-bold">⚠ 건의함 사용이 제한되었어요</div>
-            {activeBlock.reason && (
-              <div className="mb-1 text-sm">사유: {activeBlock.reason}</div>
+            {/* 안내문 */}
+            {!adminMode ? (
+              <div className="relative mx-auto mb-4 max-w-xl rounded-lg border border-white/25 bg-white/5 px-4 py-2 text-center">
+                <div className="text-base leading-snug text-white/90 sm:text-lg">
+                  🐣 친구들도 다 같이 보는 공간이에요!
+                </div>
+                <div className="mt-0.5 text-sm leading-snug text-white/75 sm:text-base">
+                  욕설이나 장난치는 곳이 아니에요. 마음을 담아 적어주세요 💌
+                </div>
+              </div>
+            ) : (
+              <div className="relative mx-auto mb-4 max-w-xl rounded-lg border border-rose-300/40 bg-rose-900/30 px-4 py-2 text-center text-sm text-rose-100">
+                🔧 쪽지를 탭해서 답장/상태/삭제/차단을 처리하세요.
+              </div>
             )}
-            <div className="text-xs text-rose-200/80">
-              {activeBlock.blocked_until
-                ? `해제 예정: ${formatDate(activeBlock.blocked_until)}`
-                : "영구 제한"}
-            </div>
-          </div>
-        )}
 
-        {/* 비밀 쪽지 요약 — 돌 칩 (남의 비밀글은 목록에서 제외) */}
-        {!adminMode && hiddenSecretCount > 0 && tab !== "mine" && (
-          <div
-            className="mx-auto mb-4 w-fit px-4 py-2 text-center text-sm text-white/80"
-            style={{
-              background: STONE,
-              border: `3px solid ${STONE_DARK}`,
-              boxShadow: BEVEL,
-            }}
-          >
-            🔒 비밀 쪽지 {hiddenSecretCount}통이 선생님께 전달됐어요
-          </div>
-        )}
+            {/* 차단 안내 */}
+            {activeBlock && (
+              <div className="relative mx-auto mb-4 max-w-xl rounded-lg border border-rose-300/50 bg-rose-900/40 p-3 text-center text-rose-100">
+                <div className="mb-0.5 font-bold">⚠ 건의함 사용이 제한되었어요</div>
+                {activeBlock.reason && (
+                  <div className="text-sm">사유: {activeBlock.reason}</div>
+                )}
+                <div className="text-xs text-rose-200/80">
+                  {activeBlock.blocked_until
+                    ? `해제 예정: ${formatDate(activeBlock.blocked_until)}`
+                    : "영구 제한"}
+                </div>
+              </div>
+            )}
 
-        {/* 편지봉투 목록 */}
-        {visibleSuggestions.length === 0 ? (
-          <div className="py-16 text-center text-base text-white/55">
-            {tab === "mine"
-              ? "아직 보낸 쪽지가 없어요. 첫 쪽지를 보내보세요! ✉️"
-              : adminMode
-                ? "아직 도착한 쪽지가 없어요."
-                : "아직 도착한 쪽지가 없어요. 첫 번째로 보내보세요!"}
-          </div>
-        ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {visibleSuggestions.map((s) => {
-              const isSecret = s.visibility === "private";
-              const newReply = s.is_mine && hasNewReply(s);
-              const r = getReaction(s);
-              const reactionTotal = r.counts.heart + r.counts.thumbs;
-              return (
-                <li key={s.id} className="relative">
+            {/* 탭 — 분필 칩 */}
+            <div className="relative mb-4 flex flex-wrap justify-center gap-2">
+              {TAB_ITEMS.map((t) => {
+                const active = tab === t.key;
+                const isMineTab = t.key === "mine";
+                return (
                   <button
+                    key={t.key}
                     type="button"
-                    onClick={() => setSelectedId(s.id)}
-                    className="relative flex min-h-[150px] w-full flex-col p-3 pt-3 text-left text-amber-950 transition hover:-translate-y-0.5 active:translate-y-0"
-                    style={{
-                      background: LETTER_BG,
-                      border: `3px solid ${s.is_mine ? GRASS_DARK : PAPER_BORDER}`,
-                      boxShadow: ENVELOPE_SHADOW,
-                    }}
+                    onClick={() => setTab(t.key)}
+                    className={`relative min-h-[38px] rounded-full px-4 py-1.5 text-sm transition active:scale-95 ${
+                      active
+                        ? "bg-white/90 font-bold text-emerald-900 shadow-md"
+                        : "border border-dashed border-white/40 text-white/80 hover:bg-white/10 hover:text-white"
+                    }`}
                   >
-                    <FoldedCorner />
-
-                    {/* 새 답장 도착 강조 */}
-                    {newReply && (
+                    {isMineTab ? "💌 내 쪽지" : t.label}
+                    {isMineTab && unreadCount > 0 && (
                       <span
-                        className="absolute -top-2.5 left-2 z-10 animate-pulse bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white"
-                        style={{ border: "2px solid #7f1d1d" }}
-                      >
-                        💌 답장 도착
-                      </span>
-                    )}
-
-                    {/* 1행: 카테고리 픽셀 뱃지 + 아이콘 */}
-                    <span className="mb-1.5 flex items-center justify-between gap-1 pr-4">
-                      <CategoryStamp category={s.category} />
-                      <span className="text-base leading-none" aria-hidden>
-                        {STAMP_META[s.category].emoji}
-                      </span>
-                    </span>
-
-                    {isSecret && !adminMode ? (
-                      // 내 비밀글 — 접힌 편지 연출
-                      <span className="flex flex-1 flex-col items-center justify-center gap-1 py-1">
-                        <span className="text-2xl leading-none" aria-hidden>
-                          ✉️
-                        </span>
-                        <span className="line-clamp-1 px-1 text-center text-sm font-extrabold leading-snug">
-                          {s.title || "비밀 쪽지"}
-                        </span>
-                        <span className="text-[11px] text-amber-900/60">
-                          선생님만 볼 수 있어요
-                        </span>
-                      </span>
-                    ) : (
-                      <>
-                        <span className="line-clamp-1 block break-words text-sm font-extrabold leading-snug sm:text-base">
-                          {s.title}
-                        </span>
-                        <span
-                          className="mt-1 line-clamp-2 block break-words text-[13px] leading-snug text-amber-900/75"
-                          style={{ fontFamily: BODY_FONT }}
-                        >
-                          {firstLine(s.body)}
-                        </span>
-                        <span className="flex-1" />
-                      </>
-                    )}
-
-                    {/* 상태/비밀 칩 */}
-                    <span className="mt-2 flex flex-wrap items-center gap-1">
-                      <span
-                        className={`border-2 px-1.5 py-px text-[10px] font-bold ${STATUS_STAMP[s.status]}`}
-                      >
-                        {SUGGESTION_STATUS_LABELS[s.status]}
-                      </span>
-                      {isSecret && (
-                        <span
-                          className="bg-rose-600 px-1.5 py-px text-[10px] font-bold text-white"
-                          style={{ border: "2px solid #7f1d1d" }}
-                        >
-                          🔒 비밀
-                        </span>
-                      )}
-                    </span>
-
-                    {/* 작성자 + 날짜 */}
-                    <span
-                      className="mt-1.5 flex items-end justify-between gap-1 border-t-2 border-dashed border-amber-900/20 pt-1.5 text-[11px] text-amber-900/70"
-                    >
-                      <span className="truncate">✍ {authorLabelFor(s) || "익명"}</span>
-                      <span className="shrink-0" style={{ fontFamily: BODY_FONT }}>
-                        {formatDate(s.created_at).slice(0, 10)}
-                      </span>
-                    </span>
-
-                    {/* 답장 버튼 + 공감 수 (시안 하단 행) */}
-                    {(s.reply || reactionTotal > 0) && (
-                      <span className="mt-1.5 flex items-center justify-between gap-1.5 text-[11px] font-bold">
-                        {s.reply ? (
-                          <span
-                            className="px-2 py-1 text-white"
-                            style={{
-                              background: GRASS,
-                              border: `2px solid ${GRASS_DARK}`,
-                              boxShadow: BEVEL,
-                              textShadow: "1px 1px 0 rgba(0,0,0,0.4)",
-                            }}
-                          >
-                            💚 선생님 답장
-                          </span>
-                        ) : (
-                          <span />
-                        )}
-                        <span className="flex items-center gap-1.5">
-                          {r.counts.heart > 0 && (
-                            <span className="text-rose-600">❤️ {r.counts.heart}</span>
-                          )}
-                          {r.counts.thumbs > 0 && (
-                            <span className="text-sky-700">👍 {r.counts.thumbs}</span>
-                          )}
-                        </span>
-                      </span>
+                        className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-rose-500 ring-2 ring-emerald-950"
+                        aria-hidden
+                      />
                     )}
                   </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                );
+              })}
+            </div>
+
+            {/* 비밀 쪽지 요약 (남의 비밀글은 목록에서 제외) */}
+            {!adminMode && hiddenSecretCount > 0 && tab !== "mine" && (
+              <div className="relative mx-auto mb-4 w-fit rounded-full border border-dashed border-white/30 px-4 py-1.5 text-center text-sm text-white/75">
+                🔒 비밀 쪽지 {hiddenSecretCount}통이 선생님께 전달됐어요
+              </div>
+            )}
+
+            {/* 포스트잇 그리드 */}
+            {visibleSuggestions.length === 0 ? (
+              <div className="relative py-14 text-center text-lg text-white/65">
+                {tab === "mine"
+                  ? "아직 보낸 쪽지가 없어요. 첫 쪽지를 붙여보세요! ✉️"
+                  : adminMode
+                    ? "아직 붙은 쪽지가 없어요."
+                    : "아직 붙은 쪽지가 없어요. 첫 번째로 붙여보세요!"}
+              </div>
+            ) : (
+              <ul className="relative grid grid-cols-2 gap-4 pt-2 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+                {visibleSuggestions.map((s, i) => {
+                  const isSecret = s.visibility === "private";
+                  const newReply = s.is_mine && hasNewReply(s);
+                  const r = getReaction(s);
+                  const reactionTotal = r.counts.heart + r.counts.thumbs;
+                  const col = STAMP_META[s.category];
+                  return (
+                    <li key={s.id} className={`relative ${tiltFor(i)}`}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(s.id)}
+                        className={`relative flex min-h-[150px] w-full flex-col rounded-sm p-3 pt-4 text-left transition hover:-translate-y-1 hover:rotate-0 active:scale-[0.99] ${col.bg} ${col.text} ${
+                          s.is_mine ? "ring-2 ring-white/80" : ""
+                        }`}
+                        style={{ boxShadow: ENVELOPE_SHADOW }}
+                      >
+                        <TapeStrip />
+
+                        {/* 새 답장 도착 강조 */}
+                        {newReply && (
+                          <span className="absolute -top-2.5 right-2 z-10 animate-pulse rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-md">
+                            💌 답장 도착
+                          </span>
+                        )}
+
+                        {isSecret && !adminMode ? (
+                          // 내 비밀글 — 접힌 쪽지 연출
+                          <span className="flex flex-1 flex-col items-center justify-center gap-1 py-2">
+                            <span className="text-2xl leading-none" aria-hidden>
+                              ✉️
+                            </span>
+                            <span className="line-clamp-1 px-1 text-center text-base font-bold leading-snug">
+                              {s.title || "비밀 쪽지"}
+                            </span>
+                            <span className="text-[11px] opacity-60">
+                              선생님만 볼 수 있어요
+                            </span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="line-clamp-1 block break-words text-base font-bold leading-snug sm:text-lg">
+                              {s.title}
+                            </span>
+                            <span className="mt-0.5 line-clamp-2 block break-words text-sm leading-snug opacity-80 sm:text-base">
+                              {firstLine(s.body)}
+                            </span>
+                            <span className="flex-1" />
+                          </>
+                        )}
+
+                        {/* 상태/비밀 칩 */}
+                        <span
+                          className="mt-2 flex flex-wrap items-center gap-1"
+                          style={{ fontFamily: BODY_FONT }}
+                        >
+                          <span
+                            className={`rounded-full border px-1.5 py-px text-[10px] font-bold ${STATUS_STAMP[s.status]}`}
+                          >
+                            {SUGGESTION_STATUS_LABELS[s.status]}
+                          </span>
+                          {isSecret && (
+                            <span className="rounded-full bg-rose-600 px-1.5 py-px text-[10px] font-bold text-white">
+                              🔒 비밀
+                            </span>
+                          )}
+                        </span>
+
+                        {/* 작성자 + 날짜 */}
+                        <span
+                          className="mt-1.5 flex items-end justify-between gap-1 text-[11px] opacity-70"
+                          style={{ fontFamily: BODY_FONT }}
+                        >
+                          <span className="truncate">
+                            ✍ {authorLabelFor(s) || "익명"}
+                          </span>
+                          <span className="shrink-0">
+                            {formatDate(s.created_at).slice(0, 10)}
+                          </span>
+                        </span>
+
+                        {/* 답장 + 공감 수 */}
+                        {(s.reply || reactionTotal > 0) && (
+                          <span
+                            className="mt-1.5 flex items-center justify-between gap-1.5 text-[11px] font-bold"
+                            style={{ fontFamily: BODY_FONT }}
+                          >
+                            {s.reply ? (
+                              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white shadow-sm">
+                                💌 선생님 답장
+                              </span>
+                            ) : (
+                              <span />
+                            )}
+                            <span className="flex items-center gap-1.5">
+                              {r.counts.heart > 0 && (
+                                <span className="text-rose-700">
+                                  ❤️ {r.counts.heart}
+                                </span>
+                              )}
+                              {r.counts.thumbs > 0 && (
+                                <span className="text-sky-800">
+                                  👍 {r.counts.thumbs}
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ===== 쪽지 쓰기 플로팅 버튼 ===== */}
@@ -903,13 +826,9 @@ export function SuggestClient({
               }
               setWriteOpen(true);
             }}
-            className="inline-flex min-h-[52px] items-center gap-2 px-6 py-3.5 text-base font-extrabold text-white transition hover:brightness-110 active:translate-y-0.5"
+            className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-emerald-600 px-6 py-3.5 text-base font-extrabold text-white transition hover:bg-emerald-500 active:scale-95"
             style={{
-              background: GRASS,
-              border: `3px solid ${GRASS_DARK}`,
-              boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45), ${EMERALD_GLOW}`,
-              textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
-              fontFamily: PIXEL,
+              boxShadow: `0 8px 24px rgba(0,0,0,0.35), ${EMERALD_GLOW}`,
             }}
           >
             ✉️ 쪽지 쓰기
@@ -917,35 +836,13 @@ export function SuggestClient({
         </div>
       )}
 
-      {/* ===== 하단 나무 현판 ===== */}
-      <div className="relative z-10 mx-auto mt-8 w-full max-w-4xl px-4 pb-2">
-        <div
-          className="mx-auto flex w-fit items-center gap-2.5 px-5 py-3 text-center text-xs text-amber-100 sm:text-sm"
-          style={{
-            background:
- "linear-gradient(180deg, #7a5533 0%, #6b4a2b 50%, #57391d 100%)",
-            border: `3px solid ${WOOD_DARK}`,
-            boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.4)`,
-          }}
-        >
-          <span aria-hidden>✉️</span>
-          <span style={{ textShadow: "1px 1px 0 rgba(0,0,0,0.5)" }}>
-            여러분의 소중한 의견이 더 좋은 몬스터마을을 만듭니다!
-          </span>
-        </div>
-      </div>
-
       {/* 리스트형 관리 페이지로 가는 floating 링크 — preview / admin 양쪽에서 노출 */}
       {(previewMode || adminMode) && adminLink && (
         <div className={`fixed bottom-6 z-40 ${adminMode ? "right-5" : "left-5"}`}>
           <Link
             href={adminLink}
-            className="inline-flex min-h-[44px] items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:brightness-110 active:translate-y-0.5"
-            style={{
-              background: STONE,
-              border: `3px solid ${STONE_DARK}`,
-              boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45)`,
-            }}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-gray-900 px-4 py-3 text-sm font-bold text-white shadow-2xl transition hover:bg-gray-800"
+            style={{ fontFamily: BODY_FONT }}
           >
             <span>리스트 관리</span>
             <span aria-hidden>→</span>
@@ -974,27 +871,20 @@ export function SuggestClient({
               onClick={closeDetail}
             >
               <div
-                className="relative my-auto w-full max-w-md p-5 text-amber-950"
+                className="relative my-auto w-full max-w-md rounded-xl p-5 text-amber-950"
                 style={{
                   background: LETTER_BG,
-                  border: `4px solid ${PAPER_BORDER}`,
-                  boxShadow: "0 8px 0 rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.6)",
+                  boxShadow:
+                    "0 24px 60px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.6) inset",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <FoldedCorner size={26} />
-
-                {/* 닫기 — 픽셀 버튼 */}
+                {/* 닫기 */}
                 <button
                   type="button"
                   onClick={closeDetail}
                   aria-label="닫기"
-                  className="absolute -right-2.5 -top-3.5 z-10 flex h-9 w-9 items-center justify-center text-sm font-bold text-white transition hover:brightness-110 active:translate-y-0.5"
-                  style={{
-                    background: "#b03030",
-                    border: "3px solid #5e1414",
-                    boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
-                  }}
+                  className="absolute -right-2 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 text-sm font-bold text-white shadow-lg transition hover:bg-gray-800 active:scale-95"
                 >
                   ✕
                 </button>
@@ -1355,45 +1245,40 @@ export function SuggestClient({
           );
         })()}
 
-      {/* ===== 쪽지 쓰기 바텀시트 — 다크 유리 + 크림 편지지 입력 ===== */}
+      {/* ===== 쪽지 쓰기 바텀시트 — 포스트잇 작성 (라이트 종이) ===== */}
       {writeOpen && (
         <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setWriteOpen(false)}
         >
           <div
-            className="max-h-[88dvh] w-full max-w-md overflow-y-auto bg-slate-900/95 p-5 pb-8 text-white backdrop-blur"
+            className="max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl p-5 pb-8 text-amber-950"
             style={{
-              borderTop: `4px solid ${WOOD_DARK}`,
-              borderLeft: `4px solid ${WOOD_DARK}`,
-              borderRight: `4px solid ${WOOD_DARK}`,
-              boxShadow: `${BEVEL}, 0 -16px 48px rgba(0,0,0,0.6)`,
+              background: LETTER_BG,
+              boxShadow: "0 -16px 48px rgba(0,0,0,0.45)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 그립바 */}
-            <div className="mx-auto mb-3 h-1.5 w-12 bg-white/20" />
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-amber-900/20" />
             <div className="mb-4 flex items-center justify-between">
-              <div
-                className="text-lg font-extrabold"
-                style={{ textShadow: "0 0 12px rgba(52,211,153,0.35)" }}
-              >
+              <div className="text-xl font-extrabold text-amber-900">
                 ✉️ 쪽지 쓰기
               </div>
               <button
                 type="button"
                 onClick={() => setWriteOpen(false)}
                 aria-label="닫기"
-                className="flex h-9 w-9 items-center justify-center border border-white/15 bg-white/10 text-sm font-bold text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-900/10 text-sm font-bold text-amber-900 transition hover:bg-amber-900/20"
               >
                 ✕
               </button>
             </div>
 
-            {/* 카테고리 = 우표 고르기 */}
+            {/* 카테고리 = 포스트잇 색 고르기 */}
             <div className="mb-4">
-              <div className="mb-2 text-sm font-bold text-white/85">
-                어떤 이야기인가요? 우표를 골라요
+              <div className="mb-2 text-sm font-bold text-amber-900/85">
+                어떤 이야기인가요? 쪽지 색을 골라요
               </div>
               <div className="grid grid-cols-4 gap-2">
                 {CATEGORIES.map((c) => {
@@ -1429,7 +1314,7 @@ export function SuggestClient({
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-sm font-bold text-white/85">
+              <label className="mb-1 block text-sm font-bold text-amber-900/85">
                 제목
               </label>
               <input
@@ -1439,20 +1324,16 @@ export function SuggestClient({
                 disabled={pending || !!activeBlock}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="짧게 한 줄로!"
-                className="w-full px-3 py-2.5 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
-                style={{
-                  fontSize: "1.05rem",
-                  background: LETTER_BG,
-                  border: `3px solid ${PAPER_BORDER}`,
-                }}
+                className="w-full rounded-lg border-2 border-amber-900/20 bg-white px-3 py-2.5 text-amber-950 placeholder:text-amber-900/40 focus:border-amber-700 focus:outline-none disabled:opacity-60"
+                style={{ fontSize: "1.05rem" }}
               />
-              <div className="mt-0.5 text-right text-xs text-white/50">
+              <div className="mt-0.5 text-right text-xs text-amber-900/50">
                 {title.length}/{SUGGESTION_TITLE_MAX}
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-sm font-bold text-white/85">
+              <label className="mb-1 block text-sm font-bold text-amber-900/85">
                 내용
               </label>
               <textarea
@@ -1462,23 +1343,21 @@ export function SuggestClient({
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="자세한 이야기를 적어주세요"
                 rows={6}
-                className="w-full resize-none px-3 py-2 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
+                className="w-full resize-none rounded-lg border-2 border-amber-900/20 bg-white px-3 py-2 text-amber-950 placeholder:text-amber-900/40 focus:border-amber-700 focus:outline-none disabled:opacity-60"
                 style={{
                   fontFamily: BODY_FONT,
                   fontSize: "1rem",
                   lineHeight: "1.7rem",
-                  background: LETTER_BG,
-                  border: `3px solid ${PAPER_BORDER}`,
                 }}
               />
-              <div className="mt-0.5 text-right text-xs text-white/50">
+              <div className="mt-0.5 text-right text-xs text-amber-900/50">
                 {body.length}/{SUGGESTION_BODY_MAX}
               </div>
             </div>
 
             {/* 공개 / 비공개 토글 */}
-            <div className="mb-3 border border-white/10 bg-white/[0.04] p-3">
-              <div className="mb-2 text-sm font-bold text-white/85">
+            <div className="mb-3 rounded-lg border border-amber-900/15 bg-white/50 p-3">
+              <div className="mb-2 text-sm font-bold text-amber-900/85">
                 누가 볼 수 있어요?
               </div>
               <div className="flex gap-2">
@@ -1486,12 +1365,11 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(true)}
-                  className={`min-h-[44px] flex-1 border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
+                  className={`min-h-[44px] flex-1 rounded-lg border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     isPublic
-                      ? "border-emerald-400 bg-emerald-500/25 font-bold text-emerald-100"
-                      : "border-white/15 bg-white/[0.06] text-white/55"
+                      ? "border-emerald-600 bg-emerald-100 font-bold text-emerald-900"
+                      : "border-amber-900/20 bg-white/60 text-amber-900/60"
                   }`}
-                  style={isPublic ? { boxShadow: EMERALD_GLOW } : undefined}
                 >
                   👀 친구들도 보기
                 </button>
@@ -1499,34 +1377,29 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(false)}
-                  className={`min-h-[44px] flex-1 border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
+                  className={`min-h-[44px] flex-1 rounded-lg border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     !isPublic
-                      ? "border-rose-400 bg-rose-500/25 font-bold text-rose-100"
-                      : "border-white/15 bg-white/[0.06] text-white/55"
+                      ? "border-rose-500 bg-rose-100 font-bold text-rose-900"
+                      : "border-amber-900/20 bg-white/60 text-amber-900/60"
                   }`}
-                  style={
-                    !isPublic
-                      ? { boxShadow: "0 0 14px rgba(244,63,94,0.45)" }
-                      : undefined
-                  }
                 >
                   🔒 선생님만 (비밀)
                 </button>
               </div>
-              <div className="mt-1.5 text-xs text-white/55">
+              <div className="mt-1.5 text-xs text-amber-900/60">
                 {isPublic
-                  ? "친구들이 우체통에서 같이 읽을 수 있어요."
+                  ? "친구들이 칠판에서 같이 읽을 수 있어요."
                   : "다른 친구들에게는 보이지 않아요. 선생님만 펼쳐서 봐요."}
               </div>
             </div>
 
-            <label className="mb-4 flex select-none items-center gap-2 text-sm text-white/85">
+            <label className="mb-4 flex select-none items-center gap-2 text-sm text-amber-900/85">
               <input
                 type="checkbox"
                 checked={isAnonymous}
                 disabled={pending || !!activeBlock || !isPublic}
                 onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="rounded border-white/30 disabled:opacity-50"
+                className="rounded border-amber-900/30 disabled:opacity-50"
               />
               <span className={!isPublic ? "opacity-50" : ""}>
                 익명으로 보내기 (이름이 가려져요)
@@ -1534,7 +1407,7 @@ export function SuggestClient({
             </label>
 
             {error && (
-              <div className="mb-3 border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200">
+              <div className="mb-3 rounded-lg border border-rose-300 bg-rose-100 px-3 py-2 text-sm text-rose-700">
                 {error}
               </div>
             )}
@@ -1543,16 +1416,10 @@ export function SuggestClient({
               type="button"
               onClick={onSubmit}
               disabled={pending || !!activeBlock}
-              className="min-h-[48px] w-full py-3 text-base font-extrabold text-white transition hover:brightness-110 active:translate-y-0.5 disabled:cursor-not-allowed disabled:brightness-50"
-              style={{
-                letterSpacing: "0.05em",
-                background: GRASS,
-                border: `3px solid ${GRASS_DARK}`,
-                boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45)`,
-                textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
-              }}
+              className="min-h-[48px] w-full rounded-full bg-emerald-600 py-3 text-base font-extrabold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-amber-900/20 disabled:text-amber-900/40"
+              style={{ letterSpacing: "0.05em" }}
             >
-              {pending ? "보내는 중..." : "📮 우체통에 넣기"}
+              {pending ? "붙이는 중..." : "📌 칠판에 붙이기"}
             </button>
           </div>
         </div>
@@ -1677,8 +1544,8 @@ export function SuggestClient({
           }`}
           style={
             toast.includes("🍎")
-              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: PIXEL }
-              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: PIXEL }
+              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: CHALK }
+              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: CHALK }
           }
         >
           {toast}
@@ -1696,31 +1563,10 @@ function CategoryStamp({ category }: { category: SuggestionCategory }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center border-2 px-1.5 py-px text-[11px] font-bold leading-tight ${st.border} ${st.bg} ${st.text}`}
-      style={{ boxShadow: "1px 1px 0 rgba(0,0,0,0.25)", fontFamily: PIXEL }}
+      style={{ boxShadow: "1px 1px 0 rgba(0,0,0,0.25)", fontFamily: CHALK }}
     >
       {SUGGESTION_CATEGORY_LABELS[category]}
     </span>
   );
 }
 
-// 밤하늘 별 — GameCenterClient 의 Stars 와 동일한 패턴.
-function Stars() {
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 z-0 opacity-70"
-      style={{
-        backgroundImage:
- "radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,0.7) 50%, transparent 51%)," +
- "radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
- "radial-gradient(1.2px 1.2px at 40% 80%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
- "radial-gradient(1px 1px at 85% 20%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
- "radial-gradient(1.4px 1.4px at 12% 70%, rgba(255,255,255,0.45) 50%, transparent 51%)," +
- "radial-gradient(1px 1px at 55% 15%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
- "radial-gradient(1.8px 1.8px at 90% 75%, rgba(255,255,255,0.4) 50%, transparent 51%)," +
- "radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.5) 50%, transparent 51%)",
-        backgroundSize: "320px 320px",
-      }}
-    />
-  );
-}
