@@ -619,3 +619,69 @@ export type ShopRequest = {
   approved_at: string | null;
   updated_at: string;
 };
+
+// 상점 오픈 기간 설정 (0047, 지점별 1행).
+//   always: 항상 열림 (행이 없어도 동일 — 하위 호환)
+//   window: open_from ~ open_until 사이에만 신청 가능
+//   closed: 닫힘
+export type ShopOpenMode = "always" | "window" | "closed";
+
+export type ShopSettings = {
+  branch_id: string;
+  mode: ShopOpenMode;
+  open_from: string | null;
+  open_until: string | null;
+  updated_at: string;
+};
+
+// 현재 시각 기준 상점 열림 판정 — 서버(page/action)와 클라이언트가 공유.
+//   reason: always(설정 없음/항상) · window(기간 중) · before(오픈 전)
+//           · after(기간 종료) · closed(닫힘)
+export type ShopOpenState = {
+  open: boolean;
+  reason: "always" | "window" | "before" | "after" | "closed";
+  from: string | null;
+  until: string | null;
+};
+
+export function shopOpenState(
+  settings: Pick<ShopSettings, "mode" | "open_from" | "open_until"> | null,
+  now: Date = new Date(),
+): ShopOpenState {
+  if (!settings || settings.mode === "always") {
+    return { open: true, reason: "always", from: null, until: null };
+  }
+  if (settings.mode === "closed") {
+    return { open: false, reason: "closed", from: null, until: null };
+  }
+  // mode === 'window' — 경계 값이 비어 있으면 그 방향은 제한 없음으로 본다.
+  const from = settings.open_from ? new Date(settings.open_from) : null;
+  const until = settings.open_until ? new Date(settings.open_until) : null;
+  if (from && now < from) {
+    return { open: false, reason: "before", from: settings.open_from, until: settings.open_until };
+  }
+  if (until && now > until) {
+    return { open: false, reason: "after", from: settings.open_from, until: settings.open_until };
+  }
+  return { open: true, reason: "window", from: settings.open_from, until: settings.open_until };
+}
+
+// 알림/배너 문구용 KST 짧은 날짜 ("7/13(일) 18:00"). 자정 정각이면 시간 생략.
+export function kstShortDateTime(iso: string): string {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const hh = get("hour");
+  const mm = get("minute");
+  const base = `${get("month")}/${get("day")}(${get("weekday").replace("요일", "")})`;
+  if (hh === "00" && mm === "00") return base;
+  return `${base} ${hh}:${mm}`;
+}

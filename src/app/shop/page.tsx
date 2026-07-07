@@ -11,6 +11,8 @@ import { redirect } from "next/navigation";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../admin/auth";
+import { getAdminBranchId } from "@/lib/branch";
+import { loadShopOpenState } from "@/lib/shop-settings";
 import type { ShopRequest } from "@/lib/types";
 import { ShopClient } from "./ShopClient";
 
@@ -55,12 +57,18 @@ export default async function ShopPage() {
     }
   }
 
+  // 오픈 기간 판정 — 학생은 본인 지점, 관리자 테스트 모드는 선택된 관리 지점 기준.
+  const openInfo = await loadShopOpenState(
+    payload?.branchId ?? getAdminBranchId() ?? null,
+  );
+
   return (
     <ShopClient
       studentName={studentName}
       adminMode={!payload && adminAuthed}
       balance={balance}
       initialRequests={requests}
+      openInfo={openInfo}
     />
   );
 }

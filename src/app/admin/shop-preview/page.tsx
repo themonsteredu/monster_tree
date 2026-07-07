@@ -6,6 +6,7 @@ import Link from "next/link";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
 import { getAdminBranchId } from "@/lib/branch";
+import { loadShopOpenState } from "@/lib/shop-settings";
 import { ShopClient } from "../../shop/ShopClient";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function AdminShopPreviewPage({
   }
 
   const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const openInfo = await loadShopOpenState(branchId);
   const adminLink = branchId
     ? `/admin/shop?branch=${encodeURIComponent(branchId)}`
     : "/admin/shop";
@@ -46,7 +48,13 @@ export default async function AdminShopPreviewPage({
         </div>
       </div>
 
-      <ShopClient studentName={null} adminMode balance={0} initialRequests={[]} />
+      <ShopClient
+        studentName={null}
+        adminMode
+        balance={0}
+        initialRequests={[]}
+        openInfo={openInfo}
+      />
     </div>
   );
 }
