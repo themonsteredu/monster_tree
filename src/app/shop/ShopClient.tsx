@@ -9,7 +9,9 @@ import { useRouter } from "next/navigation";
 import {
   POINT_TO_WON,
   SHOP_STATUS_LABEL,
+  kstShortDateTime,
   wonToPoints,
+  type ShopOpenState,
   type ShopRequest,
   type ShopRequestStatus,
 } from "@/lib/types";
@@ -28,11 +30,13 @@ export function ShopClient({
   adminMode,
   balance,
   initialRequests,
+  openInfo,
 }: {
   studentName: string | null;
   adminMode: boolean;
   balance: number;
   initialRequests: ShopRequest[];
+  openInfo: ShopOpenState;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -67,6 +71,11 @@ export function ShopClient({
   function handleSubmit() {
     setError(null);
     setDone(null);
+    // 닫힘 상태 가드 — 테스트 모드는 통과(로컬 확인용), 실제 저장은 서버에서 재검증.
+    if (!openInfo.open && !adminMode) {
+      setError("지금은 상점이 닫혀 있어서 신청할 수 없어요.");
+      return;
+    }
     if (!/^https?:\/\//i.test(url.trim())) {
       setError("사고 싶은 물건의 링크를 http:// 또는 https:// 로 넣어주세요.");
       return;
@@ -146,7 +155,33 @@ export function ShopClient({
           학원으로 받아 전달해 줘요. <b className="text-amber-700">1P = {POINT_TO_WON}원</b>
         </p>
 
-        {/* 신청 폼 */}
+        {/* 오픈 기간 안내 — 닫힘 배너 / 마감 임박 칩 */}
+        {!openInfo.open ? (
+          <div className="mb-5 bg-white rounded-2xl border-2 border-dashed border-gray-300 p-5 text-center">
+            <div className="text-3xl mb-1.5">🔒</div>
+            <p className="text-sm font-bold text-gray-700 mb-1">
+              지금은 상점이 닫혀 있어요
+            </p>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              {openInfo.reason === "before" && openInfo.from
+                ? `${kstShortDateTime(openInfo.from)}에 열려요!${openInfo.until ? ` (${kstShortDateTime(openInfo.until)}까지)` : ""}`
+                : "다음 오픈 소식을 기다려주세요!"}
+            </p>
+          </div>
+        ) : (
+          openInfo.reason === "window" &&
+          openInfo.until && (
+            <div className="mb-4 flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-3 py-2 text-sm">
+              <span>⏰</span>
+              <span className="font-bold">
+                {kstShortDateTime(openInfo.until)}까지 신청할 수 있어요!
+              </span>
+            </div>
+          )
+        )}
+
+        {/* 신청 폼 — 닫힘 상태에서는 숨김 (테스트 모드는 로컬 확인용으로 유지) */}
+        {(openInfo.open || adminMode) && (
         <div className="bg-white rounded-2xl border border-amber-100 shadow-sm p-4 mb-5">
           <label className="block text-xs font-bold text-gray-500 mb-1">
             사고 싶은 물건 링크
@@ -222,6 +257,7 @@ export function ShopClient({
             신청해도 바로 차감되지 않아요. 원장님이 승인할 때 포인트가 빠져요.
           </p>
         </div>
+        )}
 
         {/* 내 신청 내역 */}
         <h2 className="text-base font-bold text-gray-800 mb-2">내 신청 내역</h2>

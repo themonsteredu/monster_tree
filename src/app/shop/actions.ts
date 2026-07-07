@@ -10,7 +10,8 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { isAdminAuthenticated } from "../admin/auth";
-import { wonToPoints } from "@/lib/types";
+import { loadShopOpenState } from "@/lib/shop-settings";
+import { kstShortDateTime, wonToPoints } from "@/lib/types";
 
 type StudentCtx = { studentId: string; branchId: string; name: string };
 
@@ -46,6 +47,18 @@ export async function submitShopRequestAction(args: {
 
   const ctx = await getStudentCtx();
   if (!ctx) return { ok: false, message: "로그인이 필요해요." };
+
+  // 오픈 기간 서버 재검증 — 화면 우회(오래 열어둔 탭 등) 방지.
+  const openInfo = await loadShopOpenState(ctx.branchId);
+  if (!openInfo.open) {
+    return {
+      ok: false,
+      message:
+        openInfo.reason === "before" && openInfo.from
+          ? `아직 상점이 안 열렸어요. ${kstShortDateTime(openInfo.from)}에 다시 와주세요!`
+          : "지금은 상점이 닫혀 있어서 신청할 수 없어요.",
+    };
+  }
 
   const url = (args.productUrl ?? "").trim();
   if (!url) return { ok: false, message: "사고 싶은 물건의 링크를 넣어주세요." };

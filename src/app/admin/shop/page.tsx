@@ -6,8 +6,10 @@ import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
 import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { loadShopSettings } from "@/lib/shop-settings";
 import type { ShopRequest } from "@/lib/types";
 import { ShopAdminClient, type ShopRequestRow } from "./ShopAdminClient";
+import { ShopSettingsCard } from "./ShopSettingsCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -55,6 +57,8 @@ export default async function ShopAdminPage({
     student_balance: balanceById.get(r.student_id) ?? 0,
   }));
 
+  const shopSettings = await loadShopSettings(branchId);
+
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="sticky top-0 z-40 bg-white border-b border-gray-100">
@@ -75,6 +79,9 @@ export default async function ShopAdminPage({
           </Link>
         </div>
       </div>
+
+      {/* 오픈 기간 설정 + 오픈 공지 — 지점 미선택이면 저장 시 액션이 안내 */}
+      <ShopSettingsCard initialSettings={shopSettings} />
 
       <ShopAdminClient initialRows={rows} />
     </main>

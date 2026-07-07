@@ -31,6 +31,54 @@ type SubscriptionRow = {
   keys: { p256dh?: string; auth?: string } | null;
 };
 
+type PushPayload = { title: string; body: string; url: string };
+
+// 구독 목록에 실제 발송 — 성공 수/도달 학생/만료 구독 정리까지 공통 처리.
+// payloadFor 가 null 을 반환하면 그 구독은 건너뛴다.
+async function deliverToSubscriptions(
+  sb: ReturnType<typeof createSupabaseServiceClient>,
+  subRows: SubscriptionRow[],
+  payloadFor: (studentId: string) => PushPayload | null,
+): Promise<{ sent: number; cleaned: number; reachedStudents: Set<string> }> {
+  const vapidDetails = {
+    subject: "https://www.themonster.kr",
+    publicKey: process.env.VAPID_PUBLIC_KEY as string,
+    privateKey: process.env.VAPID_PRIVATE_KEY as string,
+  };
+
+  let sent = 0;
+  const staleIds: string[] = [];
+  const reachedStudents = new Set<string>();
+
+  await Promise.all(
+    subRows.map(async (sub) => {
+      const payload = payloadFor(sub.student_id);
+      if (!payload || !sub.keys?.p256dh || !sub.keys?.auth) return;
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+          },
+          JSON.stringify(payload),
+          { vapidDetails, TTL: 12 * 3600 },
+        );
+        sent += 1;
+        reachedStudents.add(sub.student_id);
+      } catch (e) {
+        const status = (e as { statusCode?: number })?.statusCode;
+        if (status === 404 || status === 410) staleIds.push(sub.id);
+        // 그 외 실패(일시 네트워크 등)는 구독 유지하고 넘어간다.
+      }
+    }),
+  );
+
+  if (staleIds.length > 0) {
+    await sb.from("garden_push_subscriptions").delete().in("id", staleIds);
+  }
+  return { sent, cleaned: staleIds.length, reachedStudents };
+}
+
 // 미수령(garden_pending_points) 학생들의 구독 기기로 리마인더 발송.
 // branchId 를 주면 그 지점 학생만 (admin 버튼), 없으면 전 지점 (cron).
 export async function sendPendingPointsPushes(opts: {
@@ -113,57 +161,99 @@ export async function sendPendingPointsPushes(opts: {
   }
 
   // 3) 발송. 410 Gone / 404 는 만료된 구독 → 삭제.
-  const vapidDetails = {
-    subject: "https://www.themonster.kr",
-    publicKey: process.env.VAPID_PUBLIC_KEY as string,
-    privateKey: process.env.VAPID_PRIVATE_KEY as string,
-  };
-
-  let sent = 0;
-  const staleIds: string[] = [];
-  const reachedStudents = new Set<string>();
-
-  await Promise.all(
-    subRows.map(async (sub) => {
-      const info = byStudent.get(sub.student_id);
-      if (!info || !sub.keys?.p256dh || !sub.keys?.auth) return;
-      const payload = JSON.stringify({
+  const { sent, cleaned, reachedStudents } = await deliverToSubscriptions(
+    sb,
+    subRows,
+    (studentId) => {
+      const info = byStudent.get(studentId);
+      if (!info) return null;
+      return {
         title: "🍎 사과정원",
         body: `${info.name}님, 받지 않은 포인트 선물이 ${info.count}개 기다리고 있어요! 받기 버튼을 눌러주세요 🍏`,
         url: "/tree/me",
-      });
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-          },
-          payload,
-          { vapidDetails, TTL: 12 * 3600 },
-        );
-        sent += 1;
-        reachedStudents.add(sub.student_id);
-      } catch (e) {
-        const status = (e as { statusCode?: number })?.statusCode;
-        if (status === 404 || status === 410) staleIds.push(sub.id);
-        // 그 외 실패(일시 네트워크 등)는 구독 유지하고 넘어간다.
-      }
-    }),
+      };
+    },
   );
-
-  if (staleIds.length > 0) {
-    await sb.from("garden_push_subscriptions").delete().in("id", staleIds);
-  }
 
   return {
     ok: true,
     message:
       sent > 0
         ? `학생 ${reachedStudents.size}명에게 알림 ${sent}건을 보냈어요.` +
-          (staleIds.length > 0 ? ` (만료 구독 ${staleIds.length}개 정리)` : "")
+          (cleaned > 0 ? ` (만료 구독 ${cleaned}개 정리)` : "")
         : "보낼 수 있는 구독이 없었어요. (학생이 알림을 켰는지 확인해주세요)",
     students: reachedStudents.size,
     sent,
-    cleaned: staleIds.length,
+    cleaned,
+  };
+}
+
+// 공지형 발송 — 구독한 학생 전원(또는 지점 학생 전원)에게 같은 메시지.
+// 상점 오픈 공지 등에 사용. url 은 basePath 포함 절대경로 (예: '/tree/shop').
+export async function sendAnnouncementPushes(opts: {
+  branchId?: string;
+  title: string;
+  body: string;
+  url: string;
+}): Promise<PushSendResult> {
+  if (!isPushConfigured()) {
+    return {
+      ok: false,
+      message:
+        "알림 키(VAPID)가 아직 설정되지 않았어요. Vercel 환경변수 설정 후 사용할 수 있어요.",
+      students: 0,
+      sent: 0,
+      cleaned: 0,
+    };
+  }
+
+  const sb = createSupabaseServiceClient();
+
+  // 구독 전체 조회 (+지점 필터는 학생 조인으로).
+  const { data: subs, error: subsError } = await sb
+    .from("garden_push_subscriptions")
+    .select("id, student_id, endpoint, keys, garden_students!inner(id, branch_id)");
+  if (subsError) {
+    return {
+      ok: false,
+      message: `구독 조회 실패: ${subsError.message}`,
+      students: 0,
+      sent: 0,
+      cleaned: 0,
+    };
+  }
+
+  const subRows = ((subs ?? []) as unknown as Array<
+    SubscriptionRow & { garden_students: { id: string; branch_id: string } | null }
+  >).filter(
+    (s) => !opts.branchId || s.garden_students?.branch_id === opts.branchId,
+  );
+
+  if (subRows.length === 0) {
+    return {
+      ok: true,
+      message: "알림을 켠 학생이 아직 없어요.",
+      students: 0,
+      sent: 0,
+      cleaned: 0,
+    };
+  }
+
+  const { sent, cleaned, reachedStudents } = await deliverToSubscriptions(
+    sb,
+    subRows,
+    () => ({ title: opts.title, body: opts.body, url: opts.url }),
+  );
+
+  return {
+    ok: true,
+    message:
+      sent > 0
+        ? `학생 ${reachedStudents.size}명에게 공지 ${sent}건을 보냈어요.` +
+          (cleaned > 0 ? ` (만료 구독 ${cleaned}개 정리)` : "")
+        : "보낼 수 있는 구독이 없었어요. (학생이 알림을 켰는지 확인해주세요)",
+    students: reachedStudents.size,
+    sent,
+    cleaned,
   };
 }
