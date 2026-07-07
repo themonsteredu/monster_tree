@@ -77,56 +77,77 @@ const CATEGORIES: SuggestionCategory[] = ["praise", "suggestion", "complaint", "
 const STATUSES: SuggestionStatus[] = ["received", "reviewing", "done"];
 const REACTION_KINDS: SuggestionReactionKind[] = ["heart", "thumbs"];
 
-// ===== 몬스터 우체국 프레젠테이션 상수 =====
+// ===== 몬스터 우체국 프레젠테이션 상수 — 마인크래프트 픽셀 테마 =====
+// 도트 폰트(Galmuri11) + 각진 베벨 + 종이 쪽지 그리드. 로직은 이전 테마와 동일.
 
-const JUA = "'Jua','Pretendard Variable',sans-serif";
-// 손글씨는 편지 본문에만 사용 (헤더/칩/버튼은 Jua).
-const HANDWRITING = "'Gaegu','Nanum Pen Script','Comic Sans MS',cursive";
+const PIXEL = "'Galmuri11','Pretendard Variable',sans-serif";
+const BODY_FONT = "'Pretendard Variable','Pretendard',-apple-system,sans-serif";
 
-// 마을(VillageClient)과 동일한 밤하늘 그라데이션.
-const POSTOFFICE_BG = "linear-gradient(180deg, #0f172a 0%, #064e3b 100%)";
-// 밝은 크림 편지봉투 / 편지지.
-const ENVELOPE_BG = "linear-gradient(180deg, #fdf6e3 0%, #f6ead0 100%)";
-const LETTER_BG = "#fdf6e3";
+// 밤하늘 (시안: 남보라 → 짙은 남색 → 어두운 청록 숲).
+const POSTOFFICE_BG =
+ "linear-gradient(180deg, #2a2150 0%, #1a1a3d 45%, #0d2b26 100%)";
+// 종이 쪽지.
+const LETTER_BG = "#f7f1e0";
+const PAPER_BORDER = "#3d2f1e";
+// 픽셀 카드: 두꺼운 각진 테두리 + 하드 오프셋 그림자 (부드러운 blur 없음).
 const ENVELOPE_SHADOW =
-  "0 12px 28px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.65) inset";
-// 봉투 상단의 에어메일(빨강/파랑 빗금) 테두리.
-const AIRMAIL_EDGE =
-  "repeating-linear-gradient(-45deg, #dc2626 0 8px, transparent 8px 16px, #2563eb 16px 24px, transparent 24px 32px)";
-// 편지지 줄노트 (line-height 1.9rem 기준).
-const LINED_PAPER =
-  "repeating-linear-gradient(transparent 0 calc(1.9rem - 1px), rgba(120,80,30,0.22) calc(1.9rem - 1px) 1.9rem)";
+ "0 5px 0 rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.6)";
+// 픽셀 베벨 (버튼/패널 공용) — 좌상단 하이라이트 + 우하단 그림자.
+const BEVEL =
+ "inset 2px 2px 0 rgba(255,255,255,0.3), inset -2px -2px 0 rgba(0,0,0,0.3)";
+const BEVEL_DOWN =
+ "inset -2px -2px 0 rgba(255,255,255,0.15), inset 2px 2px 0 rgba(0,0,0,0.35)";
+// 잔디 초록 (활성 탭/답장 버튼).
+const GRASS = "#5db24a";
+const GRASS_DARK = "#2c5e1f";
+// 돌/목재 톤.
+const STONE = "#3a4048";
+const STONE_DARK = "#22262d";
+const WOOD = "#6b4a2b";
+const WOOD_DARK = "#3a2812";
 const EMERALD_GLOW = "0 0 14px rgba(52,211,153,0.55)";
 
-// 카테고리 "우표" — 봉투 우상단 스탬프 + 쓰기/수정 시 우표 고르기.
+// 카테고리 픽셀 뱃지 — 쪽지 좌상단 + 우상단 아이콘 + 쓰기/수정 시 고르기.
 const STAMP_META: Record<
   SuggestionCategory,
   { emoji: string; bg: string; border: string; text: string }
 > = {
-  praise: { emoji: "📣", bg: "bg-rose-100", border: "border-rose-400", text: "text-rose-800" },
-  suggestion: { emoji: "💡", bg: "bg-sky-100", border: "border-sky-400", text: "text-sky-800" },
-  complaint: { emoji: "😣", bg: "bg-amber-100", border: "border-amber-500", text: "text-amber-800" },
-  etc: { emoji: "💬", bg: "bg-violet-100", border: "border-violet-400", text: "text-violet-800" },
+  praise: { emoji: "📣", bg: "bg-rose-100", border: "border-rose-500", text: "text-rose-800" },
+  suggestion: { emoji: "💡", bg: "bg-sky-100", border: "border-sky-500", text: "text-sky-800" },
+  complaint: { emoji: "😣", bg: "bg-violet-100", border: "border-violet-500", text: "text-violet-800" },
+  etc: { emoji: "💬", bg: "bg-amber-100", border: "border-amber-500", text: "text-amber-800" },
 };
 
-// 상태 스탬프 칩 (크림 봉투/편지지 위).
+// 상태 칩 (종이 위 — 각진 픽셀 프레임).
 const STATUS_STAMP: Record<SuggestionStatus, string> = {
-  received: "bg-stone-200/90 text-stone-700 border-stone-500/40",
-  reviewing: "bg-amber-200 text-amber-900 border-amber-600/40",
-  done: "bg-emerald-200 text-emerald-900 border-emerald-700/40",
+  received: "bg-stone-200/90 text-stone-700 border-stone-500/60",
+  reviewing: "bg-amber-200 text-amber-900 border-amber-600/60",
+  done: "bg-emerald-200 text-emerald-900 border-emerald-700/60",
 };
 
-// adminMode 상태 칩 (다크 유리 패널 안, 활성 시).
+// adminMode 상태 칩 (다크 패널 안, 활성 시).
 const ADMIN_STATUS_ACTIVE: Record<SuggestionStatus, string> = {
   received: "bg-stone-200 text-stone-800 border-stone-300",
   reviewing: "bg-amber-400 text-amber-950 border-amber-300",
   done: "bg-emerald-400 text-emerald-950 border-emerald-300",
 };
 
-// 봉투 카드에만 살짝 기울기.
-const TILTS = ["-rotate-1", "rotate-1", "rotate-0", "rotate-1", "-rotate-1", "rotate-0"];
-function tiltFor(i: number): string {
-  return TILTS[i % TILTS.length];
+// 종이 쪽지 접힌 모서리 (우상단) — 카드/편지 공용 오버레이.
+function FoldedCorner({ size = 18 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute right-0 top-0"
+      style={{
+        width: 0,
+        height: 0,
+        borderStyle: "solid",
+        borderWidth: `0 ${size}px ${size}px 0`,
+        borderColor: "transparent #ddcda4 transparent transparent",
+        filter: "drop-shadow(-2px 2px 0 rgba(0,0,0,0.15))",
+      }}
+    />
+  );
 }
 
 function formatDate(iso: string): string {
@@ -533,16 +554,16 @@ export function SuggestClient({
   return (
     <main
       className="relative min-h-screen pb-32 text-white"
-      style={{ background: POSTOFFICE_BG, fontFamily: JUA }}
+      style={{ background: POSTOFFICE_BG, fontFamily: PIXEL }}
     >
       <Stars />
 
       {/* ===== 상단: 뱃지 / 돌아가기 / 헤더 / 인트로 ===== */}
-      <div className="relative z-10 mx-auto w-full max-w-md px-4 pt-5">
+      <div className="relative z-10 mx-auto w-full max-w-4xl px-4 pt-5">
         {/* 관리자 모드 뱃지 — 게임센터 amber 패턴 */}
         {adminMode && (
           <div
-            className="mb-4 flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
+            className="mb-4 flex items-center gap-1.5 border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
             style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
           >
             <span aria-hidden>🛠</span>
@@ -551,7 +572,7 @@ export function SuggestClient({
         )}
         {previewMode && (
           <div
-            className="mb-4 flex items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
+            className="mb-4 flex items-center gap-1.5 border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-100 backdrop-blur-sm"
             style={{ boxShadow: "0 0 14px rgba(245,158,11,0.25)" }}
           >
             <span aria-hidden>🛠</span>
@@ -559,67 +580,105 @@ export function SuggestClient({
           </div>
         )}
 
-        {/* 돌아가기 칩 */}
-        <div className="mb-3">
+        {/* 돌아가기 / 이름 — 픽셀 버튼 행 */}
+        <div className="mb-4 flex items-center justify-between gap-2">
           <Link
             href={adminMode ? "/admin" : "/me/village"}
-            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.06] px-4 py-1.5 text-sm font-bold text-white/80 backdrop-blur-sm transition hover:bg-white/10 hover:text-white active:scale-95"
+            className="inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-white/85 transition hover:brightness-110 active:translate-y-0.5"
+            style={{
+              background: STONE,
+              border: `3px solid ${STONE_DARK}`,
+              boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
+            }}
           >
             <span aria-hidden>←</span>
-            <span>{adminMode ? "관리" : "마을"}로 돌아가기</span>
+            <span>{adminMode ? "관리" : "마을"}로</span>
           </Link>
-        </div>
-
-        {/* 헤더 */}
-        <header className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              className="shrink-0 text-3xl"
-              style={{
-                filter:
-                  "drop-shadow(0 0 12px rgba(52,211,153,0.9)) drop-shadow(0 0 24px rgba(16,185,129,0.4))",
-              }}
-              aria-hidden
-            >
-              📮
-            </span>
-            <h1
-              className="truncate text-3xl font-extrabold tracking-tight text-white"
-              style={{ textShadow: "0 0 18px rgba(52,211,153,0.35)" }}
-            >
-              몬스터 우체국
-            </h1>
-          </div>
           <span
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/30 bg-white/[0.06] px-3 py-1.5 text-sm font-semibold backdrop-blur-sm"
-            style={{ boxShadow: "0 0 16px rgba(52,211,153,0.25)" }}
+            className="flex min-h-[40px] shrink-0 items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold"
+            style={{
+              background: WOOD,
+              border: `3px solid ${WOOD_DARK}`,
+              boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
+            }}
           >
             <span className="text-yellow-300" aria-hidden>
               👑
             </span>
-            <span className="max-w-[6rem] truncate text-white/90">{studentName}</span>
+            <span className="max-w-[7rem] truncate text-amber-50">{studentName}</span>
           </span>
+        </div>
+
+        {/* 헤더 — 벽돌 플랫폼 위 나무 간판 */}
+        <header className="relative mb-5">
+          <div className="relative mx-auto w-fit">
+            <div
+              className="relative flex items-center gap-3 px-6 py-3.5"
+              style={{
+                background:
+ "linear-gradient(180deg, #7a5533 0%, #6b4a2b 50%, #57391d 100%)",
+                border: `4px solid ${WOOD_DARK}`,
+                boxShadow: `${BEVEL}, 0 6px 0 rgba(0,0,0,0.45)`,
+              }}
+            >
+              <span
+                className="shrink-0 text-3xl"
+                style={{ filter: "drop-shadow(2px 2px 0 rgba(0,0,0,0.5))" }}
+                aria-hidden
+              >
+                📮
+              </span>
+              <h1 className="whitespace-nowrap text-2xl font-extrabold tracking-tight sm:text-3xl">
+                <span
+                  style={{ color: "#7ee04e", textShadow: "2px 2px 0 #1c3a10" }}
+                >
+                  몬스터
+                </span>{" "}
+                <span style={{ color: "#f7f1e0", textShadow: "2px 2px 0 #3a2812" }}>
+                  우체국
+                </span>
+              </h1>
+            </div>
+            {/* 간판 아래 잔디+흙 플랫폼 스트립 */}
+            <div
+              aria-hidden
+              className="mx-auto h-3 w-[92%]"
+              style={{
+                background:
+ "repeating-linear-gradient(90deg, #5db24a 0 14px, #4d9c3c 14px 28px)",
+                borderLeft: `3px solid ${WOOD_DARK}`,
+                borderRight: `3px solid ${WOOD_DARK}`,
+                borderBottom: `3px solid ${WOOD_DARK}`,
+              }}
+            />
+          </div>
         </header>
 
         {/* 인트로 */}
         {!adminMode && (
           <div className="mb-2 text-center">
             <div
-              className="text-base text-white/90"
+              className="text-sm text-white/90 sm:text-base"
               style={{ textShadow: "0 0 10px rgba(52,211,153,0.3)" }}
             >
               {studentName}님, 학원에 하고 싶은 말을 우체통에 넣어보세요 📮
             </div>
-            <div className="mt-0.5 text-sm text-white/60">
+            <div className="mt-0.5 text-xs text-white/60 sm:text-sm">
               공개 쪽지는 친구들도 함께 읽어요. 마음을 담아 적어주세요 💌
             </div>
           </div>
         )}
       </div>
 
-      {/* ===== 탭 (sticky, 다크 유리) ===== */}
-      <div className="sticky top-0 z-30 border-b border-white/10 bg-slate-900/80 backdrop-blur">
-        <div className="mx-auto w-full max-w-md overflow-x-auto px-4 py-2.5">
+      {/* ===== 탭 (sticky, 돌담 바) ===== */}
+      <div
+        className="sticky top-0 z-30 backdrop-blur"
+        style={{
+          background: "rgba(20,22,40,0.88)",
+          borderBottom: `3px solid ${STONE_DARK}`,
+        }}
+      >
+        <div className="mx-auto w-full max-w-4xl overflow-x-auto px-4 py-2.5">
           <div className="flex min-w-max gap-2">
             {TAB_ITEMS.map((t) => {
               const active = tab === t.key;
@@ -629,17 +688,29 @@ export function SuggestClient({
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}
-                  className={`relative min-h-[40px] rounded-full border px-4 py-2 text-sm font-bold transition active:scale-95 ${
-                    active
-                      ? "border-emerald-300 bg-emerald-500 text-emerald-950"
-                      : "border-white/15 bg-white/[0.06] text-white/70 hover:bg-white/10 hover:text-white"
+                  className={`relative min-h-[40px] px-4 py-2 text-sm font-bold transition hover:brightness-110 active:translate-y-0.5 ${
+                    active ? "text-white" : "text-white/70 hover:text-white"
                   }`}
-                  style={active ? { boxShadow: EMERALD_GLOW } : undefined}
+                  style={
+                    active
+                      ? {
+                          background: GRASS,
+                          border: `3px solid ${GRASS_DARK}`,
+                          boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
+                          textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
+                        }
+                      : {
+                          background: STONE,
+                          border: `3px solid ${STONE_DARK}`,
+                          boxShadow: `${BEVEL_DOWN}, 0 3px 0 rgba(0,0,0,0.4)`,
+                        }
+                  }
                 >
                   {isMineTab ? "💌 내 쪽지" : t.label}
                   {isMineTab && unreadCount > 0 && (
                     <span
-                      className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-rose-500 ring-2 ring-slate-900"
+                      className="absolute -right-1 -top-1 h-3 w-3 animate-pulse bg-rose-500"
+                      style={{ border: "2px solid #141628" }}
                       aria-hidden
                     />
                   )}
@@ -651,10 +722,10 @@ export function SuggestClient({
       </div>
 
       {/* ===== 본문 ===== */}
-      <div className="relative z-10 mx-auto w-full max-w-md px-4 py-5">
+      <div className="relative z-10 mx-auto w-full max-w-4xl px-4 py-5">
         {/* 차단 안내 */}
         {activeBlock && (
-          <div className="mb-5 rounded-2xl border border-rose-400/40 bg-rose-500/15 p-4 text-rose-100 backdrop-blur-sm">
+          <div className="mb-5 border-[3px] border-rose-800 bg-rose-500/20 p-4 text-rose-100 backdrop-blur-sm">
             <div className="mb-1 font-bold">⚠ 건의함 사용이 제한되었어요</div>
             {activeBlock.reason && (
               <div className="mb-1 text-sm">사유: {activeBlock.reason}</div>
@@ -667,9 +738,16 @@ export function SuggestClient({
           </div>
         )}
 
-        {/* 비밀 쪽지 요약 — 다크 유리 칩 (남의 비밀글은 목록에서 제외) */}
+        {/* 비밀 쪽지 요약 — 돌 칩 (남의 비밀글은 목록에서 제외) */}
         {!adminMode && hiddenSecretCount > 0 && tab !== "mine" && (
-          <div className="mx-auto mb-4 w-fit rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-center text-sm text-white/75 backdrop-blur-sm">
+          <div
+            className="mx-auto mb-4 w-fit px-4 py-2 text-center text-sm text-white/80"
+            style={{
+              background: STONE,
+              border: `3px solid ${STONE_DARK}`,
+              boxShadow: BEVEL,
+            }}
+          >
             🔒 비밀 쪽지 {hiddenSecretCount}통이 선생님께 전달됐어요
           </div>
         )}
@@ -684,75 +762,65 @@ export function SuggestClient({
                 : "아직 도착한 쪽지가 없어요. 첫 번째로 보내보세요!"}
           </div>
         ) : (
-          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {visibleSuggestions.map((s, i) => {
+          <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {visibleSuggestions.map((s) => {
               const isSecret = s.visibility === "private";
               const newReply = s.is_mine && hasNewReply(s);
               const r = getReaction(s);
               const reactionTotal = r.counts.heart + r.counts.thumbs;
               return (
-                <li key={s.id} className={`relative ${tiltFor(i)}`}>
+                <li key={s.id} className="relative">
                   <button
                     type="button"
                     onClick={() => setSelectedId(s.id)}
-                    className={`relative flex min-h-[128px] w-full flex-col rounded-2xl p-4 pt-5 text-left text-amber-950 transition hover:-translate-y-0.5 active:scale-[0.99] ${
-                      s.is_mine ? "ring-2 ring-emerald-400/60" : ""
-                    }`}
-                    style={{ background: ENVELOPE_BG, boxShadow: ENVELOPE_SHADOW }}
+                    className="relative flex min-h-[150px] w-full flex-col p-3 pt-3 text-left text-amber-950 transition hover:-translate-y-0.5 active:translate-y-0"
+                    style={{
+                      background: LETTER_BG,
+                      border: `3px solid ${s.is_mine ? GRASS_DARK : PAPER_BORDER}`,
+                      boxShadow: ENVELOPE_SHADOW,
+                    }}
                   >
-                    {/* 에어메일 봉투 테두리 */}
-                    <span
-                      aria-hidden
-                      className="absolute inset-x-0 top-0 h-1.5 rounded-t-2xl opacity-70"
-                      style={{ background: AIRMAIL_EDGE }}
-                    />
-
-                    {/* 카테고리 우표 */}
-                    <span className="absolute right-3 top-3.5">
-                      <CategoryStamp category={s.category} />
-                    </span>
+                    <FoldedCorner />
 
                     {/* 새 답장 도착 강조 */}
                     {newReply && (
-                      <span className="absolute -top-2 left-3 z-10 animate-pulse rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white shadow-md">
+                      <span
+                        className="absolute -top-2.5 left-2 z-10 animate-pulse bg-rose-500 px-2 py-0.5 text-[11px] font-bold text-white"
+                        style={{ border: "2px solid #7f1d1d" }}
+                      >
                         💌 답장 도착
                       </span>
                     )}
 
-                    <span className="mb-1.5 flex flex-wrap items-center gap-1 pr-14">
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-xs font-bold ${STATUS_STAMP[s.status]}`}
-                      >
-                        {SUGGESTION_STATUS_LABELS[s.status]}
+                    {/* 1행: 카테고리 픽셀 뱃지 + 아이콘 */}
+                    <span className="mb-1.5 flex items-center justify-between gap-1 pr-4">
+                      <CategoryStamp category={s.category} />
+                      <span className="text-base leading-none" aria-hidden>
+                        {STAMP_META[s.category].emoji}
                       </span>
-                      {isSecret && (
-                        <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
-                          🔒 비밀
-                        </span>
-                      )}
                     </span>
 
                     {isSecret && !adminMode ? (
-                      // 내 비밀글 — 접힌 편지 연출 (크림 톤)
+                      // 내 비밀글 — 접힌 편지 연출
                       <span className="flex flex-1 flex-col items-center justify-center gap-1 py-1">
-                        <span className="text-3xl leading-none" aria-hidden>
+                        <span className="text-2xl leading-none" aria-hidden>
                           ✉️
                         </span>
                         <span className="line-clamp-1 px-1 text-center text-sm font-extrabold leading-snug">
                           {s.title || "비밀 쪽지"}
                         </span>
-                        <span className="text-xs text-amber-900/60">
+                        <span className="text-[11px] text-amber-900/60">
                           선생님만 볼 수 있어요
                         </span>
                       </span>
                     ) : (
                       <>
-                        <span className="line-clamp-2 block break-words pr-14 text-base font-extrabold leading-snug">
+                        <span className="line-clamp-1 block break-words text-sm font-extrabold leading-snug sm:text-base">
                           {s.title}
                         </span>
                         <span
-                          className="mt-0.5 line-clamp-2 block break-words text-base leading-snug text-amber-900/75"
-                          style={{ fontFamily: HANDWRITING }}
+                          className="mt-1 line-clamp-2 block break-words text-[13px] leading-snug text-amber-900/75"
+                          style={{ fontFamily: BODY_FONT }}
                         >
                           {firstLine(s.body)}
                         </span>
@@ -760,25 +828,59 @@ export function SuggestClient({
                       </>
                     )}
 
-                    <span className="mt-2 flex items-end justify-between gap-1 text-xs text-amber-900/70">
+                    {/* 상태/비밀 칩 */}
+                    <span className="mt-2 flex flex-wrap items-center gap-1">
+                      <span
+                        className={`border-2 px-1.5 py-px text-[10px] font-bold ${STATUS_STAMP[s.status]}`}
+                      >
+                        {SUGGESTION_STATUS_LABELS[s.status]}
+                      </span>
+                      {isSecret && (
+                        <span
+                          className="bg-rose-600 px-1.5 py-px text-[10px] font-bold text-white"
+                          style={{ border: "2px solid #7f1d1d" }}
+                        >
+                          🔒 비밀
+                        </span>
+                      )}
+                    </span>
+
+                    {/* 작성자 + 날짜 */}
+                    <span
+                      className="mt-1.5 flex items-end justify-between gap-1 border-t-2 border-dashed border-amber-900/20 pt-1.5 text-[11px] text-amber-900/70"
+                    >
                       <span className="truncate">✍ {authorLabelFor(s) || "익명"}</span>
-                      <span className="shrink-0">
+                      <span className="shrink-0" style={{ fontFamily: BODY_FONT }}>
                         {formatDate(s.created_at).slice(0, 10)}
                       </span>
                     </span>
+
+                    {/* 답장 버튼 + 공감 수 (시안 하단 행) */}
                     {(s.reply || reactionTotal > 0) && (
-                      <span className="mt-1.5 flex items-center gap-1.5 text-xs font-bold">
-                        {s.reply && (
-                          <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white shadow-sm">
-                            💌 선생님 답장
+                      <span className="mt-1.5 flex items-center justify-between gap-1.5 text-[11px] font-bold">
+                        {s.reply ? (
+                          <span
+                            className="px-2 py-1 text-white"
+                            style={{
+                              background: GRASS,
+                              border: `2px solid ${GRASS_DARK}`,
+                              boxShadow: BEVEL,
+                              textShadow: "1px 1px 0 rgba(0,0,0,0.4)",
+                            }}
+                          >
+                            💚 선생님 답장
                           </span>
+                        ) : (
+                          <span />
                         )}
-                        {r.counts.heart > 0 && (
-                          <span className="text-rose-600">❤️ {r.counts.heart}</span>
-                        )}
-                        {r.counts.thumbs > 0 && (
-                          <span className="text-sky-700">👍 {r.counts.thumbs}</span>
-                        )}
+                        <span className="flex items-center gap-1.5">
+                          {r.counts.heart > 0 && (
+                            <span className="text-rose-600">❤️ {r.counts.heart}</span>
+                          )}
+                          {r.counts.thumbs > 0 && (
+                            <span className="text-sky-700">👍 {r.counts.thumbs}</span>
+                          )}
+                        </span>
                       </span>
                     )}
                   </button>
@@ -801,10 +903,13 @@ export function SuggestClient({
               }
               setWriteOpen(true);
             }}
-            className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-emerald-500 px-6 py-3.5 text-base font-extrabold text-emerald-950 transition hover:bg-emerald-400 active:scale-95"
+            className="inline-flex min-h-[52px] items-center gap-2 px-6 py-3.5 text-base font-extrabold text-white transition hover:brightness-110 active:translate-y-0.5"
             style={{
-              boxShadow:
-                "0 8px 24px rgba(16,185,129,0.5), 0 0 16px rgba(52,211,153,0.4)",
+              background: GRASS,
+              border: `3px solid ${GRASS_DARK}`,
+              boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45), ${EMERALD_GLOW}`,
+              textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
+              fontFamily: PIXEL,
             }}
           >
             ✉️ 쪽지 쓰기
@@ -812,12 +917,35 @@ export function SuggestClient({
         </div>
       )}
 
+      {/* ===== 하단 나무 현판 ===== */}
+      <div className="relative z-10 mx-auto mt-8 w-full max-w-4xl px-4 pb-2">
+        <div
+          className="mx-auto flex w-fit items-center gap-2.5 px-5 py-3 text-center text-xs text-amber-100 sm:text-sm"
+          style={{
+            background:
+ "linear-gradient(180deg, #7a5533 0%, #6b4a2b 50%, #57391d 100%)",
+            border: `3px solid ${WOOD_DARK}`,
+            boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.4)`,
+          }}
+        >
+          <span aria-hidden>✉️</span>
+          <span style={{ textShadow: "1px 1px 0 rgba(0,0,0,0.5)" }}>
+            여러분의 소중한 의견이 더 좋은 몬스터마을을 만듭니다!
+          </span>
+        </div>
+      </div>
+
       {/* 리스트형 관리 페이지로 가는 floating 링크 — preview / admin 양쪽에서 노출 */}
       {(previewMode || adminMode) && adminLink && (
         <div className={`fixed bottom-6 z-40 ${adminMode ? "right-5" : "left-5"}`}>
           <Link
             href={adminLink}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/20 bg-slate-900/90 px-4 py-3 text-sm font-bold text-white shadow-2xl backdrop-blur-sm transition hover:bg-slate-800"
+            className="inline-flex min-h-[44px] items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:brightness-110 active:translate-y-0.5"
+            style={{
+              background: STONE,
+              border: `3px solid ${STONE_DARK}`,
+              boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45)`,
+            }}
           >
             <span>리스트 관리</span>
             <span aria-hidden>→</span>
@@ -846,27 +974,27 @@ export function SuggestClient({
               onClick={closeDetail}
             >
               <div
-                className="relative my-auto w-full max-w-md rounded-2xl p-5 text-amber-950"
+                className="relative my-auto w-full max-w-md p-5 text-amber-950"
                 style={{
                   background: LETTER_BG,
-                  boxShadow:
-                    "0 24px 60px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.6) inset",
+                  border: `4px solid ${PAPER_BORDER}`,
+                  boxShadow: "0 8px 0 rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.6)",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* 에어메일 상단 테두리 */}
-                <span
-                  aria-hidden
-                  className="absolute inset-x-0 top-0 h-1.5 rounded-t-2xl opacity-70"
-                  style={{ background: AIRMAIL_EDGE }}
-                />
+                <FoldedCorner size={26} />
 
-                {/* 닫기 — 다크 유리 원형 */}
+                {/* 닫기 — 픽셀 버튼 */}
                 <button
                   type="button"
                   onClick={closeDetail}
                   aria-label="닫기"
-                  className="absolute -right-2 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-slate-900/90 text-sm font-bold text-white shadow-lg backdrop-blur-sm transition hover:bg-slate-800 active:scale-95"
+                  className="absolute -right-2.5 -top-3.5 z-10 flex h-9 w-9 items-center justify-center text-sm font-bold text-white transition hover:brightness-110 active:translate-y-0.5"
+                  style={{
+                    background: "#b03030",
+                    border: "3px solid #5e1414",
+                    boxShadow: `${BEVEL}, 0 3px 0 rgba(0,0,0,0.4)`,
+                  }}
                 >
                   ✕
                 </button>
@@ -876,25 +1004,25 @@ export function SuggestClient({
                     <div className="mb-2 flex items-start justify-between gap-2 pt-1">
                       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                         <span
-                          className={`rounded-full border px-2 py-0.5 text-xs font-bold ${STATUS_STAMP[s.status]}`}
+                          className={`border px-2 py-0.5 text-xs font-bold ${STATUS_STAMP[s.status]}`}
                         >
                           {SUGGESTION_STATUS_LABELS[s.status]}
                         </span>
-                        <span className="rounded-full border border-amber-900/15 bg-white/70 px-2 py-0.5 text-xs font-bold text-amber-900">
+                        <span className="border border-amber-900/15 bg-white/70 px-2 py-0.5 text-xs font-bold text-amber-900">
                           ✍ {authorLabelFor(s) || "익명"}
                         </span>
                         {isSecret && (
-                          <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                          <span className="bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
                             🔒 비밀
                           </span>
                         )}
                         {wasEdited && (
-                          <span className="rounded-full bg-amber-900/10 px-2 py-0.5 text-xs text-amber-900/70">
+                          <span className="bg-amber-900/10 px-2 py-0.5 text-xs text-amber-900/70">
                             수정됨
                           </span>
                         )}
                         {adminMode && studentBlocked && (
-                          <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                          <span className="bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
                             차단됨
                           </span>
                         )}
@@ -905,14 +1033,13 @@ export function SuggestClient({
                     <div className="break-words text-xl font-extrabold leading-snug">
                       {s.title || "비밀 쪽지"}
                     </div>
-                    {/* 편지지 줄노트 본문 (손글씨) */}
+                    {/* 본문 */}
                     <div
-                      className="mt-1.5 whitespace-pre-wrap break-words"
+                      className="mt-2 whitespace-pre-wrap break-words border-2 border-dashed border-amber-900/20 bg-white/40 p-3"
                       style={{
-                        fontFamily: HANDWRITING,
-                        fontSize: "1.1rem",
-                        lineHeight: "1.9rem",
-                        backgroundImage: LINED_PAPER,
+                        fontFamily: BODY_FONT,
+                        fontSize: "0.95rem",
+                        lineHeight: "1.6rem",
                       }}
                     >
                       {s.body}
@@ -924,7 +1051,7 @@ export function SuggestClient({
                     {/* 선생님 답장 — 초록 테두리 카드 */}
                     {s.reply && (
                       <div
-                        className={`mt-3 rounded-xl border-2 bg-emerald-50 p-3 ${
+                        className={`mt-3 border-2 bg-emerald-50 p-3 ${
                           hasNewReply(s)
                             ? "border-rose-400 ring-2 ring-rose-300/60"
                             : "border-emerald-600/50"
@@ -940,7 +1067,7 @@ export function SuggestClient({
                         </div>
                         <div
                           className="whitespace-pre-wrap break-words text-sm leading-relaxed text-emerald-950"
-                          style={{ fontFamily: HANDWRITING, fontSize: "1rem" }}
+                          style={{ fontFamily: BODY_FONT }}
                         >
                           {s.reply}
                         </div>
@@ -960,7 +1087,7 @@ export function SuggestClient({
                               type="button"
                               disabled={!isStudent}
                               onClick={() => onToggleReaction(s, kind)}
-                              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border-2 px-3.5 py-1.5 text-sm font-bold transition ${
+                              className={`inline-flex min-h-[44px] items-center gap-1.5 border-2 px-3.5 py-1.5 text-sm font-bold transition ${
                                 active
                                   ? "scale-110 border-emerald-500 bg-white text-emerald-800 shadow-[0_0_14px_rgba(16,185,129,0.4)]"
                                   : "border-amber-900/15 bg-white/60 text-amber-900 hover:bg-white/90"
@@ -982,7 +1109,7 @@ export function SuggestClient({
                           type="button"
                           onClick={() => startEdit(s)}
                           disabled={!!activeBlock || pending || previewMode}
-                          className="min-h-[44px] flex-1 rounded-full border border-amber-900/20 bg-white/80 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-white disabled:opacity-50"
+                          className="min-h-[44px] flex-1 border border-amber-900/20 bg-white/80 py-2 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
                           ✏️ 수정
                         </button>
@@ -990,7 +1117,7 @@ export function SuggestClient({
                           type="button"
                           onClick={() => requestDelete(s, false)}
                           disabled={!!activeBlock || pending || previewMode}
-                          className="min-h-[44px] flex-1 rounded-full border border-rose-700/30 bg-rose-200/90 py-2 text-sm font-bold text-rose-900 shadow-sm transition hover:bg-rose-300 disabled:opacity-50"
+                          className="min-h-[44px] flex-1 border border-rose-700/30 bg-rose-200/90 py-2 text-sm font-bold text-rose-900 shadow-sm transition hover:bg-rose-300 disabled:opacity-50"
                         >
                           🗑️ 삭제
                         </button>
@@ -1000,7 +1127,7 @@ export function SuggestClient({
                     {/* 관리자 모드: 인라인 관리 컨트롤 — 다크 유리 패널 */}
                     {adminMode && (
                       <div
-                        className="mt-4 space-y-2 rounded-xl border border-white/10 bg-slate-900/90 p-3 text-white"
+                        className="mt-4 space-y-2 border border-white/10 bg-slate-900/90 p-3 text-white"
                         style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}
                       >
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1013,7 +1140,7 @@ export function SuggestClient({
                                 type="button"
                                 disabled={pending}
                                 onClick={() => onChangeStatus(s.id, st)}
-                                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                                className={`border px-3 py-1.5 text-xs font-bold transition ${
                                   active
                                     ? ADMIN_STATUS_ACTIVE[st]
                                     : "border-white/15 bg-white/[0.06] text-white/60 hover:bg-white/10"
@@ -1032,7 +1159,7 @@ export function SuggestClient({
                           placeholder="학생에게 보낼 답장…"
                           rows={2}
                           disabled={pending}
-                          className="w-full resize-none rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-white placeholder:text-white/40 focus:border-emerald-400 focus:outline-none"
+                          className="w-full resize-none border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-white placeholder:text-white/40 focus:border-emerald-400 focus:outline-none"
                           style={{ lineHeight: "1.5rem" }}
                         />
 
@@ -1041,7 +1168,7 @@ export function SuggestClient({
                             type="button"
                             disabled={pending}
                             onClick={() => onReply(s.id, s.reply)}
-                            className="min-h-[40px] min-w-[80px] flex-1 rounded-lg bg-emerald-500 py-2 text-sm font-bold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                            className="min-h-[40px] min-w-[80px] flex-1 bg-emerald-500 py-2 text-sm font-bold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-50"
                           >
                             💬 답장
                           </button>
@@ -1049,7 +1176,7 @@ export function SuggestClient({
                             type="button"
                             disabled={pending}
                             onClick={() => requestDelete(s, true)}
-                            className="min-h-[40px] min-w-[60px] flex-1 rounded-lg border border-rose-400/40 bg-rose-500/20 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-500/30 disabled:opacity-50"
+                            className="min-h-[40px] min-w-[60px] flex-1 border border-rose-400/40 bg-rose-500/20 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-500/30 disabled:opacity-50"
                           >
                             🗑️ 삭제
                           </button>
@@ -1065,7 +1192,7 @@ export function SuggestClient({
                                       s.student_name_snapshot,
                                   )
                                 }
-                                className="min-h-[40px] min-w-[80px] flex-1 rounded-lg border border-emerald-400/40 bg-emerald-500/20 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                                className="min-h-[40px] min-w-[80px] flex-1 border border-emerald-400/40 bg-emerald-500/20 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                               >
                                 🔓 해제
                               </button>
@@ -1080,7 +1207,7 @@ export function SuggestClient({
                                       s.student_name_snapshot,
                                   )
                                 }
-                                className="min-h-[40px] min-w-[60px] flex-1 rounded-lg border border-white/20 bg-black/50 py-2 text-sm font-bold text-white transition hover:bg-black/70 disabled:opacity-50"
+                                className="min-h-[40px] min-w-[60px] flex-1 border border-white/20 bg-black/50 py-2 text-sm font-bold text-white transition hover:bg-black/70 disabled:opacity-50"
                               >
                                 🚫 차단
                               </button>
@@ -1089,7 +1216,7 @@ export function SuggestClient({
                         </div>
 
                         {studentBlocked && (
-                          <div className="rounded-lg bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
+                          <div className="bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
                             {studentBlocked.reason && `사유: ${studentBlocked.reason} · `}
                             {studentBlocked.blockedUntil
                               ? `해제 예정: ${formatDate(studentBlocked.blockedUntil)}`
@@ -1117,7 +1244,7 @@ export function SuggestClient({
                             type="button"
                             disabled={pending}
                             onClick={() => setEditCategory(c)}
-                            className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-md border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
+                            className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
                               active
                                 ? "scale-105 ring-2 ring-emerald-500"
                                 : "opacity-60 hover:opacity-90"
@@ -1144,7 +1271,7 @@ export function SuggestClient({
                       maxLength={SUGGESTION_TITLE_MAX}
                       disabled={pending}
                       onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full rounded-lg border-b-2 border-amber-900/40 bg-white/70 px-3 py-2 text-amber-950 focus:border-amber-900 focus:bg-white focus:outline-none"
+                      className="w-full border-b-2 border-amber-900/40 bg-white/70 px-3 py-2 text-amber-950 focus:border-amber-900 focus:bg-white focus:outline-none"
                       style={{ fontSize: "1rem" }}
                       placeholder="제목"
                     />
@@ -1154,13 +1281,11 @@ export function SuggestClient({
                       disabled={pending}
                       onChange={(e) => setEditBody(e.target.value)}
                       rows={5}
-                      className="w-full resize-none rounded-lg bg-white/70 px-3 py-2 text-amber-950 focus:bg-white focus:outline-none"
+                      className="w-full resize-none border-2 border-dashed border-amber-900/30 bg-white/70 px-3 py-2 text-amber-950 focus:bg-white focus:outline-none"
                       style={{
-                        fontFamily: HANDWRITING,
-                        fontSize: "1.05rem",
-                        lineHeight: "1.9rem",
-                        backgroundImage: LINED_PAPER,
-                        backgroundAttachment: "local",
+                        fontFamily: BODY_FONT,
+                        fontSize: "1rem",
+                        lineHeight: "1.7rem",
                       }}
                       placeholder="내용"
                     />
@@ -1169,7 +1294,7 @@ export function SuggestClient({
                         type="button"
                         disabled={pending}
                         onClick={() => setEditPublic(true)}
-                        className={`min-h-[40px] flex-1 rounded-full border-2 px-2 py-1.5 text-xs transition ${
+                        className={`min-h-[40px] flex-1 border-2 px-2 py-1.5 text-xs transition ${
                           editPublic
                             ? "border-emerald-600 bg-emerald-100 font-bold text-emerald-900"
                             : "border-amber-900/20 bg-white/60 text-amber-900/60"
@@ -1181,7 +1306,7 @@ export function SuggestClient({
                         type="button"
                         disabled={pending}
                         onClick={() => setEditPublic(false)}
-                        className={`min-h-[40px] flex-1 rounded-full border-2 px-2 py-1.5 text-xs transition ${
+                        className={`min-h-[40px] flex-1 border-2 px-2 py-1.5 text-xs transition ${
                           !editPublic
                             ? "border-rose-600 bg-rose-100 font-bold text-rose-900"
                             : "border-amber-900/20 bg-white/60 text-amber-900/60"
@@ -1196,12 +1321,12 @@ export function SuggestClient({
                         checked={editAnon}
                         disabled={pending || !editPublic}
                         onChange={(e) => setEditAnon(e.target.checked)}
-                        className="rounded"
+                        className=""
                       />
                       <span className={!editPublic ? "opacity-50" : ""}>익명</span>
                     </label>
                     {editError && (
-                      <div className="rounded-lg bg-rose-100 px-2 py-1 text-xs text-rose-700">
+                      <div className="bg-rose-100 px-2 py-1 text-xs text-rose-700">
                         {editError}
                       </div>
                     )}
@@ -1210,7 +1335,7 @@ export function SuggestClient({
                         type="button"
                         onClick={() => submitEdit(s.id)}
                         disabled={pending}
-                        className="min-h-[44px] flex-1 rounded-full bg-emerald-600 py-2 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                        className="min-h-[44px] flex-1 bg-emerald-600 py-2 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
                       >
                         💾 저장
                       </button>
@@ -1218,7 +1343,7 @@ export function SuggestClient({
                         type="button"
                         onClick={cancelEdit}
                         disabled={pending}
-                        className="min-h-[44px] flex-1 rounded-full border border-amber-900/20 bg-white/70 py-2 text-sm font-bold text-amber-900 transition hover:bg-white disabled:opacity-50"
+                        className="min-h-[44px] flex-1 border border-amber-900/20 bg-white/70 py-2 text-sm font-bold text-amber-900 transition hover:bg-white disabled:opacity-50"
                       >
                         취소
                       </button>
@@ -1237,12 +1362,17 @@ export function SuggestClient({
           onClick={() => setWriteOpen(false)}
         >
           <div
-            className="max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border-x border-t border-white/15 bg-slate-900/95 p-5 pb-8 text-white backdrop-blur"
-            style={{ boxShadow: "0 -16px 48px rgba(0,0,0,0.6)" }}
+            className="max-h-[88dvh] w-full max-w-md overflow-y-auto bg-slate-900/95 p-5 pb-8 text-white backdrop-blur"
+            style={{
+              borderTop: `4px solid ${WOOD_DARK}`,
+              borderLeft: `4px solid ${WOOD_DARK}`,
+              borderRight: `4px solid ${WOOD_DARK}`,
+              boxShadow: `${BEVEL}, 0 -16px 48px rgba(0,0,0,0.6)`,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 그립바 */}
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/20" />
+            <div className="mx-auto mb-3 h-1.5 w-12 bg-white/20" />
             <div className="mb-4 flex items-center justify-between">
               <div
                 className="text-lg font-extrabold"
@@ -1254,7 +1384,7 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setWriteOpen(false)}
                 aria-label="닫기"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-sm font-bold text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 items-center justify-center border border-white/15 bg-white/10 text-sm font-bold text-white transition hover:bg-white/20"
               >
                 ✕
               </button>
@@ -1275,7 +1405,7 @@ export function SuggestClient({
                       type="button"
                       disabled={pending || !!activeBlock}
                       onClick={() => setCategory(c)}
-                      className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
+                      className={`flex min-h-[64px] flex-col items-center justify-center gap-1 border-2 border-dashed transition ${st.border} ${st.bg} ${st.text} ${
                         active
                           ? "scale-105 ring-2 ring-emerald-400"
                           : "opacity-55 hover:opacity-85"
@@ -1309,8 +1439,12 @@ export function SuggestClient({
                 disabled={pending || !!activeBlock}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="짧게 한 줄로!"
-                className="w-full rounded-lg border-b-2 border-amber-700/60 bg-[#fdf6e3] px-3 py-2.5 text-amber-950 placeholder:text-amber-900/40 focus:border-amber-900 focus:outline-none disabled:opacity-60"
-                style={{ fontSize: "1.05rem" }}
+                className="w-full px-3 py-2.5 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
+                style={{
+                  fontSize: "1.05rem",
+                  background: LETTER_BG,
+                  border: `3px solid ${PAPER_BORDER}`,
+                }}
               />
               <div className="mt-0.5 text-right text-xs text-white/50">
                 {title.length}/{SUGGESTION_TITLE_MAX}
@@ -1328,13 +1462,13 @@ export function SuggestClient({
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="자세한 이야기를 적어주세요"
                 rows={6}
-                className="w-full resize-none rounded-lg bg-[#fdf6e3] px-3 py-2 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
+                className="w-full resize-none px-3 py-2 text-amber-950 placeholder:text-amber-900/40 focus:outline-none disabled:opacity-60"
                 style={{
-                  fontFamily: HANDWRITING,
-                  fontSize: "1.05rem",
-                  lineHeight: "1.9rem",
-                  backgroundImage: LINED_PAPER,
-                  backgroundAttachment: "local",
+                  fontFamily: BODY_FONT,
+                  fontSize: "1rem",
+                  lineHeight: "1.7rem",
+                  background: LETTER_BG,
+                  border: `3px solid ${PAPER_BORDER}`,
                 }}
               />
               <div className="mt-0.5 text-right text-xs text-white/50">
@@ -1343,7 +1477,7 @@ export function SuggestClient({
             </div>
 
             {/* 공개 / 비공개 토글 */}
-            <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+            <div className="mb-3 border border-white/10 bg-white/[0.04] p-3">
               <div className="mb-2 text-sm font-bold text-white/85">
                 누가 볼 수 있어요?
               </div>
@@ -1352,7 +1486,7 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(true)}
-                  className={`min-h-[44px] flex-1 rounded-full border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
+                  className={`min-h-[44px] flex-1 border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     isPublic
                       ? "border-emerald-400 bg-emerald-500/25 font-bold text-emerald-100"
                       : "border-white/15 bg-white/[0.06] text-white/55"
@@ -1365,7 +1499,7 @@ export function SuggestClient({
                   type="button"
                   disabled={pending || !!activeBlock}
                   onClick={() => setIsPublic(false)}
-                  className={`min-h-[44px] flex-1 rounded-full border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
+                  className={`min-h-[44px] flex-1 border-2 px-3 py-2 text-sm transition disabled:opacity-50 ${
                     !isPublic
                       ? "border-rose-400 bg-rose-500/25 font-bold text-rose-100"
                       : "border-white/15 bg-white/[0.06] text-white/55"
@@ -1400,7 +1534,7 @@ export function SuggestClient({
             </label>
 
             {error && (
-              <div className="mb-3 rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200">
+              <div className="mb-3 border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200">
                 {error}
               </div>
             )}
@@ -1409,16 +1543,14 @@ export function SuggestClient({
               type="button"
               onClick={onSubmit}
               disabled={pending || !!activeBlock}
-              className="min-h-[48px] w-full rounded-full bg-emerald-500 py-3 text-base font-extrabold text-emerald-950 transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/40"
-              style={
-                pending || !!activeBlock
-                  ? { letterSpacing: "0.05em" }
-                  : {
-                      letterSpacing: "0.05em",
-                      boxShadow:
-                        "0 8px 24px rgba(16,185,129,0.45), 0 0 16px rgba(52,211,153,0.35)",
-                    }
-              }
+              className="min-h-[48px] w-full py-3 text-base font-extrabold text-white transition hover:brightness-110 active:translate-y-0.5 disabled:cursor-not-allowed disabled:brightness-50"
+              style={{
+                letterSpacing: "0.05em",
+                background: GRASS,
+                border: `3px solid ${GRASS_DARK}`,
+                boxShadow: `${BEVEL}, 0 4px 0 rgba(0,0,0,0.45)`,
+                textShadow: "1px 1px 0 rgba(0,0,0,0.45)",
+              }}
             >
               {pending ? "보내는 중..." : "📮 우체통에 넣기"}
             </button>
@@ -1429,7 +1561,7 @@ export function SuggestClient({
       {/* ===== 삭제 확인 모달 — 다크 유리 ===== */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
+          <div className="w-full max-w-sm border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
             <div className="mb-2 text-center text-3xl" aria-hidden>
               🗑️
             </div>
@@ -1447,7 +1579,7 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setConfirmDelete(null)}
                 disabled={pending}
-                className="min-h-[44px] flex-1 rounded-full border border-white/15 bg-white/[0.06] py-2.5 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+                className="min-h-[44px] flex-1 border border-white/15 bg-white/[0.06] py-2.5 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 남겨두기
               </button>
@@ -1455,7 +1587,7 @@ export function SuggestClient({
                 type="button"
                 onClick={doDelete}
                 disabled={pending}
-                className="min-h-[44px] flex-1 rounded-full bg-rose-500 py-2.5 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
+                className="min-h-[44px] flex-1 bg-rose-500 py-2.5 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
               >
                 삭제하기
               </button>
@@ -1467,7 +1599,7 @@ export function SuggestClient({
       {/* ===== 차단 모달 (adminMode) — 다크 유리 ===== */}
       {blockTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
+          <div className="w-full max-w-sm border border-white/15 bg-slate-900/95 p-5 text-white shadow-2xl">
             <h3 className="mb-1 text-base font-bold">
               🚫 {blockTarget.name} 건의함 제한
             </h3>
@@ -1482,7 +1614,7 @@ export function SuggestClient({
               value={blockReason}
               onChange={(e) => setBlockReason(e.target.value)}
               placeholder="예: 반복적인 부적절한 표현"
-              className="mb-3 w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-amber-400 focus:outline-none"
+              className="mb-3 w-full border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-amber-400 focus:outline-none"
             />
             <div className="mb-2 text-xs font-bold text-white/75">기간</div>
             <div className="mb-5 grid grid-cols-4 gap-2">
@@ -1498,7 +1630,7 @@ export function SuggestClient({
                   key={v}
                   type="button"
                   onClick={() => setBlockDuration(v)}
-                  className={`min-h-[40px] rounded-full border py-2 text-sm font-bold transition ${
+                  className={`min-h-[40px] border py-2 text-sm font-bold transition ${
                     blockDuration === v
                       ? "border-amber-300 bg-amber-400 text-amber-950"
                       : "border-white/15 bg-white/[0.06] text-white/70 hover:bg-white/10"
@@ -1518,7 +1650,7 @@ export function SuggestClient({
                 type="button"
                 onClick={() => setBlockTarget(null)}
                 disabled={pending}
-                className="min-h-[44px] flex-1 rounded-full border border-white/15 bg-white/[0.06] py-2 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+                className="min-h-[44px] flex-1 border border-white/15 bg-white/[0.06] py-2 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 취소
               </button>
@@ -1526,7 +1658,7 @@ export function SuggestClient({
                 type="button"
                 onClick={submitBlock}
                 disabled={pending}
-                className="min-h-[44px] flex-1 rounded-full bg-rose-500 py-2 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
+                className="min-h-[44px] flex-1 bg-rose-500 py-2 text-sm font-bold text-white transition hover:bg-rose-400 disabled:opacity-50"
               >
                 제한하기
               </button>
@@ -1540,13 +1672,13 @@ export function SuggestClient({
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border bg-slate-900/90 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm ${
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 border bg-slate-900/90 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm ${
             toast.includes("🍎") ? "border-emerald-400/60" : "border-white/20"
           }`}
           style={
             toast.includes("🍎")
-              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: JUA }
-              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: JUA }
+              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: PIXEL }
+              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: PIXEL }
           }
         >
           {toast}
@@ -1558,20 +1690,15 @@ export function SuggestClient({
 
 // ===== 프레젠테이션 보조 컴포넌트 =====
 
-// 카테고리 "우표" — 점선 테두리 사각형 + 이모지 + 라벨.
+// 카테고리 픽셀 뱃지 — 각진 프레임 칩 (시안의 카드 좌상단 뱃지).
 function CategoryStamp({ category }: { category: SuggestionCategory }) {
   const st = STAMP_META[category];
   return (
     <span
-      className={`flex h-12 w-11 shrink-0 flex-col items-center justify-center rounded-[3px] border-2 border-dashed ${st.border} ${st.bg} ${st.text}`}
-      style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.18)" }}
+      className={`inline-flex shrink-0 items-center border-2 px-1.5 py-px text-[11px] font-bold leading-tight ${st.border} ${st.bg} ${st.text}`}
+      style={{ boxShadow: "1px 1px 0 rgba(0,0,0,0.25)", fontFamily: PIXEL }}
     >
-      <span className="text-base leading-none" aria-hidden>
-        {st.emoji}
-      </span>
-      <span className="text-xs font-bold leading-tight">
-        {SUGGESTION_CATEGORY_LABELS[category]}
-      </span>
+      {SUGGESTION_CATEGORY_LABELS[category]}
     </span>
   );
 }
@@ -1584,14 +1711,14 @@ function Stars() {
       className="pointer-events-none fixed inset-0 z-0 opacity-70"
       style={{
         backgroundImage:
-          "radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,0.7) 50%, transparent 51%)," +
-          "radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
-          "radial-gradient(1.2px 1.2px at 40% 80%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
-          "radial-gradient(1px 1px at 85% 20%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
-          "radial-gradient(1.4px 1.4px at 12% 70%, rgba(255,255,255,0.45) 50%, transparent 51%)," +
-          "radial-gradient(1px 1px at 55% 15%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
-          "radial-gradient(1.8px 1.8px at 90% 75%, rgba(255,255,255,0.4) 50%, transparent 51%)," +
-          "radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.5) 50%, transparent 51%)",
+ "radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,0.7) 50%, transparent 51%)," +
+ "radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
+ "radial-gradient(1.2px 1.2px at 40% 80%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
+ "radial-gradient(1px 1px at 85% 20%, rgba(255,255,255,0.55) 50%, transparent 51%)," +
+ "radial-gradient(1.4px 1.4px at 12% 70%, rgba(255,255,255,0.45) 50%, transparent 51%)," +
+ "radial-gradient(1px 1px at 55% 15%, rgba(255,255,255,0.5) 50%, transparent 51%)," +
+ "radial-gradient(1.8px 1.8px at 90% 75%, rgba(255,255,255,0.4) 50%, transparent 51%)," +
+ "radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.5) 50%, transparent 51%)",
         backgroundSize: "320px 320px",
       }}
     />
