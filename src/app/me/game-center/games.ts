@@ -40,12 +40,12 @@ export const GAME_TYPES: GameMeta[] = [
   },
   {
     type: "math_adventure",
-    name: "수학 대모험",
-    description: "달리고 점프하며 문제 블록을 깨자!",
-    icon: "🧮",
+    name: "픽셀 수학 월드",
+    description: "3개 월드를 달리고 점프해 깃발까지!",
+    icon: "🧱",
     studentRoute: "/me/game-center/math-adventure",
     adminRoute: "/admin/game-center-preview/math-adventure",
-    iconBg: "linear-gradient(180deg, #38bdf8 0%, #2563eb 58%, #1e3a8a 100%)",
+    iconBg: "linear-gradient(180deg, #5cc8ff 0%, #73d36a 58%, #9b5128 100%)",
   },
 ];
 
