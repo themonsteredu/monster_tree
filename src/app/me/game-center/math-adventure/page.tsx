@@ -9,6 +9,7 @@ import {
   createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 import { DAILY_PLAY_LIMIT, type StudentMonster } from "@/lib/types";
+import { BlockWorldSoundLayer } from "./BlockWorldSoundLayer";
 import { MathAdventureGame } from "./MathAdventureGame";
 
 export const dynamic = "force-dynamic";
@@ -54,9 +55,12 @@ export default async function MathAdventurePage() {
   if (todayCount >= DAILY_PLAY_LIMIT) redirect("/me/game-center");
 
   return (
-    <MathAdventureGame
-      remainingBefore={Math.max(DAILY_PLAY_LIMIT - todayCount, 0)}
-      monsterNickname={activeMonster.nickname}
-    />
+    <>
+      <BlockWorldSoundLayer />
+      <MathAdventureGame
+        remainingBefore={Math.max(DAILY_PLAY_LIMIT - todayCount, 0)}
+        monsterNickname={activeMonster.nickname}
+      />
+    </>
   );
 }

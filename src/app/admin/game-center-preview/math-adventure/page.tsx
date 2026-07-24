@@ -3,6 +3,7 @@
 
 import { isAdminAuthenticated } from "../../auth";
 import { LoginForm } from "../../LoginForm";
+import { BlockWorldSoundLayer } from "@/app/me/game-center/math-adventure/BlockWorldSoundLayer";
 import { MathAdventureGame } from "@/app/me/game-center/math-adventure/MathAdventureGame";
 import { DAILY_PLAY_LIMIT } from "@/lib/types";
 
@@ -19,11 +20,14 @@ export default async function AdminMathAdventurePreviewPage({
   }
 
   return (
-    <MathAdventureGame
-      adminMode
-      homeHref="/admin/game-center-preview"
-      remainingBefore={DAILY_PLAY_LIMIT}
-      monsterNickname="테스트 몬스터"
-    />
+    <>
+      <BlockWorldSoundLayer />
+      <MathAdventureGame
+        adminMode
+        homeHref="/admin/game-center-preview"
+        remainingBefore={DAILY_PLAY_LIMIT}
+        monsterNickname="테스트 몬스터"
+      />
+    </>
   );
 }
