@@ -81,6 +81,7 @@ export function MathAdventureGame({
   const itemsRef = useRef<ItemDrop[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const controlsRef = useRef<Controls>({ ...EMPTY_CONTROLS });
+  const jumpCountRef = useRef(0);
   const cameraRef = useRef(0);
   const scoreRef = useRef(0);
   const livesRef = useRef(STARTING_LIVES);
@@ -150,6 +151,7 @@ export function MathAdventureGame({
     projectilesRef.current = [];
     cameraRef.current = 0;
     controlsRef.current = { ...EMPTY_CONTROLS };
+    jumpCountRef.current = 0;
     setQuizFeedback(null);
     if (startImmediately) syncPhase("playing");
   }, [syncPhase]);
@@ -330,6 +332,7 @@ export function MathAdventureGame({
       playerRef.current.vx = 0;
       playerRef.current.vy = 0;
       cameraRef.current = 0;
+      jumpCountRef.current = 0;
       itemsRef.current = [];
       projectilesRef.current = [];
     };
@@ -441,6 +444,10 @@ export function MathAdventureGame({
         if (player.onGround) {
           player.vy = -JUMP_SPEED;
           player.onGround = false;
+          jumpCountRef.current = 1;
+        } else if (jumpCountRef.current < 2) {
+          player.vy = -JUMP_SPEED * 0.92;
+          jumpCountRef.current = 2;
         }
       }
       if (controls.fireQueued) {
@@ -471,6 +478,7 @@ export function MathAdventureGame({
           player.y = solid.y - player.h;
           player.vy = 0;
           player.onGround = true;
+          jumpCountRef.current = 0;
         } else if (player.vy < 0 && previous.y >= solid.y + solid.h - 5) {
           player.y = solid.y + solid.h;
           player.vy = 0;
@@ -706,7 +714,7 @@ export function MathAdventureGame({
                   <InfoBlock icon="◆" title="수정" text="7초 무적" />
                 </div>
                 <p className="mt-3 text-[9px] leading-4 text-white/60">
-                  주황 아이템 큐브를 아래에서 점프해 치면 아이템이 등장해요.
+                  주황 아이템 큐브를 아래에서 점프해 치면 아이템이 등장해요.<br />공중에서 점프를 한 번 더 누르면 더블점프!
                 </p>
                 <button
                   type="button"
