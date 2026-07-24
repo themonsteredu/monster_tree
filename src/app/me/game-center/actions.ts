@@ -1,8 +1,7 @@
 "use server";
 
 // 게임센터 server actions — 게임 결과 기록 + EXP 적립 + 단계 진화 + 월간 베스트 갱신.
-// 두 게임(infinite_stairs / sky_shooter)이 같은 로직을 공유하므로 recordGamePlay 헬퍼로 추출.
-// 보안: 클라이언트가 임의 점수 보내도 서버에서 일일 한도 + 점수 상한 검증.
+// 모든 게임이 같은 기록 로직을 공유하며, 서버에서 일일 한도와 점수 상한을 검증한다.
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -10,12 +9,16 @@ import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { DAILY_PLAY_LIMIT } from "@/lib/types";
 
-export type GameType = "infinite_stairs" | "sky_shooter";
+export type GameType =
+  | "infinite_stairs"
+  | "sky_shooter"
+  | "math_adventure";
 
 // 각 게임의 정상 플레이로 도달 가능한 최대 점수 — 그 이상은 거부.
 const MAX_REASONABLE_SCORE: Record<GameType, number> = {
   infinite_stairs: 2000,
   sky_shooter: 20000,
+  math_adventure: 5000,
 };
 
 const EXP_RATE = 0.1; // 점수 * 10% = EXP
@@ -65,7 +68,6 @@ async function recordGamePlay(
 
   const sb = createSupabaseServiceClient();
 
-  // 본인 학생 행
   const { data: student } = await sb
     .from("garden_students")
     .select("id")
@@ -82,7 +84,6 @@ async function recordGamePlay(
   }
   const studentId = student.id as string;
 
-  // 일일 한도 체크 — 게임별 독립
   const { data: todayCountRaw } = await sb.rpc("get_today_play_count", {
     p_student_id: studentId,
     p_game_type: gameType,
@@ -101,7 +102,6 @@ async function recordGamePlay(
     Math.min(MAX_EXP, Math.floor(score * EXP_RATE)),
   );
 
-  // 플레이 기록
   const { error: insertErr } = await sb.from("game_plays").insert({
     student_id: studentId,
     branch_id: payload.branchId,
@@ -117,7 +117,6 @@ async function recordGamePlay(
     };
   }
 
-  // 활성 몬스터 EXP 누적 + 단계 진화 체크
   const { data: activeMonsterRaw } = await sb
     .from("student_monsters")
     .select("id, species_id, current_exp, current_stage")
@@ -152,7 +151,6 @@ async function recordGamePlay(
     image_url: string | null;
   }>;
 
-  // image_url 은 선택적 — 없으면 fallback 이모지 사용.
   let targetStage = activeMonster.current_stage;
   for (const s of stages) {
     if (s.stage > targetStage && s.required_exp <= newExp) {
@@ -176,7 +174,6 @@ async function recordGamePlay(
     .update(monsterPatch)
     .eq("id", activeMonster.id);
 
-  // 월간 베스트 갱신 — 게임별 별도 키 (student × game × month UNIQUE).
   const monthKey = new Date()
     .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })
     .slice(0, 7);
@@ -240,4 +237,10 @@ export async function recordSkyShooterPlayAction(args: {
   score: number;
 }): Promise<PlayResult> {
   return recordGamePlay("sky_shooter", args.score);
+}
+
+export async function recordMathAdventurePlayAction(args: {
+  score: number;
+}): Promise<PlayResult> {
+  return recordGamePlay("math_adventure", args.score);
 }

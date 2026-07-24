@@ -4,7 +4,10 @@
 
 import type { GameRanking } from "@/lib/types";
 
-export type GameTypeId = "infinite_stairs" | "sky_shooter";
+export type GameTypeId =
+  | "infinite_stairs"
+  | "sky_shooter"
+  | "math_adventure";
 
 export type GameMeta = {
   type: GameTypeId;
@@ -34,6 +37,15 @@ export const GAME_TYPES: GameMeta[] = [
     studentRoute: "/me/game-center/sky-shooter",
     adminRoute: "/admin/game-center-preview/sky-shooter",
     iconBg: "linear-gradient(180deg, #0c4a6e 0%, #082f49 100%)",
+  },
+  {
+    type: "math_adventure",
+    name: "수학 대모험",
+    description: "달리고 점프하며 문제 블록을 깨자!",
+    icon: "🧮",
+    studentRoute: "/me/game-center/math-adventure",
+    adminRoute: "/admin/game-center-preview/math-adventure",
+    iconBg: "linear-gradient(180deg, #38bdf8 0%, #2563eb 58%, #1e3a8a 100%)",
   },
 ];
 
