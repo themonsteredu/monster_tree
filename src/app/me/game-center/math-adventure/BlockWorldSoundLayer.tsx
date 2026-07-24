@@ -72,8 +72,7 @@ export function BlockWorldSoundLayer() {
       const shouldUnlock = text.includes("START QUEST")
         || text === "RETRY"
         || label === "점프"
-        || label === "에너지탄 발사"
-        || /^\d+$/.test(text);
+        || label === "에너지탄 발사";
 
       if (shouldUnlock && !mutedRef.current) startAudio();
       if (label === "점프") audio.playSfx("jump");
