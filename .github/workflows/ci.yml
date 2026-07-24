@@ -8,11 +8,13 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      # 정적 검사/빌드는 실제 운영 DB에 접속하지 않는다.
+      # 저장소 Secret이 없어도 next.config의 필수값 검사를 통과하도록 CI 전용 값을 사용한다.
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MH0.ci-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjowfQ.ci-placeholder
+      ADMIN_KEY: ci-admin-key
+      JWT_SECRET: ci-only-jwt-secret-that-is-long-enough-for-static-build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
