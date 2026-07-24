@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./math-adventure.css";
 
 // 사이트 메타데이터
 export const metadata: Metadata = {
