@@ -51,6 +51,13 @@ function useMediaQuery(query: string): boolean {
   return match;
 }
 
+// TV(데스크탑) 그리드는 전체 학생을 다 깔지 않고 12명(4열 × 3행) 창만 보여준다.
+// 학생이 많으면 카드가 너무 작아져 TV 에서 안 보이고, 전체 인원이 그대로 노출된다.
+// 창은 스포트라이트가 넘어갈 때마다 한 칸씩 앞으로 밀린다 (스포트라이트 학생이 항상 1번 칸).
+const TV_GRID_WINDOW = 12;
+const TV_GRID_COLS = 4;
+const TV_GRID_ROWS = 3;
+
 const SPOTLIGHT_INTERVAL_MS = 4_000;
 const HIGHLIGHT_MS = 3_000;
 const BANNER_MS = 5_000;
@@ -288,6 +295,18 @@ export function TVScreen({
   const spotlight = sorted[focusedIdx];
   const cycleLabel = sorted.length > 0 ? `${focusedIdx + 1} / ${sorted.length}` : "0 / 0";
 
+  // TV 그리드에 실제로 그릴 학생 목록.
+  // 데스크탑(TV) 이고 학생이 창보다 많으면 focusedIdx 부터 12명만 잘라서 보여준다.
+  // focusedIdx 가 1 증가할 때마다 창 전체가 한 칸씩 밀리고, 끝에 도달하면 앞으로 순환한다.
+  const gridEntries = useMemo<GridEntry[]>(() => {
+    const all = sorted.map((student, i) => ({ student, rank: i + 1 }));
+    if (!isDesktop || all.length <= TV_GRID_WINDOW) return all;
+    return Array.from(
+      { length: TV_GRID_WINDOW },
+      (_, i) => all[(focusedIdx + i) % all.length],
+    );
+  }, [sorted, isDesktop, focusedIdx]);
+
   return (
     <main className="kiosk h-screen flex flex-col overflow-hidden relative">
       <DecorDots />
@@ -351,7 +370,7 @@ export function TVScreen({
           <div className="flex flex-col gap-3 min-h-0 flex-1">
             <div className="flex-1 min-h-0">
               <CompactGrid
-                students={sorted}
+                entries={gridEntries}
                 spotlightId={spotlight?.id}
                 highlights={highlights}
                 now={now}
@@ -359,6 +378,8 @@ export function TVScreen({
                   cardRefs.current[id] = el;
                 }}
                 maxCols={isDesktop ? undefined : isPhone ? 2 : 3}
+                cols={isDesktop ? TV_GRID_COLS : undefined}
+                rows={isDesktop ? TV_GRID_ROWS : undefined}
                 treeStages={treeStages}
               />
             </div>
@@ -635,41 +656,62 @@ const Spotlight = forwardRef<
   );
 });
 
+/** 그리드 한 칸 — 창을 잘라 써도 순위는 전체 기준 실제 등수를 유지한다. */
+type GridEntry = { student: GardenStudent; rank: number };
+
 function CompactGrid({
-  students,
+  entries,
   spotlightId,
   highlights,
   now,
   registerRef,
   maxCols,
+  cols: colsOverride,
+  rows,
   treeStages,
 }: {
-  students: GardenStudent[];
+  entries: GridEntry[];
   spotlightId: string | undefined;
   highlights: Record<string, Highlight>;
   now: number;
   registerRef: (id: string, el: HTMLDivElement | null) => void;
   maxCols?: number;
+  /** 칸 수 고정 (TV 창 모드). 없으면 인원수로 자동 계산. */
+  cols?: number;
+  /** 행 수 고정 — 지정하면 행이 높이를 균등하게 나눠 채운다. */
+  rows?: number;
   treeStages?: Record<number, TreeStageImageConfig | null>;
 }) {
-  const cols = Math.min(colsFor(students.length), maxCols ?? Infinity);
-  const treeSize: AppleTreeSize = cols >= 8 ? "xs" : "small";
+  const cols =
+    colsOverride ?? Math.min(colsFor(entries.length), maxCols ?? Infinity);
+  // 칸이 적을수록 나무/글씨를 키운다 (TV 에서 잘 보이도록)
+  const treeSize: AppleTreeSize = cols >= 8 ? "xs" : cols >= 5 ? "small" : "medium";
+  const large = cols <= 4 && rows !== undefined;
   return (
-    <div className="rounded-[28px] bg-white/55 border-[2.5px] border-[var(--ink)]/40 backdrop-blur-sm shadow-card p-4 overflow-hidden">
+    <div
+      className={`rounded-[28px] bg-white/55 border-[2.5px] border-[var(--ink)]/40 backdrop-blur-sm shadow-card p-4 overflow-hidden ${
+        rows === undefined ? "" : "h-full"
+      }`}
+    >
       <div
-        className="grid gap-2.5 h-full content-start"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        className={`grid gap-2.5 h-full ${rows === undefined ? "content-start" : ""}`}
+        style={{
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateRows:
+            rows === undefined ? undefined : `repeat(${rows}, minmax(0, 1fr))`,
+        }}
       >
-        {students.map((s, i) => (
+        {entries.map(({ student, rank }) => (
           <CompactCard
-            key={s.id}
-            student={s}
-            rank={i + 1}
-            isSpotlight={s.id === spotlightId}
-            highlight={highlights[s.id]}
+            key={student.id}
+            student={student}
+            rank={rank}
+            isSpotlight={student.id === spotlightId}
+            highlight={highlights[student.id]}
             now={now}
             treeSize={treeSize}
-            cardRef={(el) => registerRef(s.id, el)}
+            large={large}
+            cardRef={(el) => registerRef(student.id, el)}
             treeStages={treeStages}
           />
         ))}
@@ -685,6 +727,7 @@ function CompactCard({
   highlight,
   now,
   treeSize,
+  large = false,
   cardRef,
   treeStages,
 }: {
@@ -694,6 +737,8 @@ function CompactCard({
   highlight: Highlight | undefined;
   now: number;
   treeSize: AppleTreeSize;
+  /** 칸이 큰 TV 창 모드 — 이름/포인트 글씨를 키운다. */
+  large?: boolean;
   cardRef: (el: HTMLDivElement | null) => void;
   treeStages?: Record<number, TreeStageImageConfig | null>;
 }) {
@@ -714,11 +759,18 @@ function CompactCard({
   return (
     <motion.div
       ref={cardRef}
+      // layout: 창이 한 칸씩 밀릴 때 카드가 옆 칸으로 미끄러지듯 이동
+      layout
+      initial={{ opacity: 0, scale: 0.92 }}
       animate={{
+        opacity: 1,
         scale: isSpotlight ? 1.06 : 1,
       }}
       transition={{ type: "spring", stiffness: 240, damping: 22 }}
-      style={{ zIndex: isSpotlight ? 5 : 1, paddingBottom: hasMood ? 20 : undefined }}
+      style={{
+        zIndex: isSpotlight ? 5 : 1,
+        paddingBottom: hasMood ? (large ? 26 : 20) : undefined,
+      }}
       className={[
         "relative rounded-[18px] bg-white p-2 flex flex-col items-center justify-between gap-1",
         "border-[2px] border-[var(--ink)]/85",
@@ -730,7 +782,10 @@ function CompactCard({
     >
       <div
         className={[
-          "absolute top-1 left-1 min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-extrabold flex items-center justify-center tabular-nums border-[1.5px] border-[var(--ink)]",
+          "absolute top-1 left-1 rounded-full font-extrabold flex items-center justify-center tabular-nums border-[1.5px] border-[var(--ink)]",
+          large
+            ? "min-w-[28px] h-[28px] px-2 text-[15px]"
+            : "min-w-[20px] h-[20px] px-1.5 text-[11px]",
           rank === 1
             ? "bg-[var(--accent-gold)] text-[var(--ink)]"
             : rank === 2
@@ -768,10 +823,14 @@ function CompactCard({
       </div>
 
       <div className="text-center w-full">
-        <div className="font-galmuri text-[12px] truncate leading-tight">
+        <div
+          className={`font-galmuri truncate leading-tight ${large ? "text-[18px]" : "text-[12px]"}`}
+        >
           {student.name}
         </div>
-        <div className="font-galmuri text-[10px] tabular-nums text-[var(--ink-soft)] flex items-center justify-center gap-1">
+        <div
+          className={`font-galmuri tabular-nums text-[var(--ink-soft)] flex items-center justify-center gap-1 ${large ? "text-[14px]" : "text-[10px]"}`}
+        >
           <span>{student.total_points}pt</span>
           {student.apples_harvested > 0 && (
             <>
@@ -784,8 +843,8 @@ function CompactCard({
 
       <MoodTicker
         text={student.mood_text ?? ""}
-        height={16}
-        fontSize={9}
+        height={large ? 22 : 16}
+        fontSize={large ? 13 : 9}
         durationSec={14}
         borderRadius={16}
       />
