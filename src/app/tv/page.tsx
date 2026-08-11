@@ -5,9 +5,15 @@
 //   1) ?branch=br_xxx 쿼리 (우선)
 //   2) BRANCH_ID env (deployment 고정 — 학원별 TV 에서 url 변경 없이 운영)
 // 둘 다 없으면 안내 배너.
+//
+// 화면 폭: 안드로이드 TV 박스는 1920×1080 패널이어도 device-width 를 960px 로
+// 보고해서 PC 와 다른(태블릿) 레이아웃이 떴다. 그래서 이 라우트는 뷰포트를 1920 으로
+// 고정하고(TVViewport) 레이아웃도 데스크탑으로 강제한다(forceDesktop).
+// 핸드폰으로 관찰할 때는 ?fit=device 를 붙이면 기존 반응형 레이아웃으로 돌아간다.
 
 import { TVScreen } from "../TVScreen";
 import { TVAutoRefresh } from "./TVAutoRefresh";
+import { TVViewport } from "./TVViewport";
 import { TVWakeLock } from "./TVWakeLock";
 import { loadTvData } from "@/lib/tv-data";
 import { getBranchId } from "@/lib/branch";
@@ -18,7 +24,7 @@ export const revalidate = 0;
 export default async function TvPublicPage({
   searchParams,
 }: {
-  searchParams: { branch?: string };
+  searchParams: { branch?: string; fit?: string };
 }) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return <EnvMissingNotice />;
@@ -32,8 +38,12 @@ export default async function TvPublicPage({
 
   const data = await loadTvData(branchId);
 
+  // ?fit=device → 핸드폰/태블릿 관찰용. 그 외에는 로비 TV 로 보고 PC 레이아웃 고정.
+  const tvLayout = searchParams.fit !== "device";
+
   return (
     <TVAutoRefresh>
+      {tvLayout && <TVViewport />}
       <TVWakeLock />
       <TVScreen
         initialStudents={data.students}
@@ -49,6 +59,7 @@ export default async function TvPublicPage({
         sceneLayoutByStudent={data.sceneLayoutByStudent}
         monsterSpeciesById={data.monsterSpeciesById}
         monsterStagesBySpecies={data.monsterStagesBySpecies}
+        forceDesktop={tvLayout}
       />
     </TVAutoRefresh>
   );

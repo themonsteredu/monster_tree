@@ -90,6 +90,7 @@ export function TVScreen({
   sceneLayoutByStudent = {},
   monsterSpeciesById = {},
   monsterStagesBySpecies = {},
+  forceDesktop = false,
 }: {
   initialStudents: GardenStudent[];
   initialTodayHarvest?: number;
@@ -104,6 +105,12 @@ export function TVScreen({
   sceneLayoutByStudent?: Record<string, import("@/lib/types").SceneLayout | null>;
   monsterSpeciesById?: Record<string, import("@/lib/types").MonsterSpecies>;
   monsterStagesBySpecies?: Record<string, import("@/lib/types").MonsterStageImage[]>;
+  /**
+   * 로비 TV 처럼 화면 폭 보고값을 믿을 수 없는 기기에서 항상 데스크탑(PC) 레이아웃을
+   * 강제한다. 안드로이드 TV 박스는 1920×1080 패널이어도 device-width 를 960px 로
+   * 보고해서 lg(1024px) 브레이크포인트가 걸리지 않는다.
+   */
+  forceDesktop?: boolean;
 }) {
   const [students, setStudents] = useState<GardenStudent[]>(initialStudents);
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -120,8 +127,14 @@ export function TVScreen({
   //  - <640px: 모바일 — compact 레이아웃 + 그리드 2열
   //  - 640~1023px: 태블릿 — compact 레이아웃 + 그리드 3열
   //  - 1024px+: 데스크탑/TV — 풀 레이아웃 (Spotlight + 자동 칸수 그리드)
-  const isPhone = useMediaQuery("(max-width: 639px)");
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  //  - forceDesktop: 매체 쿼리 무시하고 무조건 데스크탑 (로비 TV)
+  const phoneMq = useMediaQuery("(max-width: 639px)");
+  const desktopMq = useMediaQuery("(min-width: 1024px)");
+  const isPhone = forceDesktop ? false : phoneMq;
+  const isDesktop = forceDesktop ? true : desktopMq;
+  // forceDesktop 일 때는 lg:/sm: 반응형 클래스도 데스크탑 값으로 고정한다.
+  // (뷰포트 폭 고정이 안 먹는 브라우저에서도 PC 와 같은 레이아웃이 나오도록)
+  const rwd = (mobile: string, desktop: string) => (forceDesktop ? desktop : mobile);
   // SSR 시 useMediaQuery 는 false 를 반환 → 첫 페인트는 데스크탑 가정.
   // 마운트 후 mounted 가 true 가 되면 매체 쿼리 결과를 신뢰.
   const [mounted, setMounted] = useState(false);
@@ -279,16 +292,26 @@ export function TVScreen({
     <main className="kiosk h-screen flex flex-col overflow-hidden relative">
       <DecorDots />
 
-      <header className="relative z-10 flex-shrink-0 px-3 sm:px-8 pt-3 sm:pt-6 pb-2 sm:pb-3 flex items-center justify-between gap-2">
-        <TitlePill />
-        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
+      <header
+        className={`relative z-10 flex-shrink-0 ${rwd(
+          "px-3 sm:px-8 pt-3 sm:pt-6 pb-2 sm:pb-3",
+          "px-8 pt-6 pb-3",
+        )} flex items-center justify-between gap-2`}
+      >
+        <TitlePill forceDesktop={forceDesktop} />
+        <div className={`flex items-center ${rwd("gap-1.5 sm:gap-3", "gap-3")} min-w-0`}>
           <TodayHarvestPill ref={basketRef} count={todayApples} bump={bumpBasket} />
           {top && (
-            <div className="hidden md:block">
+            <div className={rwd("hidden md:block", "block")}>
               <TopStudentPill name={top.name} points={top.total_points} />
             </div>
           )}
-          <div className="hidden lg:block px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card">
+          <div
+            className={`${rwd(
+              "hidden lg:block",
+              "block",
+            )} px-4 py-2 rounded-full bg-white border-[2.5px] border-[var(--ink)] text-[var(--ink)] tabular-nums text-lg font-bold shadow-card`}
+          >
             {today}
           </div>
         </div>
@@ -298,9 +321,12 @@ export function TVScreen({
         <EmptyState />
       ) : (
         <section
-          className="relative z-10 flex-1 min-h-0 px-3 sm:px-8 pb-3 gap-3 lg:gap-6 flex flex-col lg:grid lg:[grid-template-columns:minmax(420px,_36%)_1fr]"
+          className={`relative z-10 flex-1 min-h-0 pb-3 ${rwd(
+            "px-3 sm:px-8 gap-3 lg:gap-6 flex flex-col lg:grid lg:[grid-template-columns:minmax(420px,_36%)_1fr]",
+            "px-8 gap-6 grid [grid-template-columns:minmax(420px,_36%)_1fr]",
+          )}`}
         >
-          <div className="h-[44vh] lg:h-auto min-h-0 shrink-0 lg:shrink">
+          <div className={`min-h-0 ${rwd("h-[44vh] lg:h-auto shrink-0 lg:shrink", "h-auto shrink")}`}>
             <Spotlight
               ref={spotlightRef}
               student={spotlight}
@@ -336,7 +362,7 @@ export function TVScreen({
                 treeStages={treeStages}
               />
             </div>
-            <div className="hidden lg:block">
+            <div className={rwd("hidden lg:block", "block")}>
               <CriteriaBar />
             </div>
           </div>
@@ -808,14 +834,18 @@ function ProgressBar({
   );
 }
 
-function TitlePill() {
+function TitlePill({ forceDesktop = false }: { forceDesktop?: boolean }) {
   return (
     <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white border-[2.5px] border-[var(--ink)] shadow-card">
       <span className="text-2xl">🌳</span>
       <span className="text-2xl font-extrabold text-[var(--ink)] tracking-tight">
         우리들의 사과정원
       </span>
-      <span className="text-[var(--ink-soft)] font-bold text-sm hidden md:inline">
+      <span
+        className={`text-[var(--ink-soft)] font-bold text-sm ${
+          forceDesktop ? "inline" : "hidden md:inline"
+        }`}
+      >
         · 더몬스터학원
       </span>
     </div>
