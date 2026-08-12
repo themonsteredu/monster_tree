@@ -423,15 +423,15 @@ export function MeTreeClient({
     >
       <div
         style={{
-          background: isHarvestStage ? "#fff5d6" : "#fff",
+          background: isHarvestStage ? "#fff8e6" : "#fff",
           borderRadius: 24,
           padding: 14,
           width: "100%",
           maxWidth: 460,
           boxShadow: isHarvestStage
-            ? "0 0 0 4px rgba(240,192,80,0.45), 0 10px 40px rgba(61,40,24,0.12)"
+            ? "0 0 0 4px rgba(251,146,60,0.45), 0 10px 40px rgba(61,40,24,0.12)"
             : "0 10px 40px rgba(61,40,24,0.08)",
-          border: `2px solid ${isHarvestStage ? "#e8a020" : "#f1e8d8"}`,
+          border: `2px solid ${isHarvestStage ? "#fb923c" : "#f1e8d8"}`,
         }}
       >
         {!row ? (
@@ -616,8 +616,9 @@ export function MeTreeClient({
                   zIndex: 5,
                   padding: "8px 14px",
                   borderRadius: 14,
-                  background: "rgba(255,255,255,0.32)",
-                  border: "1px solid rgba(255,255,255,0.22)",
+                  background: "rgba(255,255,255,0.38)",
+                  border: "1px solid rgba(251,146,60,0.3)",
+                  boxShadow: "0 0 12px rgba(251,146,60,0.2)",
                   textAlign: "center",
                   minWidth: 66,
                 }}
@@ -838,7 +839,7 @@ export function MeTreeClient({
               <button
                 type="button"
                 onClick={() => setDecorateMode(true)}
-                className="font-pretendard bg-amber-50 border border-amber-200 rounded-xl py-3 text-amber-800 hover:bg-amber-100 transition"
+                className="font-pretendard bg-orange-50 border border-orange-200 rounded-xl py-3 text-orange-800 hover:bg-orange-100 transition shadow-sm"
                 style={{ fontSize: 13, fontWeight: 700 }}
               >
                 🎨 마당 꾸미기
@@ -914,16 +915,16 @@ export function MeTreeClient({
         <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/me/village"
-            className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
-            style={{ fontSize: 13, fontWeight: 500 }}
+            className="font-pretendard text-orange-600 no-underline hover:text-orange-700"
+            style={{ fontSize: 13, fontWeight: 600 }}
           >
             🏘️ 몬스터 마을로
           </Link>
-          <span className="text-amber-300" aria-hidden>·</span>
+          <span className="text-orange-300" aria-hidden>·</span>
           <Link
             href="/me/collection"
-            className="font-pretendard text-amber-600 no-underline hover:text-amber-700"
-            style={{ fontSize: 13, fontWeight: 500 }}
+            className="font-pretendard text-orange-600 no-underline hover:text-orange-700"
+            style={{ fontSize: 13, fontWeight: 600 }}
           >
             📖 몬스터도감
           </Link>

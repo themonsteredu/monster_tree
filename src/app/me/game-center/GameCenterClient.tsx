@@ -118,7 +118,7 @@ export function GameCenterClient({
       className="relative min-h-[100dvh] text-white"
       style={{
         background:
-          "radial-gradient(120% 80% at 50% -10%, #3b0d6e 0%, #1a0a3a 40%, #0a0418 70%, #050308 100%)",
+          "radial-gradient(120% 80% at 50% -10%, #4a1d8e 0%, #1a0a3a 40%, #0a0418 70%, #050308 100%)",
         fontFamily: "'Jua', 'Pretendard Variable', sans-serif",
       }}
     >
@@ -151,7 +151,7 @@ export function GameCenterClient({
               className="text-3xl"
               style={{
                 filter:
-                  "drop-shadow(0 0 12px rgba(168,85,247,0.9)) drop-shadow(0 0 24px rgba(244,114,182,0.4))",
+                  "drop-shadow(0 0 12px rgba(251,146,60,0.9)) drop-shadow(0 0 24px rgba(249,115,22,0.4))",
               }}
               aria-hidden
             >
@@ -198,7 +198,7 @@ export function GameCenterClient({
                 내 몬스터알
               </span>
             </div>
-            <span className="rounded-full border border-pink-400/40 bg-pink-500/15 px-2.5 py-0.5 text-xs font-bold text-pink-200">
+            <span className="rounded-full border border-orange-400/40 bg-orange-500/20 px-3 py-1 text-xs font-bold text-orange-200 shadow-[0_0_12px_rgba(251,146,60,0.3)]">
               {activeMonster.current_stage} / 5 단계
             </span>
           </div>
@@ -214,10 +214,10 @@ export function GameCenterClient({
               }}
             >
               <div
-                className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-pink-200 backdrop-blur-sm"
-                style={{ boxShadow: "0 0 10px rgba(244,114,182,0.3)" }}
+                className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-bold text-orange-200 backdrop-blur-sm"
+                style={{ boxShadow: "0 0 12px rgba(251,146,60,0.4)" }}
               >
-                <span aria-hidden>✨</span>
+                <span className="animate-pulse" aria-hidden>✨</span>
                 <span>성장 중</span>
               </div>
 
@@ -314,12 +314,12 @@ export function GameCenterClient({
                 {eggLabel}
               </div>
               <div className="mt-2 flex items-center gap-1.5 text-sm">
-                <span className="font-bold text-purple-200">
+                <span className="font-bold text-orange-200">
                   {currentStageInfo?.stage_name ??
                     `${activeMonster.current_stage}단계`}
                 </span>
                 <span className="text-white/40">→</span>
-                <span className="font-bold text-pink-300">
+                <span className="font-bold text-yellow-300">
                   {nextStageInfo?.stage_name ?? "최종!"}
                 </span>
               </div>
@@ -332,8 +332,8 @@ export function GameCenterClient({
                   transition={{ duration: 0.8, ease: "easeOut" }}
                   style={{
                     background:
-                      "linear-gradient(90deg, #f472b6 0%, #c084fc 60%, #818cf8 100%)",
-                    boxShadow: "0 0 12px rgba(244,114,182,0.6)",
+                      "linear-gradient(90deg, #fb923c 0%, #facc15 60%, #fbbf24 100%)",
+                    boxShadow: "0 0 14px rgba(251,146,60,0.6)",
                   }}
                 />
               </div>
@@ -368,16 +368,16 @@ export function GameCenterClient({
                       className={[
                         "flex h-12 w-12 items-center justify-center rounded-2xl border text-2xl transition-all",
                         isCurrent
-                          ? "border-pink-300 bg-gradient-to-br from-pink-500/30 to-fuchsia-500/30"
+                          ? "border-orange-300 bg-gradient-to-br from-orange-500/40 to-yellow-500/30"
                           : reached
-                            ? "border-purple-400/40 bg-purple-500/15"
+                            ? "border-orange-400/40 bg-orange-500/15"
                             : "border-white/8 bg-white/[0.025] text-white/25",
                       ].join(" ")}
                       style={
                         isCurrent
                           ? {
                               boxShadow:
-                                "0 0 16px rgba(244,114,182,0.55), 0 0 4px rgba(244,114,182,0.4) inset",
+                                "0 0 18px rgba(251,146,60,0.55), 0 0 4px rgba(251,146,60,0.4) inset",
                             }
                           : undefined
                       }
@@ -413,7 +413,7 @@ export function GameCenterClient({
                       className={[
                         "mx-0.5 mb-3 text-xs",
                         s < activeMonster.current_stage
-                          ? "text-pink-300/60"
+                          ? "text-orange-300/60"
                           : "text-white/15",
                       ].join(" ")}
                       aria-hidden
@@ -458,7 +458,7 @@ export function GameCenterClient({
 
         {/* 이번 달 랭킹 — 게임별 탭 */}
         <section
-          className="mb-7 rounded-2xl border border-purple-400/20 bg-purple-900/20 p-4 backdrop-blur-sm"
+          className="mb-7 rounded-2xl border border-orange-400/20 bg-orange-900/10 p-4 backdrop-blur-sm"
           aria-label="이번 달 랭킹"
         >
           <div className="mb-3 flex items-baseline justify-between">
@@ -491,7 +491,7 @@ export function GameCenterClient({
                   className={[
                     "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold transition-all",
                     active
-                      ? "bg-gradient-to-r from-pink-500/30 to-fuchsia-500/30 text-white shadow-[0_0_10px_rgba(244,114,182,0.35)]"
+                      ? "bg-gradient-to-r from-orange-500/40 to-yellow-500/30 text-white shadow-[0_0_12px_rgba(251,146,60,0.35)]"
                       : "text-white/55 active:bg-white/[0.04]",
                   ].join(" ")}
                 >
@@ -517,10 +517,10 @@ export function GameCenterClient({
         <div className="flex justify-center">
           <Link
             href={villageHref}
-            className="group relative flex items-center gap-3 rounded-full border border-purple-400/40 bg-gradient-to-r from-purple-900/50 via-fuchsia-900/40 to-purple-900/50 px-6 py-3 text-sm font-extrabold text-white backdrop-blur-sm transition-all active:scale-95"
+            className="group relative flex items-center gap-3 rounded-full border border-orange-400/40 bg-gradient-to-r from-orange-900/50 via-amber-900/40 to-orange-900/50 px-6 py-3 text-sm font-extrabold text-white backdrop-blur-sm transition-all active:scale-95"
             style={{
               boxShadow:
-                "0 0 24px rgba(168,85,247,0.35), 0 4px 16px rgba(0,0,0,0.4)",
+                "0 0 24px rgba(251,146,60,0.35), 0 4px 16px rgba(0,0,0,0.4)",
             }}
           >
             <span aria-hidden>←</span>
@@ -586,9 +586,9 @@ function GameCard({
         canPlay
           ? {
               background:
-                "linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(168,85,247,0.18) 50%, rgba(236,72,153,0.18) 100%)",
+                "linear-gradient(135deg, rgba(251,146,60,0.15) 0%, rgba(249,115,22,0.15) 50%, rgba(234,88,12,0.15) 100%)",
               boxShadow:
-                "0 0 24px rgba(168,85,247,0.22), 0 0 1px rgba(255,255,255,0.08) inset",
+                "0 0 24px rgba(251,146,60,0.18), 0 0 1px rgba(255,255,255,0.08) inset",
             }
           : { background: "rgba(255,255,255,0.02)" }
       }
@@ -638,14 +638,14 @@ function GameCard({
           className={[
             "rounded-full px-3.5 py-2 text-xs font-extrabold",
             canPlay
-              ? "bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white"
+              ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white"
               : "bg-white/10 text-white/50",
           ].join(" ")}
           style={
             canPlay
               ? {
                   boxShadow:
-                    "0 4px 16px rgba(244,114,182,0.5), 0 0 1px rgba(255,255,255,0.4) inset",
+                    "0 4px 16px rgba(251,146,60,0.5), 0 0 1px rgba(255,255,255,0.4) inset",
                 }
               : undefined
           }
