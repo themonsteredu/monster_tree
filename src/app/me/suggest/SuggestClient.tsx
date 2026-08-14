@@ -366,11 +366,7 @@ export function SuggestClient({
       }
       resetForm();
       setWriteOpen(false);
-      showToast(
-        res.rewarded
-          ? `쪽지를 우체통에 넣었어요! 🍎 +${res.rewardPoints}P 획득!`
-          : "쪽지를 우체통에 넣었어요! 📮 (오늘 작성 보상은 이미 받았어요)",
-      );
+      showToast("쪽지를 우체통에 넣었어요! 📮");
       router.refresh();
     });
   };
@@ -1534,19 +1530,13 @@ export function SuggestClient({
         </div>
       )}
 
-      {/* ===== 토스트 — 다크 유리 (보상 토스트는 에메랄드 글로우 강조) ===== */}
+      {/* ===== 토스트 — 다크 유리 ===== */}
       {toast && (
         <div
           role="status"
           aria-live="polite"
-          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 border bg-slate-900/90 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm ${
-            toast.includes("🍎") ? "border-emerald-400/60" : "border-white/20"
-          }`}
-          style={
-            toast.includes("🍎")
-              ? { boxShadow: "0 0 20px rgba(52,211,153,0.5)", fontFamily: CHALK }
-              : { boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: CHALK }
-          }
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 border border-white/20 bg-slate-900/90 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm"
+          style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.4)", fontFamily: CHALK }}
         >
           {toast}
         </div>

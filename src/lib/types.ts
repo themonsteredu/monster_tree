@@ -452,9 +452,8 @@ export const SUGGESTION_TITLE_MAX = 60;
 export const SUGGESTION_BODY_MAX = 1000;
 export const SUGGESTION_REPLY_MAX = 1000;
 
-// 건의 작성 보상 — garden_award_external 의 source_key 를
-// `suggest-reward:{studentId}:{KST날짜}` 로 만들어 하루 1회만 지급된다.
-export const SUGGESTION_REWARD_POINTS = 2;
+// 건의함은 포인트를 지급하지 않는다. 하고 싶은 말이 있을 때 쓰는 곳이지
+// 포인트를 버는 곳이 아니라서, 작성 보상(구 SUGGESTION_REWARD_POINTS)은 제거됨.
 
 // 공감 스티커 (garden_suggestion_reactions.kind)
 export type SuggestionReactionKind = "heart" | "thumbs";

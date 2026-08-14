@@ -1,7 +1,7 @@
 "use server";
 
 // 학생용 건의함 Server Actions.
-// - submitSuggestionAction: 새 글 작성 (+ 하루 1회 포인트 보상)
+// - submitSuggestionAction: 새 글 작성 (포인트 보상 없음)
 // - editSuggestionAction: 본인 글 수정
 // - deleteSuggestionAction: 본인 글 삭제
 // - toggleReactionAction: 공개 글 공감 스티커 (학생당 글당 1개, 재탭 취소/교체)
@@ -15,7 +15,6 @@ import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import {
   SUGGESTION_BODY_MAX,
-  SUGGESTION_REWARD_POINTS,
   SUGGESTION_TITLE_MAX,
   type SuggestionCategory,
   type SuggestionReactionKind,
@@ -41,24 +40,9 @@ export type SubmitResult =
   | { ok: true }
   | { ok: false; message: string };
 
-// 새 글 작성 결과 — 보상 지급 여부 포함.
-// rewarded=true 면 오늘 첫 작성 보상(garden_pending_points) 이 적립된 것.
-export type SubmitSuggestionResult =
-  | { ok: true; rewarded: boolean; rewardPoints: number }
-  | { ok: false; message: string };
-
 export type ToggleReactionResult =
   | { ok: true; myReaction: SuggestionReactionKind | null }
   | { ok: false; message: string };
-
-// KST 기준 'YYYY-MM-DD'. 작성 보상 dedupe 용 source_key 에 사용.
-function kstDateKey(): string {
-  const kst = new Date(Date.now() + 9 * 3600 * 1000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(kst.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
 
 // JWT → student row 조회 헬퍼.
 async function resolveCurrentStudent() {
@@ -139,7 +123,7 @@ export async function submitSuggestionAction(input: {
   body: string;
   isAnonymous: boolean;
   visibility?: string;
-}): Promise<SubmitSuggestionResult> {
+}): Promise<SubmitResult> {
   const me = await resolveCurrentStudent();
   if (!me) return { ok: false, message: "로그인이 필요해요." };
 
@@ -163,25 +147,9 @@ export async function submitSuggestionAction(input: {
     return { ok: false, message: `제출 실패: ${insertErr.message}` };
   }
 
-  // 작성 보상 — 하루 1회 (KST). garden_award_external 이 source_key 로 dedupe.
-  // 보상 적립이 실패해도 작성 자체는 성공으로 처리한다.
-  let rewarded = false;
-  try {
-    const { data: award } = await me.sb.rpc("garden_award_external", {
-      p_source_key: `suggest-reward:${me.student.id}:${kstDateKey()}`,
-      p_student_id: me.student.id,
-      p_points: SUGGESTION_REWARD_POINTS,
-      p_reason: "건의함 쪽지 작성",
-    });
-    const status = (award as { status?: string } | null)?.status;
-    rewarded = status === "awarded";
-  } catch {
-    // 보상 실패 무시 — 작성은 이미 완료.
-  }
-
   revalidatePath("/me/suggest");
   revalidatePath("/admin/suggest");
-  return { ok: true, rewarded, rewardPoints: SUGGESTION_REWARD_POINTS };
+  return { ok: true };
 }
 
 export async function editSuggestionAction(input: {
