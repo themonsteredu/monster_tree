@@ -3,7 +3,11 @@
 // Admin 메인 화면 (PC + 모바일)
 // - 상단 필터 바: 반(class) pill + 이름 검색
 // - 학생 그리드(컴팩트 카드): 한 화면에 30명+ 표시
-// - 카드 탭 → 하단 포인트 패널: 초등/중고등 자동 분기
+// - 카드 탭 = 선택 토글(여러 명 가능)
+//   • 1명 선택 → 하단 상세 패널: 초등/중고등 자동 분기 (점수 입력·수확 포함)
+//   • 2명 이상 → 하단 일괄 패널: 출석/숙제/단원테스트를 선택 인원 전체에 한 번에
+//   • 필터 바 '전체 선택' + 반 pill 조합 = 반 전체 출석이 두 탭
+//   • 카드의 ✓ = 오늘 이미 출석 지급됨 (이중 지급 방지)
 //   • 초등: [출석 +1] [숙제 +1] [단원테스트 +10] / 일일테스트 1~4 / 월말테스트 1~10
 //   • 중고등: [출석 +1] [숙제 +1] / 주간테스트 1~10 / 월말테스트 1~10
 // - 모든 적립은 garden_pending_points 로 들어가 학생 화면에서 받기 누르면 확정 (기존과 동일)
@@ -18,6 +22,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import {
   addPointsAction,
+  addPointsBulkAction,
   cancelPendingAction,
   harvestStudentAction,
   sendPendingPointsPushAction,
@@ -111,7 +116,9 @@ export function AdminClient({
   const [undoneIds, setUndoneIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState<string | null>(initialClass);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 다중 선택 — 반 전체 출석/숙제를 한 번에 주기 위해 Set 으로 들고 있는다.
+  // (일괄 지급 서버 함수 addPointsBulkAction 은 이미 있었는데 화면이 안 쓰고 있었다.)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -153,18 +160,51 @@ export function AdminClient({
     });
   }, [students, classFilter, search]);
 
-  const selectedStudent = useMemo(
-    () => (selectedId ? students.find((s) => s.id === selectedId) ?? null : null),
-    [students, selectedId],
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // 정확히 한 명 선택 → 기존 상세 패널(점수 입력·수확 포함), 둘 이상 → 일괄 패널
+  const selectedStudent = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const id = Array.from(selectedIds)[0];
+    return students.find((s) => s.id === id) ?? null;
+  }, [students, selectedIds]);
+
+  const selectedStudents = useMemo(
+    () => students.filter((s) => selectedIds.has(s.id)),
+    [students, selectedIds],
   );
 
-  // 필터/검색으로 선택된 학생이 화면에서 사라지면 선택 해제
+  // 필터/검색으로 화면에서 사라진 학생은 선택에서도 뺀다
   useEffect(() => {
-    if (!selectedId) return;
-    if (!visible.some((s) => s.id === selectedId)) {
-      setSelectedId(null);
+    setSelectedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => visible.some((s) => s.id === id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visible]);
+
+  // 오늘 이미 '출석' 을 준 학생 — 이중 지급 방지 표시용.
+  // 확정된 기록(logs)과 아직 안 받은 적립(pendingPoints) 양쪽을 다 본다.
+  const attendedToday = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const t0 = start.getTime();
+    const set = new Set<string>();
+    for (const l of logs) {
+      if (l.reason === "출석" && new Date(l.logged_at).getTime() >= t0) set.add(l.student_id);
     }
-  }, [visible, selectedId]);
+    for (const pp of pendingPoints) {
+      if (pp.reason === "출석" && new Date(pp.created_at).getTime() >= t0) set.add(pp.student_id);
+    }
+    return set;
+  }, [logs, pendingPoints]);
 
   const panelLevel: ClassLevel = useMemo(() => {
     if (selectedStudent) return detectClassLevel(selectedStudent.class_name);
@@ -266,6 +306,20 @@ export function AdminClient({
     });
   };
 
+  const submitPointsBulk = (delta: number, reason: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    triggerHaptic("tap");
+    startTransition(async () => {
+      const res = await addPointsBulkAction({ studentIds: ids, delta, reason });
+      if (!res.ok) {
+        showToast(res.message);
+        return;
+      }
+      showToast(`${res.count}명에게 ${delta > 0 ? "+" : ""}${delta}pt · ${reason}`);
+    });
+  };
+
   const submitHarvest = (student: GardenStudent) => {
     triggerHaptic("strong");
     startTransition(async () => {
@@ -336,6 +390,17 @@ export function AdminClient({
             </span>
           </ClassPill>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            // 화면에 보이는 학생 전부 선택 ↔ 해제. 반 필터와 조합하면 "반 전체" 두 탭.
+            if (selectedIds.size === visible.length && visible.length > 0) clearSelection();
+            else setSelectedIds(new Set(visible.map((s) => s.id)));
+          }}
+          className="px-3 py-1.5 rounded-lg border text-sm font-medium transition bg-white border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700"
+        >
+          {selectedIds.size === visible.length && visible.length > 0 ? "전체 해제" : "전체 선택"}
+        </button>
         <div className="ml-auto relative">
           <input
             value={search}
@@ -380,9 +445,10 @@ export function AdminClient({
             <StudentCard
               key={s.id}
               student={s}
-              selected={selectedId === s.id}
+              selected={selectedIds.has(s.id)}
+              attendedToday={attendedToday.has(s.id)}
               flash={flashId === s.id}
-              onClick={() => setSelectedId((cur) => (cur === s.id ? null : s.id))}
+              onClick={() => toggleSelect(s.id)}
             />
           ))}
         </div>
@@ -414,9 +480,19 @@ export function AdminClient({
             student={selectedStudent}
             level={panelLevel}
             disabled={pending}
-            onClose={() => setSelectedId(null)}
+            onClose={clearSelection}
             onApply={(delta, reason) => submitPoints(selectedStudent.id, delta, reason)}
             onHarvest={() => setHarvestTarget(selectedStudent)}
+          />
+        )}
+        {selectedIds.size > 1 && (
+          <BatchPanel
+            key="batch"
+            students={selectedStudents}
+            level={panelLevel}
+            disabled={pending}
+            onClose={clearSelection}
+            onApply={submitPointsBulk}
           />
         )}
       </AnimatePresence>
@@ -505,11 +581,14 @@ function ClassPill({
 function StudentCard({
   student,
   selected,
+  attendedToday,
   flash,
   onClick,
 }: {
   student: GardenStudent;
   selected: boolean;
+  /** 오늘 이미 '출석' 포인트를 준 학생 — 이중 지급 방지용 표시 */
+  attendedToday: boolean;
   flash: boolean;
   onClick: () => void;
 }) {
@@ -531,7 +610,12 @@ function StudentCard({
       <div className="text-2xl leading-none mb-1" aria-hidden>
         {stageEmoji(stage)}
       </div>
-      <div className="text-xs font-medium text-gray-900 truncate">{student.name}</div>
+      <div className="text-xs font-medium text-gray-900 truncate">
+        {attendedToday && (
+          <span className="text-emerald-500 mr-0.5" title="오늘 출석 지급됨" aria-label="오늘 출석 지급됨">✓</span>
+        )}
+        {student.name}
+      </div>
       <div className="text-[9px] text-gray-400 tabular-nums truncate">
         {student.total_points}pt · {stage}단계
       </div>
@@ -550,6 +634,75 @@ function StudentCard({
         </div>
       )}
     </button>
+  );
+}
+
+/* ============== 하단 일괄 지급 패널 (2명 이상 선택) ============== */
+
+function BatchPanel({
+  students,
+  level,
+  disabled,
+  onClose,
+  onApply,
+}: {
+  students: GardenStudent[];
+  level: ClassLevel;
+  disabled: boolean;
+  onClose: () => void;
+  onApply: (delta: number, reason: string) => void;
+}) {
+  const names =
+    students.length <= 3
+      ? students.map((s) => s.name).join(", ")
+      : `${students.slice(0, 3).map((s) => s.name).join(", ")} 외 ${students.length - 3}명`;
+
+  const fixedBtn =
+    "min-h-[40px] px-4 rounded-lg text-sm font-semibold border transition disabled:opacity-50 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100";
+  const goldBtn =
+    "min-h-[40px] px-4 rounded-lg text-sm font-semibold border transition disabled:opacity-50 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100";
+
+  return (
+    <motion.div
+      initial={{ y: 80, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 80, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 320, damping: 30 }}
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.05)]"
+    >
+      <div className="max-w-5xl mx-auto px-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-semibold text-gray-900">{students.length}명 선택</span>
+              <span className="text-xs text-gray-400 truncate">{names}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 text-sm px-2 py-1.5 rounded-lg hover:bg-gray-50 transition"
+          >
+            선택 해제 ✕
+          </button>
+        </div>
+        {/* 점수 입력(일일/월말 등)은 학생마다 다르므로 일괄에서는 고정 포인트만 제공 */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={disabled} onClick={() => onApply(1, "출석")} className={fixedBtn}>
+            출석 +1 · {students.length}명
+          </button>
+          <button type="button" disabled={disabled} onClick={() => onApply(1, "숙제")} className={fixedBtn}>
+            숙제 +1 · {students.length}명
+          </button>
+          {level === "elementary" && (
+            <button type="button" disabled={disabled} onClick={() => onApply(10, "단원테스트")} className={goldBtn}>
+              단원테스트 +10 · {students.length}명
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
