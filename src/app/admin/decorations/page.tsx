@@ -1,10 +1,10 @@
 // /admin/decorations — 마당 소품 마스터 관리 페이지.
 // 카테고리 탭 + 카드 그리드 + 새 소품 추가 폼.
 
-import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { DecorationsAdminClient } from "./DecorationsAdminClient";
 import type { DecorationItem } from "@/lib/types";
 
@@ -38,17 +38,7 @@ export default async function DecorationsAdminPage({
 
   return (
     <main className="min-h-screen pb-24 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 관리
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900 truncate">마당 소품 관리</h1>
-        </div>
-      </header>
+      <AdminHeader current="decorations" title="마당 소품 관리" />
       <DecorationsAdminClient initialItems={(data ?? []) as DecorationItem[]} />
     </main>
   );

@@ -1,13 +1,13 @@
 // /admin/garden - 사과정원 관리 (구 /admin)
 // 비밀번호가 없으면 로그인 폼 표시, 있으면 해당 지점의 학생 리스트 + 빠른 입력 버튼
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
-import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
+import { getAdminBranchId } from "@/lib/branch";
 import type { GardenPointLog, GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { AdminClient } from "../AdminClient";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,6 @@ export default async function GardenAdminPage({
   }
 
   const branchId = getAdminBranchId();
-  const branchName = getAdminBranchName();
 
   if (!branchId) {
     redirect("/admin/select-branch");
@@ -98,95 +97,7 @@ export default async function GardenAdminPage({
 
   return (
     <main className="min-h-screen pb-32 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 pt-3 pb-2 flex items-center gap-3">
-          <Link
-            href={branchId ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}` : "/admin/village-preview"}
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-            aria-label="몬스터마을 미리보기로"
-          >
-            ← 몬스터마을
-          </Link>
-          <div className="min-w-0 flex items-baseline gap-2">
-            <h1 className="text-lg font-semibold text-gray-900 truncate leading-tight">사과정원 관리</h1>
-            {branchName && (
-              <span className="text-xs text-gray-400 truncate">{branchName}</span>
-            )}
-          </div>
-        </div>
-        <div className="max-w-5xl mx-auto px-4 pb-2 flex items-center justify-between gap-2">
-          <nav className="flex flex-wrap items-center gap-1">
-            <Link
-              href="/admin/students"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              학생관리
-            </Link>
-            <Link
-              href="/admin/reports"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              리포트
-            </Link>
-            <Link
-              href="/admin/gallery"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              아바타갤러리
-            </Link>
-            <Link
-              href="/admin/tree"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              나무이미지
-            </Link>
-            <Link
-              href="/admin/decorations"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              마당소품
-            </Link>
-            <Link
-              href="/admin/yard"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              마당배경
-            </Link>
-            <Link
-              href="/admin/monsters"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              몬스터종
-            </Link>
-            <Link
-              href="/admin/quiz-center"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              퀴즈관리
-            </Link>
-            <Link
-              href="/admin/reset"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              학기리셋
-            </Link>
-            <Link
-              href={`/?branch=${encodeURIComponent(branchId!)}`}
-              target="_blank"
-              className="text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg px-3 py-1.5 transition"
-            >
-              TV화면 ↗
-            </Link>
-          </nav>
-          <Link
-            href="/admin/select-branch"
-            className="text-xs text-gray-400 hover:text-gray-700 rounded-lg px-2 py-1 transition shrink-0"
-            title={`지점: ${branchName ?? branchId}`}
-          >
-            지점 변경
-          </Link>
-        </div>
-      </header>
+      <AdminHeader current="garden" title="사과정원 관리" />
 
       <AdminClient
         students={(students ?? []) as GardenStudent[]}

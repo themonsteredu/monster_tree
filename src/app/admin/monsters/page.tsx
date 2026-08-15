@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { MonstersAdminClient } from "./MonstersAdminClient";
 import type { MonsterSpecies, MonsterStageImage } from "@/lib/types";
 
@@ -43,25 +44,18 @@ export default async function MonstersAdminPage({
 
   return (
     <main className="min-h-screen pb-24 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 관리
-          </Link>
-          <h1 className="flex-1 text-lg font-semibold text-gray-900 truncate">
-            몬스터 종 관리
-          </h1>
+      <AdminHeader
+        current="monsters"
+        title="몬스터 종 관리"
+        extra={
           <Link
             href="/admin/collection-preview"
             className="shrink-0 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-200 transition"
           >
             📖 도감 미리보기
           </Link>
-        </div>
-      </header>
+        }
+      />
       <MonstersAdminClient
         initialSpecies={(species ?? []) as MonsterSpecies[]}
         initialStages={(stages ?? []) as MonsterStageImage[]}

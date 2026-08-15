@@ -48,7 +48,7 @@ export default async function AdminSuggestPreviewPage({
               지점 선택하기
             </Link>
             <Link
-              href="/admin"
+              href="/admin/garden"
               className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50"
             >
               관리 홈
@@ -149,7 +149,7 @@ export default async function AdminSuggestPreviewPage({
     <>
       <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 text-xs text-amber-800 text-center">
         ⓘ 학생이 보는 건의함 화면입니다. 쪽지마다 관리 버튼이 있어요.{" "}
-        <Link href="/admin" className="underline hover:no-underline">
+        <Link href="/admin/garden" className="underline hover:no-underline">
           관리 홈
         </Link>
       </div>
