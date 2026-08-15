@@ -2,10 +2,10 @@
 // 카테고리(수학/상식/넌센스) × 학년 × 난이도 × 검수상태 필터링,
 // 직접 등록 / AI 대량 생성 / 검수 / 비활성화 / 삭제까지.
 
-import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { QuizCenterAdminClient } from "./QuizCenterAdminClient";
 import type { QuizQuestion } from "@/lib/types";
 
@@ -42,19 +42,7 @@ export default async function QuizCenterAdminPage({
 
   return (
     <main className="min-h-screen pb-24 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 관리
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900 truncate">
-            📝 퀴즈 관리
-          </h1>
-        </div>
-      </header>
+      <AdminHeader current="quiz-center" title="📝 퀴즈 관리" />
 
       <QuizCenterAdminClient
         initialQuestions={(questions ?? []) as QuizQuestion[]}

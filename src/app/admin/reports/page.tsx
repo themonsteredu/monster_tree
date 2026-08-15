@@ -1,14 +1,13 @@
 // /admin/reports - 주간 / 월간 리포트
 // admin 쿠키에 저장된 지점의 logs / harvests 만 대상.
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
-import { getMonsterSiteUrl } from "@/lib/monster-site";
 import { getAdminBranchId } from "@/lib/branch";
 import type { GardenStudent } from "@/lib/types";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { ReportsClient } from "./ReportsClient";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +36,6 @@ export default async function ReportsPage({
   }
 
   const branchId = getAdminBranchId();
-  const monsterUrl = getMonsterSiteUrl();
 
   if (!branchId) {
     redirect("/admin/select-branch");
@@ -85,26 +83,7 @@ export default async function ReportsPage({
 
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Link
-              href="/admin"
-              className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-            >
-              ← 관리
-            </Link>
-            <h1 className="text-lg font-semibold text-gray-900 truncate">리포트</h1>
-          </div>
-          <a
-            href={monsterUrl}
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-            aria-label="monster-site 지점 관리자 페이지로"
-          >
-            ← 본사
-          </a>
-        </div>
-      </header>
+      <AdminHeader current="reports" title="리포트" />
 
       <ReportsClient
         students={(students ?? []) as GardenStudent[]}

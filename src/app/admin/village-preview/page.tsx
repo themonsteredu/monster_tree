@@ -69,7 +69,7 @@ export default async function AdminVillagePreviewPage({
             </span>
           </div>
           <Link
-            href="/admin"
+            href="/admin/garden"
             className="shrink-0 text-amber-800 hover:text-amber-900 hover:bg-amber-100 rounded-lg px-2 py-1 transition"
           >
             ← 관리

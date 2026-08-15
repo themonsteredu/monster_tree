@@ -1,11 +1,10 @@
 // /admin/village — 몬스터 마을 관리자 페이지.
 // 배경 이미지 1장 + 시즌 + 건물 5개(이미지/위치/오픈여부)를 한 화면에서 관리한다.
 
-import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { getAdminBranchId } from "@/lib/branch";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { VillageAdminClient } from "./VillageAdminClient";
 import type { VillageBuilding, VillageSettings } from "@/lib/types";
 
@@ -48,24 +47,10 @@ export default async function VillageAdminPage({
   const settings: VillageSettings | null = (settingsRow as VillageSettings | null) ?? null;
   const buildings: VillageBuilding[] = (buildingsRows ?? []) as VillageBuilding[];
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
-  const villageHref = branchId
-    ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}`
-    : "/admin/village-preview";
 
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link
-            href={villageHref}
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 몬스터마을
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900 truncate">마을 관리</h1>
-        </div>
-      </header>
+      <AdminHeader current="village" title="마을 관리" />
       <VillageAdminClient initialSettings={settings} initialBuildings={buildings} />
     </main>
   );

@@ -4,10 +4,10 @@
 
 import Link from "next/link";
 import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
-import { getAdminBranchId, getAdminBranchName } from "@/lib/branch";
-import { getMonsterSiteUrl } from "@/lib/monster-site";
+import { getAdminBranchId } from "@/lib/branch";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import type { GardenSuggestion, GardenStudent, SuggestionBlock } from "@/lib/types";
 import { SuggestAdminClient } from "./SuggestAdminClient";
 
@@ -34,8 +34,6 @@ export default async function AdminSuggestPage({
   // 1) 쿠키 우선, 없으면 쿼리 fallback. 이 우회로 cookie path / basePath
   //    이슈로 인한 select-branch 무한 redirect 방지.
   const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
-  const branchName = getAdminBranchName();
-  const monsterUrl = getMonsterSiteUrl();
 
   if (!branchId) {
     return (
@@ -55,7 +53,7 @@ export default async function AdminSuggestPage({
               지점 선택하기
             </Link>
             <Link
-              href="/admin"
+              href="/admin/garden"
               className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50"
             >
               관리 홈
@@ -98,30 +96,7 @@ export default async function AdminSuggestPage({
 
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Link
-              href={branchId ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}` : "/admin/village-preview"}
-              className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-            >
-              ← 몬스터마을
-            </Link>
-            <h1 className="text-lg font-semibold text-gray-900 truncate">
-              건의함 관리
-            </h1>
-            {branchName && (
-              <span className="text-xs text-gray-400 truncate">{branchName}</span>
-            )}
-          </div>
-          <a
-            href={monsterUrl}
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 본사
-          </a>
-        </div>
-      </header>
+      <AdminHeader current="suggest" title="건의함 관리" />
 
       <SuggestAdminClient
         initialSuggestions={suggestions}

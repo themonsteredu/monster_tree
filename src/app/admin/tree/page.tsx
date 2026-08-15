@@ -1,9 +1,9 @@
 // /admin/tree — 사과나무 단계별 이미지 관리자 페이지.
 
-import Link from "next/link";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
+import { AdminHeader } from "../AdminHeader";
 import { TreeStagesClient } from "./TreeStagesClient";
 import type { GardenTreeStage } from "@/lib/types";
 
@@ -34,17 +34,7 @@ export default async function TreeStagesAdminPage({
 
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="shrink-0 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition"
-          >
-            ← 관리
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900 truncate">나무 이미지 관리</h1>
-        </div>
-      </header>
+      <AdminHeader current="tree" title="나무 이미지 관리" />
       <TreeStagesClient initialStages={(data ?? []) as GardenTreeStage[]} />
     </main>
   );
