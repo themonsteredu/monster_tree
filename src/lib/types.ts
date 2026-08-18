@@ -419,6 +419,9 @@ export type GameRanking = {
 // 하루 플레이 횟수 상한 (학생당, 게임당).
 export const DAILY_PLAY_LIMIT = 3;
 
+/** 도감(진화 완료 몬스터) 종이 이 수에 도달하면 관리자 알림함에 알림을 쌓는다. */
+export const COLLECTION_ALERT_THRESHOLD = 7;
+
 // 단계별 fallback 이모지 — monster_stage_images.image_url 이 비어있을 때만 사용.
 // 관리자가 이미지를 업로드하면 그쪽이 우선.
 export const STAGE_FALLBACK_EMOJI: Record<number, string> = {

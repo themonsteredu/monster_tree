@@ -55,6 +55,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { key: "quiz-center", label: "퀴즈관리", href: "/admin/quiz-center" },
       { key: "shop", label: "상점", href: "/admin/shop" },
       { key: "suggest", label: "건의함", href: "/admin/suggest" },
+      { key: "collection-alerts", label: "도감알림", href: "/admin/collection-alerts" },
     ],
   },
   {
