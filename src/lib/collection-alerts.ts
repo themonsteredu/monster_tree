@@ -7,11 +7,11 @@
 // 실패해도 본 기능(게임 기록·진화)을 막지 않도록 전부 try/catch 로 감싼다.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { COLLECTION_ALERT_THRESHOLD } from "@/lib/types";
+import { COLLECTION_ALERT_THRESHOLDS } from "@/lib/types";
 
 /**
- * 방금 진화가 완료된 학생의 도감 종 수를 세어, 기준(7종)에 도달했으면
- * 관리자 알림을 기록한다. 같은 학생은 unique 인덱스 덕에 1회만 기록된다.
+ * 방금 진화가 완료된 학생의 도감 종 수를 세어, 기준(7종·20종)에 도달했으면
+ * 관리자 알림을 기록한다. 같은 학생·같은 기준은 unique 인덱스 덕에 1회만 기록된다.
  */
 export async function maybeRecordCollectionMilestone(
   sb: SupabaseClient,
@@ -28,7 +28,8 @@ export async function maybeRecordCollectionMilestone(
     (evolvedRows ?? []).forEach((r: { species_id: string | null }) => {
       if (r.species_id) speciesSet.add(r.species_id);
     });
-    if (speciesSet.size < COLLECTION_ALERT_THRESHOLD) return;
+    const reached = COLLECTION_ALERT_THRESHOLDS.filter((t) => speciesSet.size >= t);
+    if (reached.length === 0) return;
 
     // 표시용 학생 이름 (실패해도 알림 자체는 기록)
     let studentName: string | null = null;
@@ -45,13 +46,13 @@ export async function maybeRecordCollectionMilestone(
 
     // unique (student_id, type, threshold) — 이미 있으면 조용히 무시
     await sb.from("garden_admin_alerts").upsert(
-      {
+      reached.map((threshold) => ({
         branch_id: params.branchId,
         student_id: params.studentId,
         type: "collection_milestone",
-        threshold: COLLECTION_ALERT_THRESHOLD,
+        threshold,
         payload: { student_name: studentName, species_count: speciesSet.size },
-      },
+      })),
       { onConflict: "student_id,type,threshold", ignoreDuplicates: true },
     );
   } catch {
