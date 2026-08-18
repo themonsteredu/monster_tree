@@ -7,6 +7,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { maybeRecordCollectionMilestone } from "@/lib/collection-alerts";
 import { DAILY_PLAY_LIMIT } from "@/lib/types";
 
 export type GameType =
@@ -173,6 +174,14 @@ async function recordGamePlay(
     .from("student_monsters")
     .update(monsterPatch)
     .eq("id", activeMonster.id);
+
+  // 최종 진화(도감 등재) 직후 — 도감 7종 달성이면 관리자 알림 기록 (실패해도 무시)
+  if (finalEvolution) {
+    await maybeRecordCollectionMilestone(sb, {
+      studentId,
+      branchId: payload.branchId,
+    });
+  }
 
   const monthKey = new Date()
     .toLocaleString("sv-SE", { timeZone: "Asia/Seoul" })

@@ -12,6 +12,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from '@/lib/student-jwt';
 import { createSupabaseServerAnonClient, createSupabaseServiceClient } from '@/lib/supabase/server';
+import { maybeRecordCollectionMilestone } from '@/lib/collection-alerts';
 import { MeTreeClient } from './MeTreeClient';
 import type {
   WeatherType,
@@ -213,6 +214,11 @@ export default async function MyTreePage() {
 
         // 5단계 도달 → 활성 사라짐 → 알 선택 페이지로 (축하는 거기서)
         if (reachedFinal) {
+          // 도감 등재 직후 — 도감 7종 달성이면 관리자 알림 기록 (redirect 전에 완료, 실패해도 무시)
+          await maybeRecordCollectionMilestone(sbService, {
+            studentId: row.id,
+            branchId: payload!.branchId,
+          });
           redirect('/me/onboarding');
         }
 
