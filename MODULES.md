@@ -228,8 +228,11 @@
 - BGM/효과음은 `bgm.ts` 의 Web Audio 칩튠 — 외부 음원 파일 없음
 - 스키마: `0042_game_center.sql` 이 `game_plays`·`game_rankings`·RPC `get_today_play_count`·RLS·
   마을 게임센터 링크까지 전부 담고 있다 (`HANDOFF.md` §3-1 의 "마이그레이션 파일 없음" TODO 는 해소됨).
-- ⚠️ 다만 **몬스터 단계 임계 EXP / 단계 이미지 시드(`monster_stage_images` 의 행)는 여전히
-  마이그레이션 밖**이다 (`0034_monsters_system.sql` 은 표만 만든다). 새 환경에서는 별도 시드가 필요하다.
+- ⚠️ 몬스터 쪽 시드는 `0049_more_species.sql` 이 종 15종 + **존재하는 모든 종의 단계 행**
+  (EXP 0/70/190/380/630)을 채운다. 다만 **기본 5종(불꽃몬·물결몬·새싹몬·번개몬·달빛몬)의
+  INSERT 는 어느 마이그레이션에도 없다** — 파일 주석에만 언급되고 운영 DB 에는 손으로 들어가 있다.
+  새 환경에서는 도감이 15종·`display_order` 6부터로 시작한다
+  (자세한 내용은 `monster-site/ONBOARDING_GAPS.md` §4-2).
 
 ---
 
