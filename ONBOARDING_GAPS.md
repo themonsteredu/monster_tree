@@ -15,6 +15,77 @@
 
 ---
 
+## ⚠️ 0-0. 점검 중 발견된 실제 노출 (온보딩과 별개, 우선 처리 필요)
+
+이 문서를 쓰다가 RLS 상태를 확인하는 과정에서 **운영 DB 의 실제 노출**을 찾았다.
+온보딩 결함이 아니라 지금 살아 있는 문제이므로 여기 먼저 적는다.
+
+### 무엇이 열려 있었나
+
+운영 DB 를 조회한 실제 정책:
+
+| 표 | 정책 이름 | roles | cmd | qual |
+|---|---|---|---|---|
+| `schedules` | `schedules_all` | `{anon,authenticated}` | ALL | `true` |
+| `todos` | `todos_all` | `{anon,authenticated}` | ALL | `true` |
+| `calendar_events` | `calevents_all` | `{anon,authenticated}` | ALL | `true` |
+| `class_logs` | `class_logs_select/insert/update/delete` | `{public}` | 각각 | `true` |
+
+- `cmd = ALL` + `qual = true` 이므로 **읽기뿐 아니라 쓰기·삭제까지** 가능하다.
+- `class_logs` 는 `0012_class_logs.sql` 이 `to` 절 없이 정책을 만들어
+  기본값인 `PUBLIC` 롤(= anon 포함)이 된 경우다. 0004 이후 추가된 다른 마이그레이션은
+  전부 `to authenticated` 로 제대로 돼 있다 — 0012 만 예외다.
+- anon 키는 공개값이라 `lib/supabase.ts:9` 에 하드코딩되어 저장소와 브라우저 번들
+  양쪽에 노출돼 있다. 정상적인 설계지만, 그래서 **RLS 정책이 유일한 방어선**이다.
+
+노출 내용: 지점별 반 시간표·강사명, 할일과 담당자, 일정, 그리고
+**학생별·날짜별 수업내용(`class_logs`)**.
+
+로컬에 같은 정책을 재현해 확인했다 — anon 롤로 수업내용과 강사명이 그대로 읽히고,
+`todos` 에 행 삽입까지 성공했다.
+
+### 조치
+
+`0025_anon_policy_lockdown.sql` 을 추가했다. 네 표의 anon 정책을 이름으로 지우고
+`authenticated`(로그인한 원장) 전용으로 바꾼다.
+
+적용 전에 코드를 전수 조사해 **깨지는 화면이 없음**을 확인했다:
+네 표를 읽는 곳은 전부 관리자 대시보드(Supabase 세션) 또는 서버 핸들러(service_role) 안이다.
+랜딩은 `app_data.landing_content` 만 읽고, `components/Schedule.tsx` 는 DB 접근이 없으며,
+`StudentLearnCalendar` 는 props 만 받는 표시용 컴포넌트다.
+
+로컬 검증: 적용 후 anon 은 `class_logs` 0행 / `todos` 삽입 거부,
+`authenticated` 는 읽기·쓰기 정상. 3회 반복 실행해도 결과 동일.
+
+### 적용 순서 — `0025` 를 먼저
+
+**`0025` → (나중에, 선택) `0000`** 순서를 권한다.
+
+- `0025` 는 정책만 건드린다. 컬럼·인덱스를 전혀 가정하지 않아 실패할 여지가 없다.
+- `0000` 은 표와 인덱스를 만들므로, 운영 DB 의 실제 컬럼이 역산 결과와 다르면
+  인덱스 생성에서 멈추고 **그 뒤의 정책 문장이 실행되지 않는다.**
+  (실제로 컬럼이 빠진 테스트 DB 에서 `column "day_of_week" does not exist` 로 중단되는 것을 확인했다.)
+- 즉 보안 수정을 `0000` 에 의존하지 말 것. `0000` 은 새 환경 구축용이다.
+
+### 남은 확인
+
+`monster_tree` 와 `monster-class` 는 별개 Supabase 프로젝트라 이 점검 범위 밖이다.
+같은 감사 쿼리를 두 프로젝트에서도 한 번 돌려보길 권한다:
+
+```sql
+select tablename, policyname, roles, cmd
+  from pg_policies
+ where schemaname = 'public'
+   and (roles::text like '%anon%' or roles::text = '{public}')
+ order by tablename;
+```
+
+`monster_tree` 는 TV 화면이 anon 으로 읽는 구조라 일부 표에 anon 읽기가
+**의도적으로** 열려 있다(`garden_students`, `game_rankings` 등). 쓰기까지 열려 있는지,
+`cmd = ALL` 인 정책이 있는지가 확인 포인트다.
+
+---
+
 ## 0. 먼저 — 두 가지 상황을 구분해야 한다
 
 | | ① 기존 환경에 **지점 추가** | ② **새 환경**(새 Supabase 프로젝트) 구축 |
@@ -272,6 +343,7 @@
 
 | # | 제안 | 상태 |
 |---|---|---|
+| 0 | **anon 노출 차단 (§0-0)** | ✅ **완료** — `monster-site/supabase/migrations/0025_anon_policy_lockdown.sql` — **가장 먼저 적용할 것** |
 | 1 | 옛 핵심 표 6개 정식화 | ✅ **완료** — `monster-site/supabase/migrations/0000_legacy_core_tables.sql` |
 | 2 | 기본 몬스터 5종 시드 + `emoji` 정합성 | ✅ **완료** — `monster_tree/supabase/migrations/0050_base_species.sql` |
 | 3 | `test-papers` 버킷 생성 마이그레이션 | ⬜ 미착수 — tree 의 `0019`/`0026` 패턴을 그대로 따라 하면 된다 |
