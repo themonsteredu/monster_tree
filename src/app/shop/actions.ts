@@ -16,7 +16,7 @@ import { kstShortDateTime, wonToPoints } from "@/lib/types";
 type StudentCtx = { studentId: string; branchId: string; name: string };
 
 async function getStudentCtx(): Promise<StudentCtx | null> {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) return null;
   const sb = createSupabaseServiceClient();
@@ -41,7 +41,7 @@ export async function submitShopRequestAction(args: {
   estimatedPriceWon: number;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   // 관리자 테스트 모드에서는 저장하지 않음 (미리보기는 클라이언트 로컬 처리).
-  if (isAdminAuthenticated()) {
+  if ((await isAdminAuthenticated())) {
     return { ok: false, message: "테스트 모드에서는 실제 신청이 저장되지 않아요." };
   }
 

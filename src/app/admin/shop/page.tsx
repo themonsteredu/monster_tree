@@ -14,16 +14,17 @@ import { ShopSettingsCard } from "./ShopSettingsCard";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function ShopAdminPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function ShopAdminPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
 
   const sb = createSupabaseServiceClient();
   let query = sb

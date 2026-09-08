@@ -7,11 +7,12 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminEntryPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; class?: string; branch?: string; name?: string };
-}) {
+export default async function AdminEntryPage(
+  props: {
+    searchParams: Promise<{ key?: string; class?: string; branch?: string; name?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const qs = new URLSearchParams();
   if (searchParams.key) qs.set("key", searchParams.key);
   if (searchParams.class) qs.set("class", searchParams.class);

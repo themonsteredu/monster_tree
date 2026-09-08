@@ -53,7 +53,7 @@ async function recordGamePlay(
   gameType: GameType,
   score: number,
 ): Promise<PlayResult> {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false, reason: "auth", message: "로그인이 만료됐어요." };

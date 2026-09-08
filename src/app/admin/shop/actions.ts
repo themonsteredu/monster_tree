@@ -20,8 +20,8 @@ import {
   type ShopRequestStatus,
 } from "@/lib/types";
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -56,7 +56,7 @@ export async function approveShopRequestAction(args: {
   | { ok: true; newBalance: number }
   | { ok: false; message: string; insufficientBalance?: number }
 > {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false, message: "id 가 없어요." };
 
   const sb = createSupabaseServiceClient();
@@ -118,7 +118,7 @@ export async function advanceShopStatusAction(args: {
   id: string;
   status: ShopRequestStatus;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false, message: "id 가 없어요." };
 
   const allowed: Record<string, ShopRequestStatus> = {
@@ -147,7 +147,7 @@ export async function advanceShopStatusAction(args: {
 export async function cancelShopRequestAction(args: {
   id: string;
 }): Promise<{ ok: true; refunded: boolean } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false, message: "id 가 없어요." };
 
   const sb = createSupabaseServiceClient();
@@ -198,8 +198,8 @@ export async function saveShopSettingsAction(args: {
   openFrom?: string | null;  // datetime-local (KST)
   openUntil?: string | null;
 }): Promise<{ ok: true; openInfo: ShopOpenState } | { ok: false; message: string }> {
-  ensureAuth();
-  const branchId = getAdminBranchId();
+  (await ensureAuth());
+  const branchId = (await getAdminBranchId());
   if (!branchId) {
     return { ok: false, message: "지점이 선택되지 않았어요. /admin/select-branch 에서 골라주세요." };
   }
@@ -242,8 +242,8 @@ export async function saveShopSettingsAction(args: {
 export async function sendShopOpenPushAction(args: {
   body?: string;
 }): Promise<{ ok: boolean; message: string }> {
-  ensureAuth();
-  const branchId = getAdminBranchId();
+  (await ensureAuth());
+  const branchId = (await getAdminBranchId());
   if (!branchId) {
     return { ok: false, message: "지점이 선택되지 않았어요. /admin/select-branch 에서 골라주세요." };
   }

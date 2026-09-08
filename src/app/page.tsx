@@ -15,11 +15,12 @@ import { getBranchId } from "@/lib/branch";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: { branch?: string };
-}) {
+export default async function Page(
+  props: {
+    searchParams: Promise<{ branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return <EnvMissingNotice />;
   }

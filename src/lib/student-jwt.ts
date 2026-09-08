@@ -21,7 +21,7 @@ function getSecret(): Uint8Array {
 export async function verifyStudentJwt(token: string | undefined | null): Promise<StudentJwtPayload | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] });
     if (
       typeof payload.branchId !== 'string' ||
       typeof payload.studentLocalId !== 'number' ||

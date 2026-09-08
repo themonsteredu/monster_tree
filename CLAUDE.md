@@ -16,7 +16,7 @@
   - 일일 한도/횟수 제한 무시 (가능하면 ∞ 또는 "무제한" 표기)
   - 학생 한정 데이터(아바타 등)는 placeholder/admin-only fallback 사용
   - ← 돌아가기 / 다음 라우트 등 링크는 admin 라우트로 분기 (예: `/admin/village-preview`)
-- 진입 가드: `isAdminAuthenticated(searchParams.key)` + `LoginForm` 후방 진입 처리
+- 진입 가드: `await isAdminAuthenticated(searchParams.key)` + `LoginForm` 후방 진입 처리. Next.js 15의 페이지 `searchParams`도 먼저 await한다. 인증 Promise를 그대로 조건식에 넣지 않는다.
 - 마을 미리보기(/admin/village-preview)의 `previewLinkOverrides` 에 새 building_key 연결
   (이미 매핑된 경우 그대로 유지)
 
@@ -29,6 +29,7 @@
 - /admin/collection-preview ← /me/collection (도감)
 - /admin/quiz-center-preview ← /quiz-center (퀴즈센터)
 - /admin/shop-preview ← /shop (상점 — 포인트 대리구매 신청)
+- /admin/plaza-preview: 기록을 저장하지 않는 아바타·집 디자인 미리보기. 실제 광장은 monster-site의 `/plaza`이며 `/me/plaza`는 그곳으로 이동만 한다.
 
 새 학생 기능 만들 때마다 이 목록도 갱신.
 

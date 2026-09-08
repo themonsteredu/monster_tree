@@ -20,29 +20,32 @@ export function getBranchId(): string | null {
 }
 
 /** Admin 화면 용 지점 ID. 쿠키에서 읽어온다 — 미선택이면 null. */
-export function getAdminBranchId(): string | null {
-  const v = cookies().get(ADMIN_BRANCH_COOKIE)?.value;
+export async function getAdminBranchId(): Promise<string | null> {
+  const v = (await cookies()).get(ADMIN_BRANCH_COOKIE)?.value;
   if (!v || !v.trim()) return null;
   return v.trim();
 }
 
 /** Admin 쿠키에 저장된 지점 이름 (monster-site 에서 핸드오프). */
-export function getAdminBranchName(): string | null {
-  const v = cookies().get(ADMIN_BRANCH_NAME_COOKIE)?.value;
+export async function getAdminBranchName(): Promise<string | null> {
+  const v = (await cookies()).get(ADMIN_BRANCH_NAME_COOKIE)?.value;
   if (!v || !v.trim()) return null;
   return v.trim();
 }
 
-export function setAdminBranchCookie(branchId: string, branchName?: string | null) {
-  cookies().set(ADMIN_BRANCH_COOKIE, branchId, {
+export async function setAdminBranchCookie(branchId: string, branchName?: string | null) {
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_BRANCH_COOKIE, branchId, {
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30일
   });
   if (branchName && branchName.trim()) {
-    cookies().set(ADMIN_BRANCH_NAME_COOKIE, branchName.trim(), {
+    cookieStore.set(ADMIN_BRANCH_NAME_COOKIE, branchName.trim(), {
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 30,
@@ -50,7 +53,8 @@ export function setAdminBranchCookie(branchId: string, branchName?: string | nul
   }
 }
 
-export function clearAdminBranchCookie() {
-  cookies().delete(ADMIN_BRANCH_COOKIE);
-  cookies().delete(ADMIN_BRANCH_NAME_COOKIE);
+export async function clearAdminBranchCookie() {
+  const cookieStore = await cookies();
+  cookieStore.delete(ADMIN_BRANCH_COOKIE);
+  cookieStore.delete(ADMIN_BRANCH_NAME_COOKIE);
 }

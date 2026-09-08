@@ -21,11 +21,12 @@ import { getBranchId } from "@/lib/branch";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function TvPublicPage({
-  searchParams,
-}: {
-  searchParams: { branch?: string; fit?: string };
-}) {
+export default async function TvPublicPage(
+  props: {
+    searchParams: Promise<{ branch?: string; fit?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return <EnvMissingNotice />;
   }

@@ -16,17 +16,18 @@ import { getAdminBranchId } from "@/lib/branch";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminCollectionPreviewPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string; student?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminCollectionPreviewPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string; student?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
   const branchId =
-    getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+    (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
   if (!branchId) {
     redirect("/admin/select-branch");
   }

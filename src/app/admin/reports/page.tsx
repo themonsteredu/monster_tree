@@ -26,16 +26,17 @@ export type ReportHarvest = {
   harvested_at: string;
 };
 
-export default async function ReportsPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function ReportsPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
-  const branchId = getAdminBranchId();
+  const branchId = (await getAdminBranchId());
 
   if (!branchId) {
     redirect("/admin/select-branch");

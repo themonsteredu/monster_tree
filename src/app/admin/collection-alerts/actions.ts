@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -15,7 +15,7 @@ function ensureAuth() {
 export async function markAlertReadAction(input: {
   id: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { error } = await sb
     .from("garden_admin_alerts")
@@ -29,7 +29,7 @@ export async function markAlertReadAction(input: {
 export async function markAllAlertsReadAction(input: {
   branchId: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { error } = await sb
     .from("garden_admin_alerts")

@@ -14,12 +14,13 @@ import { SuggestAdminClient } from "./SuggestAdminClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminSuggestPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminSuggestPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
@@ -33,7 +34,7 @@ export default async function AdminSuggestPage({
 
   // 1) 쿠키 우선, 없으면 쿼리 fallback. 이 우회로 cookie path / basePath
   //    이슈로 인한 select-branch 무한 redirect 방지.
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
 
   if (!branchId) {
     return (

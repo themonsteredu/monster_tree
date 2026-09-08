@@ -9,15 +9,16 @@ import { getAdminBranchId } from "@/lib/branch";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function GameCenterPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  const authed = isAdminAuthenticated(searchParams.key);
+export default async function GameCenterPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const authed = (await isAdminAuthenticated(searchParams.key));
   if (!authed) return <LoginForm initialKey={searchParams.key ?? ""} />;
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
   const villageHref = branchId
     ? `/admin/village-preview?branch=${encodeURIComponent(branchId)}`
     : "/admin/village-preview";

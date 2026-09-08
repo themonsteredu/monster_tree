@@ -20,9 +20,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function ShopPage() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
-  const adminAuthed = isAdminAuthenticated();
+  const adminAuthed = (await isAdminAuthenticated());
 
   if (!payload && !adminAuthed) {
     redirect("https://www.themonster.kr/login");
@@ -59,7 +59,7 @@ export default async function ShopPage() {
 
   // 오픈 기간 판정 — 학생은 본인 지점, 관리자 테스트 모드는 선택된 관리 지점 기준.
   const openInfo = await loadShopOpenState(
-    payload?.branchId ?? getAdminBranchId() ?? null,
+    payload?.branchId ?? (await getAdminBranchId()) ?? null,
   );
 
   return (

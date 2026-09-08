@@ -10,12 +10,13 @@ import { DAILY_PLAY_LIMIT } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminInfiniteStairsPreviewPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminInfiniteStairsPreviewPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 

@@ -14,7 +14,7 @@ import { ADMIN_NAV } from "./nav";
 // 본문에 맞추면 좁은 페이지에서 메뉴가 잘려 가로 스크롤을 해야만 보인다.
 const SHELL = "max-w-7xl";
 
-export function AdminHeader({
+export async function AdminHeader({
   current,
   title,
   extra,
@@ -25,8 +25,8 @@ export function AdminHeader({
   /** 그 화면에만 있는 버튼 (예: 몬스터종의 '도감 미리보기'). */
   extra?: React.ReactNode;
 }) {
-  const branchId = getAdminBranchId();
-  const branchName = getAdminBranchName();
+  const branchId = (await getAdminBranchId());
+  const branchName = (await getAdminBranchName());
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-100">

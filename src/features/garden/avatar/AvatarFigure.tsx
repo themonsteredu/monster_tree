@@ -3,7 +3,8 @@
 // 얼굴은 큰 픽셀 단위(4px 격자)로 또렷한 캐릭터성을 만든다.
 // viewBox 120×170. 다양한 size 지원 (제어 props: config, size, className).
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type JSX } from "react";
+import { PaperDoll } from "@/features/avatar-v2/PaperDoll";
 import type { AvatarConfig, AvatarGalleryItemPosition, AvatarGallerySlot } from "@/lib/types";
 import {
   DEFAULT_AVATAR,
@@ -1150,6 +1151,13 @@ export function AvatarFigure({
   galleryPositions?: Record<string, AvatarGalleryItemPosition>;
 }) {
   const cfg: AvatarConfig = config ?? DEFAULT_AVATAR;
+
+  if (cfg.kind === "paperdoll") {
+    // Legacy scene actors reserve a square; keep feet within that existing envelope.
+    return <div className={className} style={{ width: size, height: size, display: "flex", justifyContent: "center", alignItems: "flex-end" }}>
+      <PaperDoll look={cfg} size={size} />
+    </div>;
+  }
 
   // 사진 업로드 아바타 — img 그대로 출력
   if (cfg.kind === "image") {

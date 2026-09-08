@@ -10,8 +10,8 @@ const BUCKET = "yard";
 const MAX_FILE_BYTES = 4_194_304; // 4MB
 const ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp"];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -35,7 +35,7 @@ async function removeOldFile(prevUrl: string | null | undefined) {
 }
 
 export async function uploadYardBackgroundAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false as const, message: "파일이 없어요." };
   if (file.size > MAX_FILE_BYTES) {
@@ -89,7 +89,7 @@ export async function uploadYardBackgroundAction(formData: FormData) {
 }
 
 export async function deleteYardBackgroundAction() {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { data: cur } = await sb
     .from("yard_settings")

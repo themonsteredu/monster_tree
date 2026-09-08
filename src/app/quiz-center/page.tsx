@@ -39,9 +39,9 @@ function sevenDaysAgoIso(): string {
 }
 
 export default async function QuizCenterPage() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
-  const adminAuthed = isAdminAuthenticated();
+  const adminAuthed = (await isAdminAuthenticated());
 
   // 학생 JWT 있으면 학생 모드, 없고 admin 쿠키만 있으면 테스트 모드, 둘 다 없으면 로그인.
   if (!payload && !adminAuthed) {

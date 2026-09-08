@@ -6,21 +6,21 @@ import { setAdminBranchCookie, clearAdminBranchCookie } from "@/lib/branch";
 import { isAdminAuthenticated } from "../auth";
 
 export async function selectBranchAction(formData: FormData) {
-  if (!isAdminAuthenticated()) {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 로그인이 필요합니다.");
   }
   const branchId = String(formData.get("branchId") ?? "").trim();
   if (!branchId) {
     throw new Error("BRANCH_REQUIRED: 지점이 누락되었어요.");
   }
-  setAdminBranchCookie(branchId);
+  (await setAdminBranchCookie(branchId));
   revalidatePath("/admin", "layout");
   redirect("/admin");
 }
 
 export async function clearAdminBranchAction() {
-  if (!isAdminAuthenticated()) return;
-  clearAdminBranchCookie();
+  if (!(await isAdminAuthenticated())) return;
+  (await clearAdminBranchCookie());
   revalidatePath("/admin", "layout");
   redirect("/admin/select-branch");
 }

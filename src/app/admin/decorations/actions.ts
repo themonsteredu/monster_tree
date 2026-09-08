@@ -19,8 +19,8 @@ const VALID_CATEGORIES: DecorationCategory[] = [
   "misc",
 ];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -53,7 +53,7 @@ function validCategory(value: unknown): value is DecorationCategory {
 }
 
 export async function createDecorationItemAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
 
   const name = String(formData.get("name") ?? "").trim();
   const categoryRaw = String(formData.get("category") ?? "");
@@ -125,7 +125,7 @@ export async function updateDecorationItemAction(args: {
   defaultWidthPercent?: number;
   isActive?: boolean;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -166,7 +166,7 @@ export async function updateDecorationItemAction(args: {
 }
 
 export async function deleteDecorationItemAction(args: { id: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
 
   const sb = createSupabaseServiceClient();

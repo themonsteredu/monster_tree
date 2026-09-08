@@ -1,4 +1,5 @@
 // Supabase garden_* 테이블의 행 타입 정의 (마이그레이션 SQL 과 1:1 대응)
+import type { PaperDollLook } from "./avatar-v2";
 
 export type AvatarHumanBody = "boy" | "girl";
 export type AvatarKind = "human" | "animal" | "fantasy";
@@ -6,6 +7,7 @@ export type AvatarKind = "human" | "animal" | "fantasy";
 export type AvatarAccessories = { glasses?: string; hat?: string };
 
 export type AvatarConfig =
+  | PaperDollLook
   | {
       kind: "human";
       body: AvatarHumanBody;

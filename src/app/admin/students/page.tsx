@@ -13,12 +13,13 @@ import type { GardenStudent } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function StudentsPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function StudentsPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
@@ -30,7 +31,7 @@ export default async function StudentsPage({
     );
   }
 
-  const branchId = getAdminBranchId();
+  const branchId = (await getAdminBranchId());
 
   if (!branchId) {
     redirect("/admin/select-branch");

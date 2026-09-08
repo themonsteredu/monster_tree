@@ -11,8 +11,8 @@ const BUCKET = "monsters";
 const MAX_FILE_BYTES = 1_048_576; // 1MB
 const ALLOWED_MIME = ["image/png", "image/webp"];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -45,7 +45,7 @@ async function removeStorage(prevUrl: string | null | undefined) {
 /* ============== 종 생성 / 수정 / 삭제 ============== */
 
 export async function createSpeciesAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
 
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -135,7 +135,7 @@ export async function updateSpeciesAction(args: {
   isActive?: boolean;
   displayOrder?: number;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -165,7 +165,7 @@ export async function updateSpeciesAction(args: {
 }
 
 export async function deleteSpeciesAction(args: { id: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
 
   const sb = createSupabaseServiceClient();
@@ -202,7 +202,7 @@ export async function deleteSpeciesAction(args: { id: string }) {
 /* ============== 단계 이미지 업로드 / 삭제 / EXP 수정 ============== */
 
 export async function uploadStageImageAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
 
   const speciesId = String(formData.get("speciesId") ?? "").trim();
   const stageRaw = Number(formData.get("stage") ?? NaN);
@@ -255,7 +255,7 @@ export async function uploadStageImageAction(formData: FormData) {
 }
 
 export async function deleteStageImageAction(args: { speciesId: string; stage: number }) {
-  ensureAuth();
+  (await ensureAuth());
   const stage = clampInt(args.stage, 1, 5);
   if (!args.speciesId || stage === null) {
     return { ok: false as const, message: "잘못된 요청이에요." };
@@ -291,7 +291,7 @@ export async function updateStageMetaAction(args: {
   stageName?: string;
   requiredExp?: number;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const stage = clampInt(args.stage, 1, 5);
   if (!args.speciesId || stage === null) {
     return { ok: false as const, message: "잘못된 요청이에요." };

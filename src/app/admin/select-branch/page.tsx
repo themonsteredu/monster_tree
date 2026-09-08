@@ -55,12 +55,13 @@ function formatBranchIdHint(id: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} 생성`;
 }
 
-export default async function SelectBranchPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function SelectBranchPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
