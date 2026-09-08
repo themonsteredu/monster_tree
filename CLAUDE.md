@@ -29,7 +29,7 @@
 - /admin/collection-preview ← /me/collection (도감)
 - /admin/quiz-center-preview ← /quiz-center (퀴즈센터)
 - /admin/shop-preview ← /shop (상점 — 포인트 대리구매 신청)
-- /admin/plaza-preview: 기록을 저장하지 않는 아바타·집 디자인 미리보기. 실제 광장은 monster-site의 `/plaza`이며 `/me/plaza`는 그곳으로 이동만 한다.
+- /admin/plaza-preview: 기록을 저장하지 않는 아바타·집 디자인 미리보기. 내 마당의 `YardPlazaEntry` 입구도 같은 컴포넌트로 확인하며 미리보기 안에서만 이동한다. 실제 내 마당 입구는 monster-site의 `/plaza`로 연결되고 `/me/plaza`도 그곳으로 이동만 한다.
 
 새 학생 기능 만들 때마다 이 목록도 갱신.
 
