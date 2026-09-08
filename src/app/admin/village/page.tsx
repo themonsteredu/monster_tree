@@ -11,12 +11,13 @@ import type { VillageBuilding, VillageSettings } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function VillageAdminPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function VillageAdminPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

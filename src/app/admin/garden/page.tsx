@@ -21,12 +21,13 @@ export type AdminPendingPoint = {
   created_at: string;
 };
 
-export default async function GardenAdminPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; class?: string; branch?: string; name?: string };
-}) {
-  const authed = isAdminAuthenticated(searchParams.key);
+export default async function GardenAdminPage(
+  props: {
+    searchParams: Promise<{ key?: string; class?: string; branch?: string; name?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const authed = (await isAdminAuthenticated(searchParams.key));
 
   if (!authed) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
@@ -54,7 +55,7 @@ export default async function GardenAdminPage({
     redirect(`/admin/handoff?${qs.toString()}`);
   }
 
-  const branchId = getAdminBranchId();
+  const branchId = (await getAdminBranchId());
 
   if (!branchId) {
     redirect("/admin/select-branch");

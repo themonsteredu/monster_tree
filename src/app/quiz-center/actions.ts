@@ -195,7 +195,7 @@ type AuthContext =
   | { mode: "none" };
 
 async function getAuthContext(): Promise<AuthContext> {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (payload) {
     const sb = createSupabaseServiceClient();
@@ -209,7 +209,7 @@ async function getAuthContext(): Promise<AuthContext> {
       return { mode: "student", studentId: row.id as string, branchId: payload.branchId };
     }
   }
-  if (isAdminAuthenticated()) return { mode: "admin" };
+  if ((await isAdminAuthenticated())) return { mode: "admin" };
   return { mode: "none" };
 }
 

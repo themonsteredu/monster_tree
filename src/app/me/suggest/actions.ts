@@ -46,7 +46,7 @@ export type ToggleReactionResult =
 
 // JWT → student row 조회 헬퍼.
 async function resolveCurrentStudent() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) return null;
   const sb = createSupabaseServiceClient();

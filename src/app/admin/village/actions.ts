@@ -11,8 +11,8 @@ const BUCKET = "village";
 const MAX_FILE_BYTES = 2_097_152; // 2MB
 const ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp"];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -58,7 +58,7 @@ async function removeOldFile(prevUrl: string | null | undefined) {
 /* ============== village_settings ============== */
 
 export async function uploadVillageBackgroundAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false as const, message: "파일이 없어요." };
   if (file.size > MAX_FILE_BYTES) return { ok: false as const, message: "이미지가 너무 커요 (2MB 이하)." };
@@ -94,7 +94,7 @@ export async function uploadVillageBackgroundAction(formData: FormData) {
 }
 
 export async function deleteVillageBackgroundAction() {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { data: cur } = await sb
     .from("village_settings")
@@ -116,7 +116,7 @@ export async function deleteVillageBackgroundAction() {
 }
 
 export async function updateVillageSeasonAction(args: { season: string }) {
-  ensureAuth();
+  (await ensureAuth());
   const season = (args.season ?? "").trim();
   if (!season || season.length > 40) {
     return { ok: false as const, message: "시즌 이름은 1~40자 이내로 입력해주세요." };
@@ -146,7 +146,7 @@ export async function updateVillageSeasonAction(args: { season: string }) {
 /* ============== village_buildings ============== */
 
 export async function uploadBuildingImageAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
   const buildingKey = String(formData.get("buildingKey") ?? "").trim();
   if (!buildingKey) return { ok: false as const, message: "건물 식별자가 없어요." };
 
@@ -181,7 +181,7 @@ export async function uploadBuildingImageAction(formData: FormData) {
 }
 
 export async function deleteBuildingImageAction(args: { buildingKey: string }) {
-  ensureAuth();
+  (await ensureAuth());
   const key = (args.buildingKey ?? "").trim();
   if (!key) return { ok: false as const, message: "건물 식별자가 없어요." };
   const sb = createSupabaseServiceClient();
@@ -224,7 +224,7 @@ export async function updateBuildingAction(args: {
   isReady?: boolean;
   isVisible?: boolean;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const key = (args.buildingKey ?? "").trim();
   if (!key) return { ok: false as const, message: "건물 식별자가 없어요." };
 

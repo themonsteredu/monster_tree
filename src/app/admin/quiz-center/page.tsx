@@ -14,12 +14,13 @@ export const revalidate = 0;
 // AI 대량 생성(50개 등)이 길어질 수 있어 5분까지 허용 (Vercel Pro plan 필요).
 export const maxDuration = 300;
 
-export default async function QuizCenterAdminPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function QuizCenterAdminPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

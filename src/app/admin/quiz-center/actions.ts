@@ -23,8 +23,8 @@ import {
 const CATEGORIES: QuizCategory[] = ["math", "general", "nonsense"];
 const DIFFICULTIES: QuizDifficulty[] = ["easy", "medium", "hard"];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -77,7 +77,7 @@ function validateQuestionInput(input: Partial<CreateInput>): string | null {
 
 /** + 문제 추가 — 직접 등록은 바로 검수완료 처리. */
 export async function createQuestionAction(input: CreateInput) {
-  ensureAuth();
+  (await ensureAuth());
   const err = validateQuestionInput(input);
   if (err) return { ok: false as const, message: err };
 
@@ -108,7 +108,7 @@ export async function updateQuestionAction(args: {
   id: string;
   patch: Partial<CreateInput> & { is_active?: boolean; is_approved?: boolean };
 }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
 
   const patch: Record<string, unknown> = {};
@@ -171,7 +171,7 @@ export async function updateQuestionAction(args: {
 }
 
 export async function deleteQuestionAction(args: { id: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.id) return { ok: false as const, message: "id 가 없어요." };
   const sb = createSupabaseServiceClient();
   const { error } = await sb.from("quiz_questions").delete().eq("id", args.id);
@@ -299,7 +299,7 @@ export async function bulkImportQuestionsAction(args: {
   text: string;
   approve?: boolean;
 }): Promise<BulkImportResult> {
-  ensureAuth();
+  (await ensureAuth());
 
   const text = (args.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!text) return { ok: false, message: "붙여넣은 내용이 없어요." };
@@ -542,7 +542,7 @@ export async function generateAIQuestionsAction(args: {
   difficulty: QuizDifficulty;
   count: 10 | 20 | 50;
 }) {
-  ensureAuth();
+  (await ensureAuth());
 
   if (!CATEGORIES.includes(args.category)) {
     return { ok: false as const, message: "카테고리가 올바르지 않아요." };

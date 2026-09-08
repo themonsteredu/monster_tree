@@ -10,12 +10,12 @@ import { setAdminBranchCookie } from "@/lib/branch";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: NextRequest) {
+export async function GET(request: NextRequest) {
   const branch = request.nextUrl.searchParams.get("branch")?.trim();
   const name = request.nextUrl.searchParams.get("name")?.trim() || null;
 
   if (branch) {
-    setAdminBranchCookie(branch, name);
+    (await setAdminBranchCookie(branch, name));
   }
 
   // basePath ('/tree') 가 설정되어 있어도 NextResponse.redirect 는 자동 prepend 안 함 → 명시.

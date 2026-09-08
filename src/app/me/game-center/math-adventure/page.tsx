@@ -18,7 +18,7 @@ export const revalidate = 0;
 const GAME_TYPE = "math_adventure";
 
 export default async function MathAdventurePage() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) redirect("https://www.themonster.kr/login");
 

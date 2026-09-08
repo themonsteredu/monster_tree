@@ -14,14 +14,14 @@ import {
 
 const ALLOWED_STATUS: SuggestionStatus[] = ["received", "reviewing", "done"];
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
 
-function ensureBranch(): { ok: true; branchId: string } | { ok: false; message: string } {
-  const branchId = getAdminBranchId();
+async function ensureBranch(): Promise<{ ok: true; branchId: string } | { ok: false; message: string }> {
+  const branchId = (await getAdminBranchId());
   if (!branchId) return { ok: false, message: "지점이 선택되지 않았어요." };
   return { ok: true, branchId };
 }
@@ -31,7 +31,7 @@ export async function replyToSuggestionAction(input: {
   reply: string;
   status?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   const reply = (input.reply ?? "").trim();
   if (!reply) return { ok: false, message: "답변을 입력해주세요." };
   if (reply.length > SUGGESTION_REPLY_MAX) {
@@ -65,7 +65,7 @@ export async function updateSuggestionStatusAction(input: {
   id: string;
   status: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   const status = input.status as SuggestionStatus;
   if (!ALLOWED_STATUS.includes(status)) {
     return { ok: false, message: "잘못된 상태값이에요." };
@@ -86,7 +86,7 @@ export async function updateSuggestionStatusAction(input: {
 export async function deleteSuggestionAction(
   id: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   if (!id) return { ok: false, message: "잘못된 요청이에요." };
 
   const sb = createSupabaseServiceClient();
@@ -103,8 +103,8 @@ export async function blockStudentAction(input: {
   reason: string | null;
   durationDays: number | null; // null = 영구
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
-  const branch = ensureBranch();
+  (await ensureAuth());
+  const branch = (await ensureBranch());
   if (!branch.ok) return branch;
 
   if (!input.studentId) return { ok: false, message: "학생을 찾을 수 없어요." };
@@ -137,7 +137,7 @@ export async function blockStudentAction(input: {
 export async function unblockStudentAction(
   studentId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  ensureAuth();
+  (await ensureAuth());
   if (!studentId) return { ok: false, message: "잘못된 요청이에요." };
 
   const sb = createSupabaseServiceClient();

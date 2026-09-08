@@ -13,12 +13,13 @@ import { VillageClient } from "../../me/village/VillageClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminVillagePreviewPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminVillagePreviewPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
@@ -32,8 +33,8 @@ export default async function AdminVillagePreviewPage({
 
   // village_settings / village_buildings 는 글로벌이라 사실 branchId 없이도 보여줄 수 있다.
   // 단 미리보기에서 admin 라우트로 이동 시 cookie 가 없을 때를 대비해 ?branch= 로 위임.
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
-  const branchName = getAdminBranchName();
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
+  const branchName = (await getAdminBranchName());
 
   const sb = createSupabaseServerAnonClient();
   const [{ data: settingsRow }, { data: buildingRows }] = await Promise.all([
@@ -84,6 +85,8 @@ export default async function AdminVillagePreviewPage({
         totalPoints={0}
         previewMode
         previewLinkOverrides={{
+          // 새 광장/친구 집은 학생 기록을 쓰지 않는 로컬 테스트 화면으로 이동.
+          plaza: "/admin/plaza-preview",
           // 우체통: 학생 건의함 미리보기 → 우상단 '관리 페이지' 버튼으로 /admin/suggest 점프.
           mailbox: branchId
             ? `/admin/suggest-preview?branch=${encodeURIComponent(branchId)}`

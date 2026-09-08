@@ -9,11 +9,10 @@ import { cookies } from "next/headers";
 
 const COOKIE_NAME = "garden_admin_key";
 
-export function getExpectedAdminKey(): string {
-  // 서버 전용 ADMIN_KEY 우선, 없으면 NEXT_PUBLIC_ADMIN_KEY 폴백
-  return (
-    process.env.ADMIN_KEY ?? process.env.NEXT_PUBLIC_ADMIN_KEY ?? "garden2026"
-  );
+export function getExpectedAdminKey(): string | null {
+  // Missing server configuration must deny access, never accept a public or default password.
+  const key = process.env.ADMIN_KEY;
+  return key && key.trim() ? key : null;
 }
 
 export function isAdminKey(input: string | null | undefined): boolean {
@@ -22,22 +21,25 @@ export function isAdminKey(input: string | null | undefined): boolean {
 }
 
 /** 서버 컴포넌트에서 호출: 쿠키 또는 URL 쿼리(?key=)로 인증되어 있는가? */
-export function isAdminAuthenticated(searchKey?: string | null): boolean {
+export async function isAdminAuthenticated(searchKey?: string | null): Promise<boolean> {
+  if (!getExpectedAdminKey()) return false;
   if (isAdminKey(searchKey)) return true;
-  const c = cookies().get(COOKIE_NAME)?.value;
+  const c = (await cookies()).get(COOKIE_NAME)?.value;
   return isAdminKey(c);
 }
 
 /** 로그인 처리: 쿠키 발급 (Server Action 에서 호출) */
-export function setAdminCookie(value: string) {
-  cookies().set(COOKIE_NAME, value, {
+export async function setAdminCookie(value: string) {
+  if (!isAdminKey(value)) throw new Error("AUTH_REQUIRED: 관리자 인증이 필요합니다.");
+  (await cookies()).set(COOKIE_NAME, value, {
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30일
   });
 }
 
-export function clearAdminCookie() {
-  cookies().delete(COOKIE_NAME);
+export async function clearAdminCookie() {
+  (await cookies()).delete(COOKIE_NAME);
 }

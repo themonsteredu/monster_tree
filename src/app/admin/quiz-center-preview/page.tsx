@@ -14,16 +14,17 @@ import { QuizCenterClient } from "../../quiz-center/QuizCenterClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminQuizCenterPreviewPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminQuizCenterPreviewPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
   const adminLink = branchId
     ? `/admin/quiz-center?branch=${encodeURIComponent(branchId)}`
     : "/admin/quiz-center";

@@ -7,6 +7,7 @@
 // - 첫 진입 시 환영 메시지가 떴다가 1.5s 뒤 fade-out.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { VillageBuilding, VillageSettings } from "@/lib/types";
 
@@ -147,6 +148,28 @@ export function VillageClient({
           <span className="text-amber-300">⭐ {totalPoints}</span>
         </div>
       </header>
+
+      <nav
+        aria-label="새 광장 바로가기"
+        className="absolute left-1/2 -translate-x-1/2 z-30 w-[calc(100%_-_32px)] max-w-sm"
+        style={{ bottom: "max(18px, env(safe-area-inset-bottom))" }}
+      >
+        <Link
+          href={previewMode ? previewLinkOverrides?.plaza ?? "/admin/plaza-preview" : "/me/plaza"}
+          prefetch={false}
+          className="flex min-h-[72px] items-center gap-3 rounded-2xl border border-[#e9e6cd] bg-[#fffdf2] px-4 py-3 text-[#4b5e3e] shadow-lg focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#d6e5b9]"
+        >
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e5ead6] text-[28px]">
+            🏘️
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-semibold tracking-wide text-[#7d8b62]">NEW · MONSTER PLAZA</span>
+            <span className="mt-0.5 block text-base font-bold">새 광장 · 친구 집</span>
+            <span className="mt-0.5 block text-[11px] text-[#847e65]">{previewMode ? "테스트 모드로 만나고 꾸며보기" : "내 아바타로 친구들을 만나러 가요"}</span>
+          </span>
+          <span aria-hidden="true" className="text-xl">→</span>
+        </Link>
+      </nav>
 
       {/* 16:9 무대 */}
       <div style={stageStyle}>

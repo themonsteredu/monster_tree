@@ -14,14 +14,14 @@ import { getAdminBranchId, clearAdminBranchCookie } from "@/lib/branch";
 import { sendPendingPointsPushes } from "@/lib/push";
 import { isAdminAuthenticated, setAdminCookie, clearAdminCookie, isAdminKey } from "./auth";
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
 
-function ensureBranch(): { ok: true; branchId: string } | { ok: false; message: string } {
-  const branchId = getAdminBranchId();
+async function ensureBranch(): Promise<{ ok: true; branchId: string } | { ok: false; message: string }> {
+  const branchId = (await getAdminBranchId());
   if (!branchId) {
     return {
       ok: false,
@@ -38,13 +38,13 @@ export async function loginAction(formData: FormData) {
   if (!isAdminKey(key)) {
     return { ok: false as const, message: "비밀번호가 올바르지 않아요." };
   }
-  setAdminCookie(key);
+  (await setAdminCookie(key));
   return { ok: true as const };
 }
 
 export async function logoutAction() {
-  clearAdminCookie();
-  clearAdminBranchCookie();
+  (await clearAdminCookie());
+  (await clearAdminBranchCookie());
 }
 
 /* ============== 포인트 적립 (단일 / 일괄) ============== */
@@ -54,7 +54,7 @@ export async function addPointsAction(args: {
   delta: number;
   reason?: string | null;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const { studentId, delta, reason } = args;
   if (!studentId || !Number.isFinite(delta)) {
     return { ok: false as const, message: "잘못된 입력이에요." };
@@ -89,7 +89,7 @@ export async function addPointsBulkAction(args: {
   delta: number;
   reason?: string | null;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const { studentIds, delta, reason } = args;
   if (!Array.isArray(studentIds) || studentIds.length === 0) {
     return { ok: false as const, message: "선택된 학생이 없어요." };
@@ -115,7 +115,7 @@ export async function addPointsBulkAction(args: {
 /* ============== 되돌리기 / 취소 ============== */
 
 export async function cancelPendingAction(args: { pendingId: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.pendingId) {
     return { ok: false as const, message: "잘못된 입력이에요." };
   }
@@ -132,7 +132,7 @@ export async function cancelPendingAction(args: { pendingId: string }) {
 }
 
 export async function undoLogAction(args: { logId: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (!args.logId) {
     return { ok: false as const, message: "잘못된 입력이에요." };
   }
@@ -170,7 +170,7 @@ export async function undoLogAction(args: { logId: string }) {
 /* ============== 수확 ============== */
 
 export async function harvestStudentAction(args: { studentId: string }) {
-  ensureAuth();
+  (await ensureAuth());
   const { studentId } = args;
   if (!studentId) {
     return { ok: false as const, message: "잘못된 입력이에요." };
@@ -217,8 +217,8 @@ export async function createStudentAction(args: {
   name: string;
   className?: string | null;
 }) {
-  ensureAuth();
-  const branchCheck = ensureBranch();
+  (await ensureAuth());
+  const branchCheck = (await ensureBranch());
   if (!branchCheck.ok) {
     return { ok: false as const, message: branchCheck.message };
   }
@@ -248,7 +248,7 @@ export async function updateStudentAction(args: {
   className?: string | null;
   isActive?: boolean;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
 
   const patch: Record<string, unknown> = {};
@@ -271,7 +271,7 @@ export async function updateStudentAction(args: {
 }
 
 export async function deleteStudentAction(args: { id: string }) {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { error } = await sb.from("garden_students").delete().eq("id", args.id);
   if (error) return { ok: false as const, message: error.message };
@@ -285,11 +285,11 @@ export async function deleteStudentAction(args: { id: string }) {
 /* ============== 학기 리셋 (지점 스코프) ============== */
 
 export async function resetSemesterAction(args: { confirmText: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (args.confirmText !== "학기 리셋") {
     return { ok: false as const, message: "확인 문구가 일치하지 않아요." };
   }
-  const branchCheck = ensureBranch();
+  const branchCheck = (await ensureBranch());
   if (!branchCheck.ok) {
     return { ok: false as const, message: branchCheck.message };
   }
@@ -360,7 +360,7 @@ function isValidPosition(p: unknown): p is { x: number; y: number; scaleX: numbe
 
 // 관리자: 카테고리에 이미지 업로드. avatars 버킷의 gallery/<category>/<uuid>.<ext> 경로.
 export async function uploadGalleryItemAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
   const file = formData.get("file");
   const category = formData.get("category");
   const label = formData.get("label");
@@ -429,7 +429,7 @@ export async function uploadGalleryItemAction(formData: FormData) {
 
 // 관리자: 활성/비활성 토글.
 export async function setGalleryItemActiveAction(args: { id: string; active: boolean }) {
-  ensureAuth();
+  (await ensureAuth());
   if (typeof args.id !== "string" || args.id.length === 0) {
     return { ok: false as const, message: "잘못된 ID." };
   }
@@ -447,7 +447,7 @@ export async function setGalleryItemActiveAction(args: { id: string; active: boo
 
 // 관리자: 갤러리 항목 삭제. Storage 파일도 함께 제거.
 export async function deleteGalleryItemAction(args: { id: string }) {
-  ensureAuth();
+  (await ensureAuth());
   if (typeof args.id !== "string" || args.id.length === 0) {
     return { ok: false as const, message: "잘못된 ID." };
   }
@@ -480,7 +480,7 @@ export async function updateGalleryItemMetaAction(args: {
   price?: number;
   is_style_ref?: boolean;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   if (typeof args.id !== "string" || args.id.length === 0) {
     return { ok: false as const, message: "잘못된 ID." };
   }
@@ -521,7 +521,7 @@ export async function generateAvatarItemAction(args: {
   | { ok: true; imageB64: string; usedStyleRefs: number }
   | { ok: false; needKey?: boolean; message: string }
 > {
-  ensureAuth();
+  (await ensureAuth());
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
   if (!apiKey) {
     return {
@@ -628,7 +628,7 @@ export async function generateAvatarItemAction(args: {
 
 // 관리자: 전체 목록 (활성/비활성 모두) 조회.
 export async function listAllGalleryItemsAction() {
-  ensureAuth();
+  (await ensureAuth());
   const sb = createSupabaseServiceClient();
   const { data, error } = await sb
     .from("garden_avatar_gallery")
@@ -646,7 +646,7 @@ export async function updateGalleryItemPositionAction(args: {
   id: string;
   position: unknown;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   if (typeof args.id !== "string" || args.id.length === 0) {
     return { ok: false as const, message: "잘못된 ID." };
   }
@@ -672,8 +672,8 @@ export async function updateGalleryItemPositionAction(args: {
 // "미수령 알림 보내기" 버튼 — 지금 지점의 미수령 학생들에게 리마인더 발송.
 // VAPID 키 미설정이면 안내 메시지만 반환 (push.ts 에서 처리).
 export async function sendPendingPointsPushAction() {
-  ensureAuth();
-  const branch = ensureBranch();
+  (await ensureAuth());
+  const branch = (await ensureBranch());
   if (!branch.ok) {
     return { ok: false as const, message: branch.message };
   }

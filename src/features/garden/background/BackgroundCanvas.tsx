@@ -1,6 +1,7 @@
 // 학생 페이지 + TV 스포트라이트 배경 렌더러.
 // SVG 로 깔리는 배경 — solid/pattern/scene 세 종류 지원.
 
+import type { JSX } from "react";
 import type { BackgroundConfig } from "@/lib/types";
 import { DEFAULT_BACKGROUND } from "@/lib/types";
 

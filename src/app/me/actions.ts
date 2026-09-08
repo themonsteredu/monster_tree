@@ -10,9 +10,10 @@ import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { AvatarConfig, AvatarAccessories, BackgroundConfig, WeatherType, SceneLayout, SceneItemLayout } from "@/lib/types";
 import { MOOD_TEXT_MAX, WEATHER_TYPES } from "@/lib/types";
+import { parsePaperDollLook } from "@/lib/avatar-v2";
 
 export async function claimPointAction(args: { pendingId: string }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -57,11 +58,22 @@ export async function claimPointAction(args: { pendingId: string }) {
   };
 }
 
-// 아바타 config 의 형태/문자열 길이만 점검. 알 수 없는 키 값은 클라이언트에서 fallback 으로 처리.
+function isTrustedAvatarUrl(value: string): boolean {
+  try {
+    const allowed = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
+    const image = new URL(value);
+    return allowed.protocol === "https:" && image.protocol === "https:" &&
+      image.origin === allowed.origin && !image.username && !image.password &&
+      image.pathname.startsWith("/storage/v1/object/public/");
+  } catch { return false; }
+}
+
+// 아바타 config 의 형태와 허용된 이미지 출처를 점검.
 function validateAvatar(raw: unknown): AvatarConfig | null {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   const kind = a.kind;
+  if (kind === "paperdoll") return parsePaperDollLook(raw);
   const isShortStr = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 40;
 
   let accessories: AvatarAccessories | undefined;
@@ -104,18 +116,15 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
   if (kind === "image") {
     // url 은 우리 Supabase Storage 의 public URL 만 허용 (도메인 화이트리스트).
     if (typeof a.url !== "string" || a.url.length === 0 || a.url.length > 500) return null;
-    const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-    if (!allowed || !a.url.startsWith(allowed)) return null;
+    if (!isTrustedAvatarUrl(a.url)) return null;
     return { kind: "image", url: a.url };
   }
   if (kind === "gallery") {
-    // 각 슬롯이 비어있거나 우리 Supabase URL 인지만 점검.
-    const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-
+    // 문자열 접두사 대신 정확한 출처와 공개 Storage 경로를 확인.
     const cleanUrl = (v: unknown): string | undefined => {
       if (typeof v !== "string" || v.length === 0) return undefined;
       if (v.length > 500) return undefined;
-      if (!allowed || !v.startsWith(allowed)) return undefined;
+      if (!isTrustedAvatarUrl(v)) return undefined;
       return v;
     };
 
@@ -210,7 +219,7 @@ export async function listGalleryItemsAction() {
 
   let ownedGalleryIds: string[] = [];
   let totalPoints: number | null = null;
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (payload) {
     const student = await fetchStudentRow(sb, payload);
@@ -229,7 +238,7 @@ export async function listGalleryItemsAction() {
 
 // 마당 소품 구매 컨텍스트 — 학생 본인의 보유 소품(item_id) 목록 + 포인트 잔액.
 export async function getYardShopContextAction() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -262,7 +271,7 @@ type BuyResult =
   | { ok: false; message: string; insufficient?: boolean; balance?: number };
 
 export async function buyAvatarItemAction(args: { galleryId: string }): Promise<BuyResult> {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -334,7 +343,7 @@ export async function buyAvatarItemAction(args: { galleryId: string }): Promise<
 }
 
 export async function buyDecorationAction(args: { itemId: string }): Promise<BuyResult> {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -403,7 +412,7 @@ export async function buyDecorationAction(args: { itemId: string }): Promise<Buy
 }
 
 export async function updateAvatarAction(args: { avatar: unknown }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -471,13 +480,19 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
     }
   }
 
-  const { error } = await sb
+  const { data: updatedStudent, error } = await sb
     .from("garden_students")
     .update({ avatar })
     .eq("branch_id", payload.branchId)
-    .eq("external_student_id", payload.studentLocalId);
+    .eq("external_student_id", payload.studentLocalId)
+    .eq("is_active", true)
+    .select("id")
+    .maybeSingle();
   if (error) {
-    return { ok: false as const, message: `저장 실패: ${error.message}` };
+    return { ok: false as const, message: "아바타를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요." };
+  }
+  if (!updatedStudent) {
+    return { ok: false as const, message: "꾸미기를 저장할 수 있는 학생 정보를 찾지 못했어요. 다시 로그인해 주세요." };
   }
 
   revalidatePath("/me");
@@ -488,7 +503,7 @@ export async function updateAvatarAction(args: { avatar: unknown }) {
 
 // 아바타 초기화 — avatar 컬럼을 NULL 로. AvatarFigure 가 안 렌더된다.
 export async function resetAvatarAction() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -513,7 +528,7 @@ export async function resetAvatarAction() {
 // 학생 본인 사진을 avatars 버킷에 업로드 후 avatar = { kind: "image", url } 로 저장.
 // 학생당 1장(덮어쓰기). 1MB 제한, png/jpg/webp 만 허용.
 export async function uploadAvatarImageAction(formData: FormData) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -588,7 +603,7 @@ function validateBackground(raw: unknown): BackgroundConfig | null {
 }
 
 export async function updateBackgroundAction(args: { background: unknown }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -617,7 +632,7 @@ export async function updateBackgroundAction(args: { background: unknown }) {
 
 // 학생 본인의 "한마디" (mood_text) 갱신. 빈 문자열은 전광판 숨김.
 export async function updateMoodAction(args: { text: string }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -650,7 +665,7 @@ export async function updateMoodAction(args: { text: string }) {
 
 // 학생 본인의 마당 날씨/분위기 효과 설정.
 export async function setWeatherAction(args: { weather: WeatherType }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -728,7 +743,7 @@ export async function replaceYardLayoutAction(args: {
   items: YardItemInput[];
   sceneLayout?: SceneLayout | null;
 }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -861,7 +876,7 @@ export async function replaceYardLayoutAction(args: {
 /* ============== 몬스터 — 알 선택 ============== */
 
 export async function selectEggAction(args: { speciesId: string; nickname: string }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -937,7 +952,7 @@ export async function selectEggAction(args: { speciesId: string; nickname: strin
  * 학생은 종을 직접 고르지 않는다 — 알이 부화할 때까지 정체를 숨김.
  */
 export async function startRandomEggAction(args: { nickname: string }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };
@@ -1006,7 +1021,7 @@ export async function savePushSubscriptionAction(args: {
   endpoint: string;
   keys: { p256dh: string; auth: string };
 }) {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) {
     return { ok: false as const, message: "로그인이 만료됐어요. 다시 로그인해주세요." };

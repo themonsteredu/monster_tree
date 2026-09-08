@@ -26,17 +26,18 @@ function kstMonthKey(): string {
     .slice(0, 7);
 }
 
-export default async function AdminGameCenterPreviewPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminGameCenterPreviewPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
   const branchId =
-    getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+    (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
   if (!branchId) {
     redirect("/admin/select-branch");
   }

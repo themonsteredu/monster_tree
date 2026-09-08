@@ -7,8 +7,8 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
 
-function ensureAuth() {
-  if (!isAdminAuthenticated()) {
+async function ensureAuth() {
+  if (!(await isAdminAuthenticated())) {
     throw new Error("AUTH_REQUIRED: 비밀번호가 필요합니다.");
   }
 }
@@ -36,7 +36,7 @@ function revalidateAll() {
 const BUCKET = "tree-stages";
 
 export async function uploadTreeStageImageAction(formData: FormData) {
-  ensureAuth();
+  (await ensureAuth());
 
   const stageRaw = formData.get("stage");
   const stage = clampStage(typeof stageRaw === "string" ? parseInt(stageRaw, 10) : NaN);
@@ -92,7 +92,7 @@ export async function uploadTreeStageImageAction(formData: FormData) {
 }
 
 export async function deleteTreeStageImageAction(args: { stage: number }) {
-  ensureAuth();
+  (await ensureAuth());
   const stage = clampStage(args.stage);
   if (stage === null) {
     return { ok: false as const, message: "잘못된 단계 값." };
@@ -121,7 +121,7 @@ export async function updateTreeStageTransformAction(args: {
   offsetX: number;
   offsetY: number;
 }) {
-  ensureAuth();
+  (await ensureAuth());
   const stage = clampStage(args.stage);
   if (stage === null) {
     return { ok: false as const, message: "잘못된 단계 값." };

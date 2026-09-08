@@ -13,12 +13,13 @@ import { AlertsClient, type AdminAlertRow } from "./AlertsClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminCollectionAlertsPage({
-  searchParams,
-}: {
-  searchParams: { key?: string; branch?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function AdminCollectionAlertsPage(
+  props: {
+    searchParams: Promise<{ key?: string; branch?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
 
@@ -30,7 +31,7 @@ export default async function AdminCollectionAlertsPage({
     );
   }
 
-  const branchId = getAdminBranchId() ?? searchParams.branch?.trim() ?? null;
+  const branchId = (await getAdminBranchId()) ?? searchParams.branch?.trim() ?? null;
 
   if (!branchId) {
     return (

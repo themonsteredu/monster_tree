@@ -9,12 +9,13 @@ import { ResetClient } from "./ResetClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function ResetPage({
-  searchParams,
-}: {
-  searchParams: { key?: string };
-}) {
-  if (!isAdminAuthenticated(searchParams.key)) {
+export default async function ResetPage(
+  props: {
+    searchParams: Promise<{ key?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminAuthenticated(searchParams.key))) {
     return <LoginForm initialKey={searchParams.key ?? ""} />;
   }
   return (

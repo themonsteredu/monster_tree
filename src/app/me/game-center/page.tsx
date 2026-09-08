@@ -29,7 +29,7 @@ function kstMonthKey(d: Date = new Date()): string {
 }
 
 export default async function GameCenterPage() {
-  const token = cookies().get(STUDENT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
   const payload = await verifyStudentJwt(token);
   if (!payload) redirect("https://www.themonster.kr/login");
 
