@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
+import { YardPlazaEntry } from "@/features/social/YardPlazaEntry";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
@@ -809,6 +810,9 @@ export function MeTreeClient({
                 />
               </div>
             </div>
+
+            {/* 내 나무를 그대로 두고, SITE의 새 광장으로 바로 이동한다. */}
+            <YardPlazaEntry />
 
             {/* 액션 버튼 (배경은 관리자만 — 학생 측 버튼 제거) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
