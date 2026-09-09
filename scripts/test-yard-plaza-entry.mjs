@@ -152,14 +152,21 @@ await test("main yard preserves the open state and saved-avatar callback to Avat
 
 await test("actual AvatarEditSheet still opens the new Wardrobe and forwards a saved paperdoll", async () => {
   const { AvatarEditSheet } = load("src/features/garden/avatar/AvatarEditSheet.tsx");
-  const { DEFAULT_LOOK } = load("src/lib/avatar-v2.ts");
+  const { DEFAULT_LOOK, DEFAULT_LOOK_V2 } = load("src/lib/avatar-v2.ts");
   const saved = [];
   const element = AvatarEditSheet({ open: true, initial: { kind: "gallery", base: "legacy-test-only" },
     onClose() {}, onSaved: (look) => saved.push(look) });
   assert.equal(element.type, WardrobeStub);
   assert.equal(element.props.open, true);
   assert.equal(element.props.initial.kind, "paperdoll");
-  assert.equal(element.props.initial.version, 2);
+  assert.equal(element.props.initial.version, 3);
+  const oldSavedLook = Object.freeze({ ...DEFAULT_LOOK_V2, face: "rabbit", top: "dress", bottom: "pants", bottomColor: "navy" });
+  const oldView = AvatarEditSheet({ open: true, initial: oldSavedLook, onClose() {}, onSaved: (look) => saved.push(look) });
+  assert.equal(oldSavedLook.version, 2, "Opening cannot rewrite the saved v2 input");
+  assert.equal(oldView.props.initial.version, 3, "Only the in-memory editor value is normalized to v3");
+  for (const field of ["face", "top", "bottom", "bottomColor"]) assert.equal(oldView.props.initial[field], oldSavedLook[field]);
+  for (const field of ["bag", "glasses", "neckwear"]) assert.equal(oldView.props.initial[field], "none");
+  assert.equal(avatarSaves.length, 0, "Opening either legacy format cannot automatically save");
   await element.props.onSave(DEFAULT_LOOK);
   assert.equal(avatarSaves.length, 1);
   assert.equal(saved[0], DEFAULT_LOOK);

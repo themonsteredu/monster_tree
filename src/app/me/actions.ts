@@ -10,7 +10,7 @@ import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { AvatarConfig, AvatarAccessories, BackgroundConfig, WeatherType, SceneLayout, SceneItemLayout } from "@/lib/types";
 import { MOOD_TEXT_MAX, WEATHER_TYPES } from "@/lib/types";
-import { parsePaperDollLook } from "@/lib/avatar-v2";
+import { isLookAvailable, parsePaperDollLook } from "@/lib/avatar-v2";
 
 export async function claimPointAction(args: { pendingId: string }) {
   const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
@@ -73,7 +73,10 @@ function validateAvatar(raw: unknown): AvatarConfig | null {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   const kind = a.kind;
-  if (kind === "paperdoll") return parsePaperDollLook(raw);
+  if (kind === "paperdoll") {
+    const look = parsePaperDollLook(raw);
+    return look && isLookAvailable(look) ? look : null;
+  }
   const isShortStr = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 40;
 
   let accessories: AvatarAccessories | undefined;
