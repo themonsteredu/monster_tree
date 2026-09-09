@@ -1,0 +1,53 @@
+.page { min-height: 100vh; min-height: 100svh; padding: 12px 12px max(24px,env(safe-area-inset-bottom)); background: #dce3c9; color: #3e2e1d; font-family: "Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.shell { width: 100%; max-width: 624px; min-width: 0; margin: 0 auto; padding: 14px 12px 12px; border: 1px solid #c8b58d; border-radius: 24px; background: #fff7e7; box-shadow: 0 8px 30px #35432318; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px 10px; }
+.identity { min-width: 0; }
+.eyebrow { display: block; margin-bottom: 5px; color: #617548; font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.identity h1 { margin: 0; color: #352816; font-size: 16px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
+.identity h1 span { margin-left: 3px; font-size: 11px; font-weight: 500; color: #78684e; }
+.identity > small { color: #857558; font-size: 11px; }
+.wallet { flex-shrink: 0; text-align: right; }
+.wallet > div { display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 6px 10px; border: 1px solid #dfc798; border-radius: 13px; background: #fffdf4; }
+.wallet strong { font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1; }
+.wallet strong small { margin-left: 2px; font-size: 12px; }
+.coin { display: grid; place-items: center; width: 25px; height: 25px; border: 2px solid #bb8229; border-radius: 50%; background: #f1c95f; box-shadow: inset 0 0 0 2px #ffe6a1; font-size: 14px; font-weight: 900; color: #80540f; }
+.apples { display: block; padding-top: 5px; color: #87704e; font-size: 10px; }
+.apples b { color: #5a702e; }
+.sign { position: relative; z-index: 1; margin-bottom: 8px; }
+.scene { position: relative; isolation: isolate; width: 100%; aspect-ratio: 1; overflow: hidden; container-type: size; border: 2px solid #8f764d; border-radius: 17px; background: #91a76a; }
+.backdrop { object-fit: cover; pointer-events: none; user-select: none; }
+.growth { padding: 16px 5px 14px; }
+.growthHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.growthHeading > strong { font-size: 15px; font-weight: 900; color: #334b25; }
+.growthHeading > strong > span { font-size: 11px; font-weight: 600; color: #768366; }
+.growthHeading > span { font-size: 11px; color: #766650; text-align: right; }
+.growthHeading b { color: #466932; }
+.progress { height: 13px; overflow: hidden; border: 1px solid #c9b892; border-radius: 8px; background: #e5d9bf; box-shadow: inset 0 2px 3px #6e513617; }
+.progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(#81ba51,#4b8538); box-shadow: inset 0 2px 0 #b6d47a; transition: width .3s ease; }
+.plaza { margin-bottom: 13px; }
+.plaza > a { min-height: 76px; margin-bottom: 0; border: 4px solid #7e5c2f; border-radius: 15px; background: #4f7836; color: #fff9e9; box-shadow: inset 0 0 0 2px #8ca950,0 4px 0 #593e22; }
+.plaza > a:hover { background: #41672d; }
+.plaza > a > span:nth-child(2) > span:first-child { font-size: 20px; font-weight: 900; }
+.plaza > a > span:nth-child(2) > span:last-child { color: #e4eacb; }
+.primaryActions { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; margin-bottom: 10px; }
+.primaryActions > button { min-height: 64px; padding: 9px 5px; border: 2px solid #d0b58f; border-radius: 14px; background: #fff9ed; box-shadow: 0 3px 0 #dcc6a3; color: #51391f; font-size: 13px; font-weight: 800; }
+.primaryActions > button:hover { background: #f3e6ca; }
+.primaryActions > button:disabled { opacity: .65; }
+.primaryIcon { display: inline-block; margin-right: 5px; font-size: 22px; vertical-align: middle; }
+.secondaryActions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 14px; margin: 5px 0; }
+.secondaryActions > button,.secondaryActions > a { min-height: 44px; padding: 9px 7px; border: 0; background: transparent; color: #827256; font-size: 12px; font-weight: 600; text-decoration: none; }
+.secondaryActions > button:hover,.secondaryActions > a:hover { color: #3d612b; }
+.primaryActions > button:focus-visible,.secondaryActions > button:focus-visible,.secondaryActions > a:focus-visible { outline: 3px solid #467530; outline-offset: 3px; }
+.extras { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e0d0b3; }
+.previewBanner { max-width: 624px; margin: 0 auto 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 5px; font-size: 12px; color: #4a6337; }
+.previewBanner a { min-height: 44px; display: inline-flex; align-items: center; padding: 6px; color: inherit; }
+.previewTree { position: absolute; left: 73%; top: 48%; width: 43%; aspect-ratio: 1; transform: translate(-50%,-50%); z-index: 2; }
+.previewTree > *,.previewTree img { width: 100% !important; height: 100% !important; }
+.previewAvatar { position: absolute !important; left: 49%; top: 62%; width: 15% !important; height: auto !important; aspect-ratio: 3/5; transform: translate(-50%,-50%); z-index: 3; }
+.previewNote { padding: 10px 12px; border-radius: 12px; background: #efe5cf; color: #725e40; font-size: 12px; line-height: 1.7; }
+.previewNote button { min-height: 44px; padding: 6px 12px; border: 1px solid #b99d73; border-radius: 8px; margin: 5px 5px 0 0; background: #fff8e9; }
+.moodNote { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 4; padding: 6px 12px; border-radius: 8px; background: #fff8e9e8; font-size: 11px; color: #5f623c; text-align: center; }
+@media (max-width: 360px) { .page { padding: 6px 6px 20px; } .shell { padding: 11px 9px; border-radius: 19px; } .header { gap: 6px; padding-inline: 1px; } .identity h1 { font-size: 14px; } .identity h1 span { display: block; margin: 0; } .wallet strong { font-size: 18px; } .wallet > div { padding: 6px 7px; gap: 5px; } .growthHeading > strong > span { display: none; } .growthHeading > strong { font-size: 14px; } .primaryActions { gap: 8px; } .primaryActions > button { font-size: 12px; } .primaryIcon { font-size: 19px; margin-right: 3px; } .plaza > a > span:nth-child(2) > span:first-child { font-size: 18px; } }
+@media (min-width: 641px) { .page { padding-top: 24px; } .shell { padding: 18px 16px; } .header { padding-bottom: 14px; } .identity h1 { font-size: 20px; } .growthHeading > strong { font-size: 18px; } .growthHeading > span { font-size: 13px; } .primaryActions > button { min-height: 70px; font-size: 16px; } }
+@media (orientation: landscape) { .customScene { aspect-ratio: 16/9; } }
+@media (prefers-reduced-motion: reduce) { .page *, .page *::before, .page *::after { animation: none !important; transition: none !important; } }
