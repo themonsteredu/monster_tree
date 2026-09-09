@@ -1,3 +1,4 @@
+import { DECOR_CATALOG, type DecorId } from "@/lib/decor-catalog";
 import type { AvatarConfig } from "../types";
 import { DEFAULT_LOOK } from "../avatar-v2";
 
@@ -9,10 +10,12 @@ export const SOCIAL_POLL_MS = 3_000;
 export const SOCIAL_IDLE_HEARTBEAT_MS = 8_000;
 export const SOCIAL_MOVE_THROTTLE_MS = 1_500;
 export const SOCIAL_MAX_BODY_BYTES = 4_096;
+export const SOCIAL_HOME_MAX_BODY_BYTES = 24_576;
 
 export type RoomTheme = "cream" | "sage" | "lilac" | "peach";
-export type FurnitureId = "sofa" | "rug" | "desk" | "bed" | "plant" | "shelf" | "lamp";
-export type FurniturePlacement = { id: FurnitureId; x: number; y: number };
+export const MAX_ROOM_FURNITURE = 48;
+export type FurnitureId = DecorId | "sofa" | "rug" | "desk" | "bed" | "plant" | "shelf" | "lamp";
+export type FurniturePlacement = { id: FurnitureId; x: number; y: number; instanceId?: string; rotation?: number; scale?: number; flipX?: boolean; layer?: number };
 export type HomeConfig = {
   theme: RoomTheme;
   furniture: FurniturePlacement[];
@@ -44,8 +47,9 @@ export const ROOM_THEMES: ReadonlyArray<{
 
 // Width/height are scene percentages. x/y anchors are center/bottom.
 export const FURNITURE_CATALOG: ReadonlyArray<{
-  id: FurnitureId; label: string; width: number; height: number;
+  id: FurnitureId; label: string; width: number; height: number; category?: string;
 }> = [
+  ...DECOR_CATALOG,
   { id: "sofa", label: "포근한 소파", width: 28, height: 23 },
   { id: "rug", label: "동그란 러그", width: 44, height: 22 },
   { id: "desk", label: "작은 책상", width: 24, height: 25 },

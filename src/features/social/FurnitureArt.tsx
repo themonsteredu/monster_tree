@@ -1,3 +1,4 @@
+import { DecorArt } from "./DecorArt";
 import Image from "next/image";
 import { memo, type CSSProperties } from "react";
 import type { FurnitureId } from "@/lib/social/model";
@@ -5,7 +6,7 @@ import styles from "./RoomScene.module.css";
 
 // The generated bitmap is untouched. Display crops follow sprite silhouettes,
 // including the open space between the desk legs, without a vector substitute.
-const SPRITES: Record<FurnitureId, { x: number; y: number; w: number; h: number; outline: string }> = {
+const SPRITES: Partial<Record<FurnitureId, { x: number; y: number; w: number; h: number; outline: string }>> = {
   sofa: { x: 0.021484375, y: 0.0703125, w: 0.21875, h: 0.3828125, outline: "64.29% 0%, 71.43% 3.06%, 72.32% 15.31%, 100% 29.59%, 100% 61.22%, 97.32% 62.24%, 97.32% 68.37%, 95.54% 69.39%, 92.86% 70.41%, 87.5% 67.35%, 56.25% 84.69%, 42.86% 89.8%, 39.29% 92.86%, 39.29% 97.96%, 35.71% 100%, 30.36% 97.96%, 30.36% 93.88%, 12.5% 80.61%, 6.25% 81.63%, 3.57% 79.59%, 3.57% 74.49%, 0.89% 73.47%, 0% 41.84%, 9.82% 37.76%, 9.82% 24.49%" },
   rug: { x: 0.2734375, y: 0.1484375, w: 0.220703125, h: 0.25390625, outline: "49.56% 0%, 53.98% 1.54%, 58.41% 7.69%, 61.06% 7.69%, 61.95% 10.77%, 64.6% 10.77%, 65.49% 13.85%, 76.11% 21.54%, 76.99% 24.62%, 79.65% 24.62%, 80.53% 27.69%, 86.73% 30.77%, 87.61% 33.85%, 90.27% 33.85%, 91.15% 36.92%, 93.81% 36.92%, 94.69% 40%, 100% 43.08%, 100% 49.23%, 86.73% 61.54%, 85.84% 64.62%, 80.53% 67.69%, 72.57% 78.46%, 69.03% 80%, 67.26% 84.62%, 64.6% 84.62%, 61.06% 90.77%, 55.75% 93.85%, 54.87% 96.92%, 50.44% 100%, 47.79% 98.46%, 38.94% 87.69%, 29.2% 80%, 28.32% 76.92%, 24.78% 75.38%, 23.89% 72.31%, 12.39% 63.08%, 8.85% 56.92%, 6.19% 56.92%, 2.65% 50.77%, 0% 50.77%, 0% 43.08%" },
   desk: { x: 0.52734375, y: 0.08203125, w: 0.189453125, h: 0.34765625, outline: "50.52% 0%, 75.26% 12.36%, 88.66% 16.85%, 91.75% 20.22%, 100% 22.47%, 100% 32.58%, 97.94% 33.71%, 97.94% 77.53%, 94.85% 77.53%, 93.81% 79.78%, 86.6% 77.53%, 83.51% 80.9%, 74.23% 83.15%, 73.2% 80.9%, 70.1% 80.9%, 69.07% 78.65%, 54.64% 70.79%, 53.61% 95.51%, 46.39% 98.88%, 39.18% 95.51%, 39.18% 83.15%, 37.11% 80.9%, 17.53% 69.66%, 15.46% 70.79%, 15.46% 76.4%, 11.34% 77.53%, 10.31% 79.78%, 6.19% 79.78%, 5.15% 77.53%, 1.03% 76.4%, 2.06% 34.83%, 0% 33.71%, 0% 22.47%" },
@@ -17,6 +18,7 @@ const SPRITES: Record<FurnitureId, { x: number; y: number; w: number; h: number;
 
 export const FurnitureArt = memo(function FurnitureArt({ id, className, catalog = false }: { id: FurnitureId; className?: string; catalog?: boolean }) {
   const crop = SPRITES[id];
+  if (!crop) return <DecorArt id={id} basePath={"/tree"} className={className} />;
   const ratio = 2 * crop.w / crop.h;
   const viewport: CSSProperties = {
     aspectRatio: String(ratio),

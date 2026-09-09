@@ -157,7 +157,7 @@ export function YardScene(props: YardSceneProps) {
       )}
 
       {/* 마당 소품 (배경 위, 트리 아래) */}
-      <YardLayer items={props.decorationItems} layout={props.yardLayout} />
+      <YardLayer items={props.decorationItems} layout={props.yardLayout} sceneLayout={props.sceneLayout} />
 
       {/* 날씨 효과 */}
       <WeatherEffect weather={props.weather} />

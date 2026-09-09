@@ -442,7 +442,7 @@ export function MeTreeClient({
 
               {/* 마당 소품 — 배경 위, 나무 아래 (편집 모드일 때는 DecorateMode 가 위에서 덮음) */}
               {!decorateMode && (
-                <YardLayer items={initialDecorationItems} layout={yardLayout} />
+                <YardLayer items={initialDecorationItems} layout={yardLayout} sceneLayout={sceneLayout} />
               )}
 
               {/* 날씨/분위기 효과 오버레이 — 배경 위 / 나무·아바타 아래 */}
@@ -453,7 +453,7 @@ export function MeTreeClient({
                 <DecorateMode
                   items={initialDecorationItems}
                   initialLayout={yardLayout}
-                  initialSceneLayout={effectiveScene}
+                  initialSceneLayout={{ ...sceneLayout, ...effectiveScene }}
                   treeNode={
                     <AppleTree
                       stage={stage}
@@ -499,6 +499,7 @@ export function MeTreeClient({
                   onCancel={() => setDecorateMode(false)}
                   onSave={async ({ layout: next, sceneLayout: nextScene }) => {
                     const r = await replaceYardLayoutAction({
+                      layoutVersion: 2,
                       items: next.map((l) => ({
                         decorationItemId: l.decoration_item_id,
                         instanceId: l.instance_id,
@@ -507,6 +508,7 @@ export function MeTreeClient({
                         widthPercent: l.width_percent,
                         rotation: l.rotation ?? 0,
                         zIndex: l.z_index,
+                        flipX: !!l.flipX,
                       })),
                       sceneLayout: nextScene,
                     });
