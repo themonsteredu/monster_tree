@@ -1,8 +1,8 @@
 "use client";
 
-// 마당 배경 관리 UI — 미리보기 + 업로드/삭제.
-// 마이룸 마당은 1:1 비율이라 같은 비율로 미리보기.
+// TV 정원의 마당 배경 관리. 학생 개인 숲속 마당에는 적용하지 않는다.
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { YardSettings } from "@/lib/types";
 import { deleteYardBackgroundAction, uploadYardBackgroundAction } from "./actions";
@@ -37,13 +37,13 @@ export function YardAdminClient({ initial }: { initial: YardSettings | null }) {
         is_active: true,
         updated_at: new Date().toISOString(),
       });
-      setToast("배경 이미지를 업데이트했어요.");
+      setToast("TV 마당 배경을 업데이트했어요.");
     });
   };
 
   const onDelete = () => {
     if (!settings?.background_image) return;
-    if (!confirm("마당 배경 이미지를 삭제할까요?")) return;
+    if (!confirm("TV 마당 배경 이미지를 삭제할까요? 학생의 숲속 마당에는 영향이 없어요.")) return;
     startTransition(async () => {
       const r = await deleteYardBackgroundAction();
       if (!r.ok) {
@@ -56,17 +56,21 @@ export function YardAdminClient({ initial }: { initial: YardSettings | null }) {
         is_active: true,
         updated_at: new Date().toISOString(),
       });
-      setToast("배경 이미지를 삭제했어요.");
+      setToast("TV 마당 배경 이미지를 삭제했어요.");
     });
   };
 
   return (
     <div className="max-w-3xl mx-auto px-4 pt-4 space-y-4">
       <p className="text-xs text-gray-500 leading-relaxed">
-        모든 학생의 마이룸 마당에 동일하게 적용되는 배경이에요. 학생은 직접 바꿀 수 없어요.
+        TV 정원 화면에 표시되는 마당의 공통 배경이에요.
         <br />
         비율은 <b>1:1 (정사각형)</b> 권장. 4MB 이하 PNG / JPG / WebP.
       </p>
+      <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-relaxed text-green-900">
+        학생의 개인 화면은 새 숲속 마당으로 분리되었어요. 여기서 배경을 바꿔도 학생의 마당·간판·나무·포인트는 바뀌지 않아요.
+        <Link href="/admin/yard-preview" className="mt-2 inline-flex min-h-11 items-center font-bold underline">학생 숲속 마당 미리보기 →</Link>
+      </div>
 
       <section className="bg-white rounded-2xl border border-gray-100 p-4">
         <div className="w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-b from-slate-200 to-emerald-200 flex items-center justify-center mb-3">
@@ -74,11 +78,11 @@ export function YardAdminClient({ initial }: { initial: YardSettings | null }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={settings.background_image}
-              alt="마당 배경"
+              alt="TV 마당 배경"
               className="w-full h-full object-cover"
             />
           ) : (
-            <span className="text-gray-500 text-sm">아직 마당 배경이 없어요</span>
+            <span className="text-gray-500 text-sm">아직 TV 마당 배경이 없어요</span>
           )}
         </div>
 
