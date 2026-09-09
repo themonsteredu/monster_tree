@@ -1,6 +1,6 @@
 "use server";
 
-// /admin/yard — 마당 글로벌 배경 업로드/삭제.
+// /admin/yard — TV 정원 공통 배경 업로드/삭제. 개인 숲속 마당과 분리.
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
@@ -18,7 +18,8 @@ async function ensureAuth() {
 
 function revalidateAll() {
   revalidatePath("/admin/yard");
-  revalidatePath("/me");
+  revalidatePath("/");
+  revalidatePath("/tv");
 }
 
 function pathFromPublicUrl(url: string | null | undefined): string | null {

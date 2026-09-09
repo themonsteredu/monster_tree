@@ -1,5 +1,5 @@
-// /admin/yard — 마이룸 마당 글로벌 배경 관리자 페이지.
-// 단일 행 (yard_settings) 의 background_image 만 수정. 학생들에게 즉시 반영.
+// /admin/yard — TV 정원의 공통 배경. 학생 개인 숲속 마당과 분리.
+// 기존 yard_settings 및 업로드 이미지는 TV 화면에서 계속 사용한다.
 
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdminAuthenticated } from "../auth";
@@ -38,7 +38,7 @@ export default async function YardAdminPage(
 
   return (
     <main className="min-h-screen pb-20 bg-gray-50">
-      <AdminHeader current="yard" title="마당 배경" />
+      <AdminHeader current="yard" title="TV 마당 배경" />
       <YardAdminClient initial={(data as YardSettings | null) ?? null} />
     </main>
   );

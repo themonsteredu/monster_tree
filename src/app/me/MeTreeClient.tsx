@@ -169,7 +169,6 @@ export function MeTreeClient({
   initialWeather?: import("@/lib/types").WeatherType;
   initialDecorationItems?: import("@/lib/types").DecorationItem[];
   initialYardLayout?: import("@/lib/types").StudentYardItem[];
-  yardBackgroundImage?: string | null;
   initialSceneLayout?: import("@/lib/types").SceneLayout | null;
   initialMonster?: import("@/lib/types").StudentMonster | null;
   initialMonsterSpecies?: import("@/lib/types").MonsterSpecies | null;

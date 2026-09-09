@@ -5,6 +5,7 @@ The forest-front-yard heading is editable text rather than part of a raster imag
 ## Ownership and storage
 
 - TREE owns the yard/wardrobe UI and keeps the existing tree, points, avatar and mood data unchanged.
+- The old administrator global background setting is now explicitly TV-only (`/tree` and `/tree/tv`). Its images, storage and TV consumer remain intact; `/me` no longer queries or accepts that obsolete personal-yard input. The admin screen explains the split and links to the student forest preview.
 - SITE owns `public.garden_social_homes.sign_text`, separate from the student's login/display name and `mood_text`.
 - The browser only calls same-origin `/tree/api/yard-sign`. The TREE server verifies the existing `monster_student` cookie and forwards that cookie alone to the configured SITE `/api/plaza/sign`.
 - SITE independently verifies the current signed student credential and active TREE membership. The caller cannot choose a target student ID.

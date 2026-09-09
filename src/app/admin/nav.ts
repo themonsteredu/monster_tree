@@ -47,7 +47,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { key: "gallery", label: "아바타갤러리", href: "/admin/gallery" },
       { key: "tree", label: "나무이미지", href: "/admin/tree" },
       { key: "decorations", label: "마당소품", href: "/admin/decorations" },
-      { key: "yard", label: "마당배경", href: "/admin/yard" },
+      { key: "yard", label: "TV마당배경", href: "/admin/yard" },
       { key: "monsters", label: "몬스터종", href: "/admin/monsters" },
     ],
   },
