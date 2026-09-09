@@ -11,6 +11,8 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { AdminPushError, sendNewSuggestionNotifications } from "@/lib/admin-suggestion-push";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import {
@@ -55,6 +57,7 @@ async function resolveCurrentStudent() {
     .select("id, name")
     .eq("branch_id", payload.branchId)
     .eq("external_student_id", payload.studentLocalId)
+    .eq("is_active", true)
     .maybeSingle();
   if (!student) return null;
   return {
@@ -133,7 +136,7 @@ export async function submitSuggestionAction(input: {
   const block = await isBlocked(me.sb, me.student.id);
   if (block.blocked) return { ok: false, message: block.message! };
 
-  const { error: insertErr } = await me.sb.from("garden_suggestions").insert({
+  const { data: inserted, error: insertErr } = await me.sb.from("garden_suggestions").insert({
     branch_id: me.payload.branchId,
     student_id: me.student.id,
     student_name_snapshot: me.payload.name,
@@ -142,10 +145,20 @@ export async function submitSuggestionAction(input: {
     category: valid.category,
     title: valid.title,
     body: valid.body,
-  });
-  if (insertErr) {
-    return { ok: false, message: `제출 실패: ${insertErr.message}` };
+  }).select("id").single();
+  if (insertErr || !inserted) {
+    return { ok: false, message: "건의를 저장하지 못했어요. 잠시 후 다시 시도해주세요." };
   }
+
+  // Next.js keeps this post-response task alive; notification failure never reverses the saved post.
+  after(async () => {
+    try {
+      const result = await sendNewSuggestionNotifications(inserted.id);
+      if (result.failed) console.warn("[suggestion-push] Some devices could not be reached", { failed: result.failed });
+    } catch (error) {
+      console.warn("[suggestion-push] Notification unavailable", error instanceof AdminPushError ? error.code : "DISPATCH_FAILED");
+    }
+  });
 
   revalidatePath("/me/suggest");
   revalidatePath("/admin/suggest");

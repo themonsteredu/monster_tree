@@ -1,0 +1,38 @@
+.panel {
+  margin: 20px auto;
+  padding: 20px;
+  width: min(100% - 32px, 1100px);
+  border: 1px solid #dce4e1;
+  border-radius: 16px;
+  background: #fff;
+  color: #253d34;
+  font: inherit;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.heading > div { flex: 1 1 250px; }
+.title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.5; }
+.description { margin: 6px 0 0; color: #596a63; font-size: 14px; line-height: 1.7; }
+.status { display: inline-flex; flex-shrink: 0; align-items: center; min-height: 30px; padding: 4px 10px; border-radius: 20px; background: #f0f2f1; color: #53605a; font-size: 12px; font-weight: 600; }
+.enabled { background: #e6f3eb; color: #246841; }
+.hint { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #f5f7f6; color: #53605a; font-size: 13px; line-height: 1.75; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.primary, .secondary { min-height: 44px; padding: 10px 16px; border: 1px solid transparent; border-radius: 10px; font: inherit; font-size: 14px; line-height: 1.5; font-weight: 600; cursor: pointer; }
+.primary { background: #276c4d; color: #fff; }
+.primary:hover:not(:disabled) { background: #1d573d; }
+.secondary { background: #fff; color: #355c48; border-color: #cbd8d0; }
+.secondary:hover:not(:disabled) { background: #f0f5f2; }
+.primary:disabled, .secondary:disabled { opacity: .55; cursor: default; }
+.primary:focus-visible, .secondary:focus-visible, .guide summary:focus-visible { outline: 3px solid #80b799; outline-offset: 3px; }
+.error, .message { margin: 12px 0 0; font-size: 13px; line-height: 1.7; }
+.error { color: #a43728; }
+.message { color: #276c4d; }
+.guide { margin-top: 14px; border-top: 1px solid #e8eeea; padding-top: 6px; color: #596a63; font-size: 13px; line-height: 1.75; }
+.guide summary { min-height: 44px; padding: 10px 0; cursor: pointer; font-weight: 600; }
+.guide p { margin: 4px 0 10px; }
+@media (max-width: 480px) {
+  .panel { padding: 16px; width: calc(100% - 24px); }
+  .heading { gap: 10px; }
+  .actions > button { flex: 1 1 150px; }
+}
