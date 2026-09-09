@@ -11,6 +11,8 @@
 // - 상단 우측 ✓ 저장 / ✕ 취소
 // 저장 시 부모가 replaceYardLayoutAction 호출.
 
+import { DecorationArt } from "./DecorationArt";
+import { yardCatalogue, yardPlacements } from "@/lib/yard-decoration";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DecorationCategory,
@@ -79,7 +81,8 @@ const TAB_LABEL: Record<TabKey, string> = {
 };
 
 export function DecorateMode({
-  items,
+  items: suppliedItems,
+  adminMode = false,
   initialLayout,
   initialSceneLayout,
   treeNode,
@@ -93,8 +96,9 @@ export function DecorateMode({
   onCancel,
 }: {
   items: DecorationItem[];
+  adminMode?: boolean;
   initialLayout: EditableItem[];
-  initialSceneLayout: {
+  initialSceneLayout: SceneLayout & {
     tree: SceneItemLayout;
     avatar: SceneItemLayout;
     monster: SceneItemLayout;
@@ -112,7 +116,8 @@ export function DecorateMode({
   }) => Promise<{ ok: boolean; message?: string }>;
   onCancel: () => void;
 }) {
-  const [layout, setLayout] = useState<EditableItem[]>(initialLayout);
+  const items = useMemo(() => yardCatalogue(suppliedItems), [suppliedItems]);
+  const [layout, setLayout] = useState<EditableItem[]>(() => yardPlacements(initialLayout, initialSceneLayout));
   const [sceneLayout, setSceneLayout] = useState(initialSceneLayout);
   const [selectedId, setSelectedId] = useState<
     string | "scene:tree" | "scene:avatar" | "scene:monster" | null
@@ -131,6 +136,7 @@ export function DecorateMode({
   const [buyError, setBuyError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (adminMode) return;
     let cancelled = false;
     getYardShopContextAction().then((r) => {
       if (cancelled) return;
@@ -145,10 +151,10 @@ export function DecorateMode({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [adminMode]);
 
   const isOwnedItem = (item: DecorationItem) =>
-    (item.price ?? 0) <= 0 || (ownedIds !== null && ownedIds.has(item.id));
+    adminMode || (item.price ?? 0) <= 0 || (ownedIds !== null && ownedIds.has(item.id));
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -166,6 +172,7 @@ export function DecorateMode({
   /* ============== 추가 / 삭제 / z-index ============== */
 
   const onAdd = (item: DecorationItem) => {
+    if (layout.length >= 200) { setError("소품은 200개까지 놓을 수 있어요."); return; }
     const maxZ = layout.reduce((m, l) => Math.max(m, l.z_index), 0);
     const newItem: EditableItem = {
       id: `tmp-${Date.now()}`,
@@ -194,7 +201,7 @@ export function DecorateMode({
   };
 
   const onBuyConfirm = () => {
-    if (!buyTarget || buyBusy) return;
+    if (adminMode || !buyTarget || buyBusy) return;
     const target = buyTarget;
     setBuyBusy(true);
     setBuyError(null);
@@ -223,13 +230,13 @@ export function DecorateMode({
   };
 
   const onBumpZ = (instanceId: string, dir: 1 | -1) => {
-    setLayout((prev) => {
-      const cur = prev.find((l) => l.instance_id === instanceId);
-      if (!cur) return prev;
-      const next = cur.z_index + dir;
-      return prev.map((l) =>
-        l.instance_id === instanceId ? { ...l, z_index: clamp(next, 0, 9999) } : l,
-      );
+    setLayout(prev => {
+      const ordered = [...prev].sort((a,b) => a.z_index - b.z_index);
+      const index = ordered.findIndex(item => item.instance_id === instanceId);
+      const other = index + dir;
+      if (index < 0 || other < 0 || other >= ordered.length) return prev;
+      [ordered[index], ordered[other]] = [ordered[other], ordered[index]];
+      return ordered.map((item, z_index) => ({ ...item, z_index }));
     });
   };
 
@@ -473,6 +480,7 @@ export function DecorateMode({
       rotation: round1(l.rotation ?? 0),
     }));
     const cleanedScene: SceneLayout = {
+      yard: cleaned,
       tree: {
         x: round1(sceneLayout.tree.x),
         y: round1(sceneLayout.tree.y),
@@ -495,7 +503,9 @@ export function DecorateMode({
         rotation: round1(sceneLayout.monster.rotation ?? 0),
       },
     };
-    const r = await onSave({ layout: cleaned, sceneLayout: cleanedScene });
+    let r: { ok: boolean; message?: string };
+    try { r = await onSave({ layout: cleaned, sceneLayout: cleanedScene }); }
+    catch { r = { ok: false, message: "연결을 확인한 뒤 다시 저장해 주세요. 편집 내용은 그대로 있어요." }; }
     setSaving(false);
     if (!r.ok) {
       setError(r.message ?? "저장에 실패했어요.");
@@ -596,6 +606,16 @@ export function DecorateMode({
             <div
               key={li.instance_id}
               data-yarditem={li.instance_id}
+              role="button" tabIndex={0} aria-label={`${item.name} 선택 및 이동`} aria-pressed={isSelected}
+              onKeyDown={e => {
+                const directions: Record<string, [number, number]> = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] };
+                const delta = directions[e.key];
+                if (delta) {
+                  e.preventDefault(); setSelectedId(li.instance_id);
+                  setLayout(prev => prev.map(item => item.instance_id === li.instance_id ? { ...item, position_x: clamp(item.position_x + delta[0] * (e.shiftKey ? 5 : 1), -10, 110), position_y: clamp(item.position_y + delta[1] * (e.shiftKey ? 5 : 1), -10, 110) } : item));
+                } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedId(li.instance_id); }
+                else if (e.key === "Delete") { e.preventDefault(); onDelete(li.instance_id); }
+              }}
               style={{
                 position: "absolute",
                 left: `${li.position_x}%`,
@@ -603,7 +623,7 @@ export function DecorateMode({
                 // width 는 짧은 변(cqmin) 기준 — 가로/세로 모드 모두에서 같은 크기.
                 width: `${li.width_percent}cqmin`,
                 transform: `translate(-50%, -50%) rotate(${li.rotation}deg)`,
-                zIndex: li.z_index + 1,
+                zIndex: isSelected ? 20 : 1 + li.z_index / 2000,
                 cursor: isDragging ? "grabbing" : "grab",
               }}
               onPointerDown={(e) => handlePointerDown(e, li, "move")}
@@ -623,13 +643,7 @@ export function DecorateMode({
                   opacity: isDragging ? 0.9 : 1,
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.image_url}
-                  alt={item.name}
-                  draggable={false}
-                  className="w-full h-auto object-contain pointer-events-none"
-                />
+                <div style={{ transform: `scaleX(${li.flipX ? -1 : 1})` }}><DecorationArt item={item} className="w-full h-auto object-contain pointer-events-none" /></div>
 
                 {isSelected && (
                   <>
@@ -644,11 +658,11 @@ export function DecorateMode({
                       onClick={(e) => e.stopPropagation()}
                       style={{
                         position: "absolute",
-                        top: -28,
+                        top: -48,
                         left: "50%",
                         transform: "translateX(-50%)",
-                        width: 24,
-                        height: 24,
+                        width: 44,
+                        height: 44,
                         borderRadius: "50%",
                         background: "#38bdf8",
                         border: "2px solid white",
@@ -676,8 +690,8 @@ export function DecorateMode({
                         position: "absolute",
                         bottom: -10,
                         right: -10,
-                        width: 24,
-                        height: 24,
+                        width: 44,
+                        height: 44,
                         borderRadius: "50%",
                         background: "#f59e0b",
                         border: "2px solid white",
@@ -740,6 +754,9 @@ export function DecorateMode({
             transform: "translateX(-50%)",
             zIndex: 60,
             display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            width: "min(94%, 460px)",
             gap: 6,
             background: "rgba(17, 24, 39, 0.92)",
             padding: "6px 8px",
@@ -747,6 +764,12 @@ export function DecorateMode({
             boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
           }}
         >
+          <ActionPill label="↔ 반전" onClick={() => setLayout(prev => prev.map(item => item.instance_id === selectedDeco.instance_id ? { ...item, flipX: !item.flipX } : item))} />
+          <ActionPill label="＋ 복제" onClick={() => {
+            if (layout.length >= 200) { setError("소품은 200개까지 놓을 수 있어요."); return; }
+            const duplicate = { ...selectedDeco, instance_id: genInstanceId(), position_x: clamp(selectedDeco.position_x + 3, 0, 100), position_y: clamp(selectedDeco.position_y + 3, 0, 100), z_index: Math.min(9999, Math.max(0, ...layout.map(item => item.z_index)) + 1) };
+            setLayout(prev => [...prev, duplicate]); setSelectedId(duplicate.instance_id);
+          }} />
           <ActionPill onClick={() => onBumpZ(selectedDeco.instance_id, -1)} label="⬇ 뒤로" />
           <ActionPill onClick={() => onBumpZ(selectedDeco.instance_id, 1)} label="⬆ 앞으로" />
           <ActionPill
@@ -808,8 +831,9 @@ export function DecorateMode({
             <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>회전</span>
             <input
               type="range"
-              min={-30}
-              max={30}
+              aria-label="캐릭터 회전"
+              min={-180}
+              max={180}
               step={1}
               value={Math.round(sceneLayout[selectedScene].rotation ?? 0)}
               onChange={(e) => {
@@ -897,7 +921,7 @@ function ActionPill({
       type="button"
       onClick={onClick}
       className={[
-        "px-3 py-1.5 rounded-full text-xs font-semibold transition",
+        "min-h-11 px-3 py-1.5 rounded-full text-xs font-semibold transition",
         danger
           ? "bg-rose-500 hover:bg-rose-600 text-white"
           : "bg-white/15 hover:bg-white/25 text-white",
@@ -973,16 +997,7 @@ function DecorationDrawer({
                   className="shrink-0 w-20 flex flex-col items-center gap-1 bg-gray-50 hover:bg-gray-100 border border-gray-100 rounded-xl p-2 transition"
                 >
                   <div className="w-14 h-14 flex items-center justify-center relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={it.image_url}
-                      alt={it.name}
-                      draggable={false}
-                      className={[
-                        "max-w-full max-h-full object-contain",
-                        locked ? "opacity-40" : "",
-                      ].join(" ")}
-                    />
+                    <DecorationArt item={it} className={locked ? "max-w-full max-h-full opacity-40" : "max-w-full max-h-full"} />
                     {locked && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
                         <span className="text-base leading-none" aria-hidden>🔒</span>

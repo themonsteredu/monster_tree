@@ -4,6 +4,7 @@
 // 학생 JWT 쿠키(monster_student) 로 본인 인증 후, garden_claim_pending RPC 로
 // pending 행 소비 + 로그 기록 + 학생 누적/단계 갱신을 한 트랜잭션에 처리한다.
 
+import { isBuiltinDecor } from "@/lib/decor-catalog";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { STUDENT_COOKIE_NAME, verifyStudentJwt } from "@/lib/student-jwt";
@@ -710,10 +711,12 @@ type YardItemInput = {
   widthPercent: number; // %
   rotation: number;   // deg
   zIndex: number;
+  flipX?: boolean;
 };
 
 function validateYardItem(it: YardItemInput): boolean {
   return (
+    !!it && typeof it === "object" && (it.flipX === undefined || typeof it.flipX === "boolean") &&
     typeof it.decorationItemId === "string" && it.decorationItemId.length > 0 &&
     typeof it.instanceId === "string" && it.instanceId.length > 0 && it.instanceId.length <= 64 &&
     Number.isFinite(it.positionX) && it.positionX >= -10 && it.positionX <= 110 &&
@@ -733,7 +736,7 @@ function validateSceneItemLayout(v: unknown): v is SceneItemLayout {
   // flipX / rotation 은 선택적 — 있으면 타입/범위 검증.
   if (o.flipX !== undefined && typeof o.flipX !== "boolean") return false;
   if (o.rotation !== undefined) {
-    if (typeof o.rotation !== "number" || !Number.isFinite(o.rotation) || o.rotation < -30 || o.rotation > 30) {
+    if (typeof o.rotation !== "number" || !Number.isFinite(o.rotation) || o.rotation < -180 || o.rotation > 180) {
       return false;
     }
   }
@@ -744,6 +747,7 @@ function validateSceneItemLayout(v: unknown): v is SceneItemLayout {
 // 꾸미기 모드 "저장" 누를 때 호출. sceneLayout 가 undefined 면 garden_students.scene_layout 은 안 건드림.
 export async function replaceYardLayoutAction(args: {
   items: YardItemInput[];
+  layoutVersion?: 2;
   sceneLayout?: SceneLayout | null;
 }) {
   const token = (await cookies()).get(STUDENT_COOKIE_NAME)?.value;
@@ -771,18 +775,31 @@ export async function replaceYardLayoutAction(args: {
     seen.add(it.instanceId);
   }
 
+  // Validate the complete scene before any write (including legacy clients).
+  if (args.sceneLayout !== undefined && args.sceneLayout !== null) {
+    if (typeof args.sceneLayout !== "object" || Array.isArray(args.sceneLayout) ||
+        ["tree", "avatar", "monster"].some(key => {
+          const value = args.sceneLayout?.[key as "tree" | "avatar" | "monster"];
+          return value !== undefined && !validateSceneItemLayout(value);
+        })) return { ok: false as const, message: "배치 값이 올바르지 않아요." };
+  }
+  if (args.layoutVersion !== undefined && args.layoutVersion !== 2) return { ok: false as const, message: "새로고침 후 다시 꾸며 주세요." };
+  if (args.layoutVersion === 2 && !args.sceneLayout) return { ok: false as const, message: "마당 정보를 확인해 주세요." };
   const sb = createSupabaseServiceClient();
   const { data: row, error: selErr } = await sb
     .from("garden_students")
-    .select("id")
+    .select("id, scene_layout, is_active")
     .eq("branch_id", payload.branchId)
     .eq("external_student_id", payload.studentLocalId)
     .maybeSingle();
   if (selErr) return { ok: false as const, message: `조회 실패: ${selErr.message}` };
-  if (!row?.id) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
+  if (!row?.id || !row.is_active) return { ok: false as const, message: "본인 행을 찾지 못했어요." };
 
+  if (args.layoutVersion !== 2 && (row.scene_layout as SceneLayout | null)?.yard) {
+    return { ok: false as const, message: "새 꾸미기 기능이 적용됐어요. 새로고침 후 다시 꾸며 주세요." };
+  }
   // 참조 무결성 — 등록된 (그리고 활성) 소품 id 만 허용.
-  const ids = Array.from(new Set(args.items.map((i) => i.decorationItemId)));
+  const ids = Array.from(new Set(args.items.map((i) => i.decorationItemId).filter(id => !(args.layoutVersion === 2 && isBuiltinDecor(id)))));
   if (ids.length > 0) {
     const { data: validItems } = await sb
       .from("decoration_items")
@@ -814,6 +831,25 @@ export async function replaceYardLayoutAction(args: {
         };
       }
     }
+  }
+
+  if (args.layoutVersion === 2) {
+    // One row update stores actors and every prop atomically. Legacy table rows remain
+    // untouched as a rollback source; readers prefer the explicit yard snapshot, even [].
+    const scene: SceneLayout = {};
+    for (const key of ["tree", "avatar", "monster"] as const) {
+      const value = args.sceneLayout?.[key];
+      if (value) scene[key] = { x: value.x, y: value.y, width: value.width, flipX: !!value.flipX, rotation: value.rotation ?? 0 };
+    }
+    scene.yard = args.items.map(it => ({ decoration_item_id: it.decorationItemId,
+      instance_id: it.instanceId, position_x: it.positionX, position_y: it.positionY,
+      width_percent: it.widthPercent, rotation: it.rotation, z_index: it.zIndex, flipX: !!it.flipX }));
+    const { data: saved, error } = await sb.from("garden_students")
+      .update({ scene_layout: scene }).eq("id", row.id).eq("branch_id", payload.branchId)
+      .eq("external_student_id", payload.studentLocalId).select("id").maybeSingle();
+    if (error || !saved) return { ok: false as const, message: "저장하지 못했어요. 편집 내용은 유지됩니다. 다시 시도해 주세요." };
+    revalidatePath("/me");
+    return { ok: true as const, count: args.items.length };
   }
 
   // 삭제 후 insert.

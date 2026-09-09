@@ -3,18 +3,23 @@
 // 마이룸 마당에 학생이 배치한 소품을 그대로 보여주는 정적 레이어.
 // /me 의 사과나무 scene 안에 absolute 로 깔린다. (편집 모드일 때는 DecorateMode 가 대체)
 
-import type { DecorationItem, StudentYardItem } from "@/lib/types";
+import { DecorationArt } from "./DecorationArt";
+import { yardCatalogue, yardPlacements } from "@/lib/yard-decoration";
+import type { SceneLayout, DecorationItem, StudentYardItem } from "@/lib/types";
 
 export function YardLayer({
   items,
-  layout,
+  layout: legacyLayout,
+  sceneLayout,
 }: {
   items: DecorationItem[];
   layout: StudentYardItem[];
+  sceneLayout?: SceneLayout | null;
 }) {
+  const layout = yardPlacements(legacyLayout, sceneLayout);
   if (layout.length === 0) return null;
 
-  const itemById = new Map(items.map((i) => [i.id, i]));
+  const itemById = new Map(yardCatalogue(items).map((i) => [i.id, i]));
 
   return (
     <div
@@ -44,14 +49,7 @@ export function YardLayer({
               zIndex: li.z_index,
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={item.image_url}
-              alt={item.name}
-              draggable={false}
-              className="w-full h-auto object-contain"
-              style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.25))" }}
-            />
+            <div style={{ transform: `scaleX(${li.flipX ? -1 : 1})` }}><DecorationArt item={item} className="w-full h-auto object-contain" /></div>
           </div>
         );
       })}

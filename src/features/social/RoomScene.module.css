@@ -73,3 +73,13 @@
   .roomTag { font-size: 10px; top: 9px; left: 9px; padding: 6px 8px; }
   .theme { font-size: 10px; }
 }
+
+.catalog { max-height: 310px; overflow-y: auto; padding: 3px; overscroll-behavior: contain; }
+.editorTools, .categoryRow { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; color: #f6ead0; }
+.editorTools button, .categoryRow button { min-height: 44px; padding: 8px 12px; border: 1px solid #8193a0; border-radius: 5px; background: #22344a; color: #fff4d0; font: inherit; font-size: 12px; cursor: pointer; }
+.editorTools button:disabled, .catalogItem:disabled { opacity: .45; cursor: default; }
+.categoryRow button[aria-pressed="true"], .editorTools button[aria-pressed="true"] { background: #65542b; border-color: #ffd56a; }
+.editorTools input:not([type="range"]) { flex: 1; min-width: 120px; min-height: 44px; padding: 8px; border-radius: 5px; color: #192a30; background: #fff8e8; }
+.editorTools label { display: flex; flex: 1 1 180px; align-items: center; gap: 10px; font-size: 12px; }
+.editorTools input[type="range"] { min-width: 70px; width: 100%; height: 44px; accent-color: #ffd56a; }
+.selectedControls { position: sticky; bottom: 8px; z-index: 125; }
