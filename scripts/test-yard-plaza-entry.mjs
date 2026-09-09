@@ -60,14 +60,19 @@ const noNewTabOrCredentials = (html) => {
   assert.doesNotMatch(html, /student_id|branch_id|owner_id|login_id|jwt|token|password|secret|[?&](?:key|auth)=/i);
 };
 
-await test("actual student entry renders a native same-tab SITE /plaza link without credentials", () => {
+await test("actual student entry uses the configured SITE redirect in the same tab without credentials", () => {
   const html = renderToStaticMarkup(createElement(YardPlazaEntry));
   const anchors = links(html);
   assert.equal(anchors.length, 1);
-  assert.equal(anchors[0][1], "https://www.themonster.kr/plaza");
-  const url = new URL(anchors[0][1]);
-  assert.equal(url.pathname, "/plaza");
-  for (const property of ["username", "password", "search", "hash"]) assert.equal(url[property], "");
+  assert.equal(anchors[0][1], "/tree/me/plaza");
+  for (const origin of ["https://www.themonster.kr", "https://monster-tree.vercel.app", "http://localhost:3103"]) {
+    const url = new URL(anchors[0][1], origin);
+    assert.equal(url.origin, origin);
+    assert.equal(url.pathname, "/tree/me/plaza");
+    for (const property of ["username", "password", "search", "hash"]) assert.equal(url[property], "");
+  }
+  const redirectPage = source("src/app/me/plaza/page.tsx");
+  assert.match(redirectPage, /redirect\(getSitePlazaUrl\(\)\)/, "shared entry must resolve the configured destination on the server");
   assert.doesNotMatch(html, /\/tree\/plaza|<svg\b/i);
   assert.match(html, /우리 광장으로 가기/);
   assert.match(html, /min-h-\[76px\]/);

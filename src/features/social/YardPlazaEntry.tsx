@@ -1,10 +1,10 @@
 type Props = { previewMode?: boolean };
 
-/** Shared yard entrance. A native link crosses from TREE to SITE without a /tree prefix. */
+/** Use the existing server redirect so staging and production honor their SITE destination. */
 export function YardPlazaEntry({ previewMode = false }: Props) {
   return (
     <a
-      href={previewMode ? "#plaza-preview" : "https://www.themonster.kr/plaza"}
+      href={previewMode ? "#plaza-preview" : "/tree/me/plaza"}
       className="mb-3 flex min-h-[76px] items-center gap-3 rounded-2xl border-2 border-[#54753b] bg-[#edf4de] px-4 py-3 text-[#29431e] no-underline shadow-[0_3px_0_#54753b] transition-colors hover:bg-[#e0edc9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#29431e]"
     >
       <span aria-hidden="true" className="shrink-0 text-3xl">🏘️</span>
