@@ -86,3 +86,21 @@ export function createPreviewBootstrap(): SocialBootstrap {
     nextCursor: null,
   };
 }
+
+/** Keep the whole rotated allocation inside the 10:9 room, using a centre pivot.
+ * Persisted x/y remain the historical bottom-centre anchor. */
+export function fitRoomPlacement(item: FurniturePlacement): FurniturePlacement {
+  const definition = FURNITURE_CATALOG.find(entry => entry.id === item.id)!;
+  const radians = (item.rotation ?? 0) * Math.PI / 180;
+  const cos = Math.abs(Math.cos(radians)), sin = Math.abs(Math.sin(radians));
+  const aspect = 10 / 9;
+  const boundWidth = cos * definition.width + sin * definition.height / aspect;
+  const boundHeight = cos * definition.height + sin * definition.width * aspect;
+  const scale = Math.min(item.scale ?? 1, 94 / boundWidth, 94 / boundHeight);
+  const height = definition.height * scale;
+  const halfWidth = boundWidth * scale / 2, halfHeight = boundHeight * scale / 2;
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  return { ...item, ...(item.scale !== undefined || scale !== 1 ? { scale } : {}),
+    x: Math.round(clamp(item.x, Math.max(8, halfWidth + 2), Math.min(92, 98 - halfWidth)) * 10) / 10,
+    y: Math.round(clamp(item.y, Math.max(45, height/2 + halfHeight + 2), Math.min(92, height/2 + 98 - halfHeight)) * 10) / 10 };
+}

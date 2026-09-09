@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
-import { FURNITURE_CATALOG, MAX_ROOM_FURNITURE, ROOM_THEMES, type FurnitureId, type FurniturePlacement, type HomeConfig } from "@/lib/social/model";
+import { fitRoomPlacement, FURNITURE_CATALOG, MAX_ROOM_FURNITURE, ROOM_THEMES, type FurnitureId, type FurniturePlacement, type HomeConfig } from "@/lib/social/model";
 import { FurnitureArt } from "./FurnitureArt";
 import styles from "./RoomScene.module.css";
 
@@ -27,14 +27,7 @@ type Gesture = {
 const itemKey = (item: FurniturePlacement) => item.instanceId ?? item.id;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-function fitPlacement(item: FurniturePlacement): FurniturePlacement {
-  const furniture = FURNITURE_CATALOG.find((entry) => entry.id === item.id)!;
-  return {
-    ...item,
-    x: Math.round(clamp(item.x, Math.max(8, furniture.width * (item.scale ?? 1) / 2 + 2), Math.min(92, 98 - furniture.width * (item.scale ?? 1) / 2)) * 10) / 10,
-    y: Math.round(clamp(item.y, 45, 92) * 10) / 10,
-  };
-}
+const fitPlacement = fitRoomPlacement;
 
 const ROOM_MATERIALS: Record<HomeConfig["theme"], { src: string; label: string; color: string }> = {
   cream: { src: "/tree/block-world/room-oak-v1.png", label: "참나무", color: "#b97b32" },
@@ -113,6 +106,8 @@ export function RoomScene({ home, ownerName, editing, onChange, onMove, children
 
   useEffect(() => {
     if (!canEdit) {
+      undoRef.current = [];
+      redoRef.current = [];
       const gesture = gestureRef.current;
       if (gesture?.frame != null) cancelAnimationFrame(gesture.frame);
       gestureRef.current = null;
@@ -218,7 +213,7 @@ export function RoomScene({ home, ownerName, editing, onChange, onMove, children
         return <div
           key={itemKey(item)}
           className={`${styles.furniture} ${selected ? styles.selected : ""}`}
-          style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${definition.width * (item.scale ?? 1)}%`, height: `${definition.height * (item.scale ?? 1)}%`, transform: `translate(-50%, -100%) rotate(${item.rotation ?? 0}deg)`, transformOrigin: "50% 100%", zIndex: selected ? 119 : item.layer ?? (item.id === "rug" ? 1 : Math.round(item.y)) }}
+          style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${definition.width * (item.scale ?? 1)}%`, height: `${definition.height * (item.scale ?? 1)}%`, transform: `translate(-50%, -100%) rotate(${item.rotation ?? 0}deg)`, transformOrigin: "50% 50%", zIndex: selected ? 119 : item.layer ?? (item.id === "rug" ? 1 : Math.round(item.y)) }}
         >
           <div className={styles.sprite} style={{ transform: `scaleX(${item.flipX ? -1 : 1})` }}><FurnitureArt id={item.id} className={styles.sprite} /></div>
           {canEdit && <button

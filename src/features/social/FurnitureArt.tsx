@@ -18,7 +18,7 @@ const SPRITES: Partial<Record<FurnitureId, { x: number; y: number; w: number; h:
 
 export const FurnitureArt = memo(function FurnitureArt({ id, className, catalog = false }: { id: FurnitureId; className?: string; catalog?: boolean }) {
   const crop = SPRITES[id];
-  if (!crop) return <DecorArt id={id} basePath={"/tree"} className={className} />;
+  if (!crop) return <DecorArt fit id={id} basePath={"/tree"} className={className} />;
   const ratio = 2 * crop.w / crop.h;
   const viewport: CSSProperties = {
     aspectRatio: String(ratio),
