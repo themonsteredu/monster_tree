@@ -70,12 +70,14 @@ type Props = {
   initialSuggestions: GardenSuggestion[];
   initialBlocks: SuggestionBlock[];
   studentMap: Record<string, StudentMini>;
+  highlightedId?: string;
 };
 
 export function SuggestAdminClient({
   initialSuggestions,
   initialBlocks,
   studentMap,
+  highlightedId,
 }: Props) {
   const router = useRouter();
   const [categoryFilter, setCategoryFilter] = useState<SuggestionCategory | "all">("all");
@@ -399,7 +401,8 @@ export function SuggestAdminClient({
             return (
               <article
                 key={s.id}
-                className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4"
+                id={`suggestion-${s.id}`}
+                className={`scroll-mt-4 rounded-2xl bg-white border shadow-sm p-4 ${highlightedId === s.id ? "border-amber-400 ring-2 ring-amber-200" : "border-gray-100"}`}
               >
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <span

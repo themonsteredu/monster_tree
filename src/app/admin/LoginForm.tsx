@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { loginAction } from "./actions";
 
-export function LoginForm({ initialKey }: { initialKey: string }) {
+export function LoginForm({ initialKey, returnTo }: { initialKey: string; returnTo?: string }) {
   const [key, setKey] = useState(initialKey);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -27,7 +27,9 @@ export function LoginForm({ initialKey }: { initialKey: string }) {
                 setError(res.message);
                 return;
               }
-              router.replace("/admin");
+              // Only the fixed mailbox route can override the normal post-login destination.
+              const mailbox = returnTo && /^\/admin\/suggest(?:\?notification=[0-9a-f-]{36})?$/i.test(returnTo);
+              router.replace(mailbox ? returnTo : "/admin");
               router.refresh();
             });
           }}

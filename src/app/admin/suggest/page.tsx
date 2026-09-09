@@ -3,26 +3,37 @@
 // branch 는 쿠키 우선, 없으면 ?branch= 쿼리 fallback (cookie path 이슈 우회).
 
 import Link from "next/link";
-import { createSupabaseServerAnonClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAdminBranchId } from "@/lib/branch";
 import { isAdminAuthenticated } from "../auth";
 import { LoginForm } from "../LoginForm";
 import { AdminHeader } from "../AdminHeader";
 import type { GardenSuggestion, GardenStudent, SuggestionBlock } from "@/lib/types";
 import { SuggestAdminClient } from "./SuggestAdminClient";
+import { AdminSuggestionNotifications } from "./AdminSuggestionNotifications";
+import { SuggestionNotificationOpen } from "./SuggestionNotificationOpen";
+
+export const metadata: Metadata = {
+  title: "건의함 관리 · 더몬스터학원",
+  manifest: "/tree/admin/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "건의함", statusBarStyle: "default" },
+};
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminSuggestPage(
   props: {
-    searchParams: Promise<{ key?: string; branch?: string }>;
+    searchParams: Promise<{ key?: string; branch?: string; notification?: string; highlight?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
-  if (!(await isAdminAuthenticated(searchParams.key))) {
-    return <LoginForm initialKey={searchParams.key ?? ""} />;
+  const notification = searchParams.notification;
+  if (!(await isAdminAuthenticated())) {
+    return <LoginForm initialKey={searchParams.key ?? ""} returnTo={notification ? `/admin/suggest?notification=${encodeURIComponent(notification)}` : "/admin/suggest"} />;
   }
+  if (notification) return <SuggestionNotificationOpen id={notification} />;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return (
@@ -39,6 +50,7 @@ export default async function AdminSuggestPage(
   if (!branchId) {
     return (
       <main className="min-h-screen bg-gray-50 px-4 py-10">
+        <div className="mx-auto mb-6 max-w-3xl"><AdminSuggestionNotifications /></div>
         <div className="max-w-md mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
           <h1 className="text-lg font-semibold text-gray-900 mb-2">
             지점이 선택되지 않았어요
@@ -65,7 +77,7 @@ export default async function AdminSuggestPage(
     );
   }
 
-  const sb = createSupabaseServerAnonClient();
+  const sb = createSupabaseServiceClient();
   const [{ data: suggestionRows }, { data: blockRows }, { data: studentRows }] =
     await Promise.all([
       sb
@@ -87,6 +99,12 @@ export default async function AdminSuggestPage(
     ]);
 
   const suggestions = (suggestionRows ?? []) as GardenSuggestion[];
+  // An older notification may reference a post beyond the 200 newest rows.
+  const highlight = searchParams.highlight;
+  if (highlight && /^[0-9a-f-]{36}$/i.test(highlight) && !suggestions.some(item => item.id === highlight)) {
+    const { data: older } = await sb.from("garden_suggestions").select("*").eq("id", highlight).eq("branch_id", branchId).maybeSingle();
+    if (older) suggestions.unshift(older as GardenSuggestion);
+  }
   const blocks = (blockRows ?? []) as SuggestionBlock[];
   const students = (studentRows ?? []) as GardenStudent[];
 
@@ -99,10 +117,13 @@ export default async function AdminSuggestPage(
     <main className="min-h-screen pb-20 bg-gray-50">
       <AdminHeader current="suggest" title="건의함 관리" />
 
+      <div className="mx-auto max-w-5xl px-4 pt-4"><AdminSuggestionNotifications /></div>
+
       <SuggestAdminClient
         initialSuggestions={suggestions}
         initialBlocks={blocks}
         studentMap={studentMap}
+        highlightedId={highlight}
       />
     </main>
   );
