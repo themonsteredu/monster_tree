@@ -133,7 +133,6 @@ export function RoomScene({ home, ownerName, editing, onChange, onMove, children
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedId(itemKey(item));
-    checkpoint();
     gestureRef.current = { pointerId: event.pointerId, item: { ...item }, startX: event.clientX, startY: event.clientY };
   };
 
@@ -146,6 +145,7 @@ export function RoomScene({ home, ownerName, editing, onChange, onMove, children
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
     if (!gesture.pending && Math.hypot(dx, dy) < 3) return;
+    if (!gesture.pending) checkpoint();
     gesture.pending = { ...gesture.item, x: gesture.item.x + dx / rect.width * 100, y: gesture.item.y + dy / rect.height * 100 };
     if (gesture.frame != null) return;
     gesture.frame = requestAnimationFrame(() => {
@@ -169,9 +169,10 @@ export function RoomScene({ home, ownerName, editing, onChange, onMove, children
 
   const removeFurniture = (id: string) => {
     finishGesture(false);
+    const removed = homeRef.current.furniture.find(entry => itemKey(entry) === id);
     updateHome({ ...homeRef.current, furniture: homeRef.current.furniture.filter((entry) => itemKey(entry) !== id) });
     setSelectedId(null);
-    setAnnouncement(`${FURNITURE_CATALOG.find((entry) => entry.id === id)?.label}를 보관했어요.`);
+    setAnnouncement(`${FURNITURE_CATALOG.find((entry) => entry.id === removed?.id)?.label ?? "소품"}를 보관했어요.`);
   };
 
   const addFurniture = (id: FurnitureId, source?: FurniturePlacement) => {

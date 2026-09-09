@@ -9,6 +9,7 @@ export function DecorationReview() {
   const [home, setHome] = useState(createDefaultHome);
   return <>
     <nav style={{ display: "flex", justifyContent: "center", gap: 12, padding: 12 }}>
+      <a href="/tree/decor-studio-preview?mobile=1" style={{ minHeight: 44 }}>휴대폰 화면</a>
       <button type="button" onClick={() => setRoom(false)} style={{ minHeight: 44 }}>마당 편집 테스트</button>
       <button type="button" onClick={() => setRoom(true)} style={{ minHeight: 44 }}>집 편집 테스트</button>
     </nav>
