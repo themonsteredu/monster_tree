@@ -38,6 +38,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { key: "village", label: "마을 구성", href: "/admin/village" },
       { key: "village-preview", label: "마을 보기", href: "/admin/village-preview" },
       { key: "plaza-preview", label: "새 광장·아바타", href: "/admin/plaza-preview" },
+      { key: "yard-preview", label: "숲속 마당 보기", href: "/admin/yard-preview" },
     ],
   },
   {

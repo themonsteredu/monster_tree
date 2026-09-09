@@ -10,6 +10,10 @@ import { AppleTree, type AppleTreeMood } from "@/components/AppleTree";
 import { AvatarFigurePreloaded } from "@/features/garden/avatar/AvatarFigurePreloaded";
 import { AvatarEditSheet } from "@/features/garden/avatar/AvatarEditSheet";
 import { YardPlazaEntry } from "@/features/social/YardPlazaEntry";
+import { ForestYard, ForestYardScene, ForestYardProgress } from "@/features/garden/yard/ForestYard";
+import { resolveYardScene, usesForestBackground } from "@/features/garden/yard/forest-yard-layout";
+import YardSign from "@/features/garden/yard/YardSign";
+import yardStyles from "@/features/garden/yard/ForestYard.module.css";
 import { useGalleryPositions } from "@/features/garden/avatar/useGalleryPositions";
 import { BackgroundCanvas } from "@/features/garden/background/BackgroundCanvas";
 import { MoodEditSheet } from "@/features/garden/mood/MoodEditSheet";
@@ -23,7 +27,6 @@ import { NotifyBell } from "./NotifyBell";
 import {
   DEFAULT_AVATAR,
   DEFAULT_BACKGROUND,
-  DEFAULT_SCENE_LAYOUT,
   type AvatarConfig,
   type BackgroundConfig,
   type SceneLayout,
@@ -148,7 +151,6 @@ export function MeTreeClient({
   initialWeather = "none",
   initialDecorationItems = [],
   initialYardLayout = [],
-  yardBackgroundImage = null,
   initialSceneLayout = null,
   initialMonster = null,
   initialMonsterSpecies = null,
@@ -221,6 +223,7 @@ export function MeTreeClient({
 
   const currentAvatar: AvatarConfig = row?.avatar ?? DEFAULT_AVATAR;
   const currentBackground: BackgroundConfig = row?.background ?? DEFAULT_BACKGROUND;
+  const forestBackground = usesForestBackground(row?.background);
   const galleryPositions = useGalleryPositions();
   const treeStages = useTreeStages(initialTreeStages);
 
@@ -239,12 +242,8 @@ export function MeTreeClient({
   }, []);
   const cqminPx = Math.min(yardPx.w || 1, yardPx.h || 1) / 100;
 
-  // 효과적인 씬 레이아웃: DB 값 ⊕ 기본값.
-  const effectiveScene = {
-    tree: sceneLayout?.tree ?? DEFAULT_SCENE_LAYOUT.tree,
-    avatar: sceneLayout?.avatar ?? DEFAULT_SCENE_LAYOUT.avatar,
-    monster: sceneLayout?.monster ?? DEFAULT_SCENE_LAYOUT.monster,
-  };
+  // Saved coordinates are never migrated. Only unpositioned actors use the new lawn defaults.
+  const effectiveScene = resolveYardScene(sceneLayout, forestBackground);
 
   // 상대시간("N분 전") 표시용 시계. 분 단위 해상도면 충분하므로 30s 주기.
   // (저사양 기기에서 1s 주기 전체 리렌더가 끊김의 원인이었음)
@@ -365,7 +364,6 @@ export function MeTreeClient({
   const info = getStageInfo(stage);
   const progress = stageProgress(points);
   const remain = pointsToNextStage(points);
-  const accent = STAGE_ACCENT[stage] ?? STAGE_ACCENT[1];
   const isHarvestStage = stage === 8;
   const applesHarvested = row?.apples_harvested ?? 0;
   const maxStageEver = applesHarvested > 0 ? 8 : stage;
@@ -410,31 +408,9 @@ export function MeTreeClient({
   }, [now, isHarvestStage, applesHarvested, stats, initialPointLogs.length, pending.length]);
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: `linear-gradient(180deg, ${accent.mePageBg} 0%, ${accent.mePageBgEnd} 100%)`,
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: 16,
-        fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        transition: "background 600ms ease",
-      }}
-    >
-      <div
-        style={{
-          background: isHarvestStage ? "#fff8e6" : "#fff",
-          borderRadius: 24,
-          padding: 14,
-          width: "100%",
-          maxWidth: 460,
-          boxShadow: isHarvestStage
-            ? "0 0 0 4px rgba(251,146,60,0.45), 0 10px 40px rgba(61,40,24,0.12)"
-            : "0 10px 40px rgba(61,40,24,0.08)",
-          border: `2px solid ${isHarvestStage ? "#fb923c" : "#f1e8d8"}`,
-        }}
-      >
+    <main className={yardStyles.page}>
+      <ForestYard studentName={studentName} grade={row?.grade} points={points} apples={applesHarvested}
+        sign={row ? <YardSign /> : null}>
         {!row ? (
           <>
             <div style={{ textAlign: "center", marginBottom: 16, paddingTop: 8 }}>
@@ -461,35 +437,9 @@ export function MeTreeClient({
           </>
         ) : (
           <>
-            {/* === 씬 영역 — 세로 1:1, 가로 16:9 적응. 자식 cqmin 단위 활성화 === */}
-            <div
-              ref={yardRef}
-              className="aspect-square landscape:aspect-[16/9]"
-              style={{
-                position: "relative",
-                borderRadius: 20,
-                overflow: "hidden",
-                marginBottom: 12,
-                background: "#e8d8b8",
-                containerType: "size",
-              } as React.CSSProperties}
-            >
-              {/* 마당 글로벌 배경 (관리자) — 설정돼 있으면 학생 본인 background 보다 우선. */}
-              {yardBackgroundImage ? (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    backgroundImage: `url(${yardBackgroundImage})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    borderRadius: 20,
-                  }}
-                />
-              ) : (
-                <BackgroundCanvas config={currentBackground} rounded={20} />
-              )}
+            <ForestYardScene stageRef={yardRef} forest={forestBackground}>
+              {/* Explicit personal themes stay visible. The legacy global image does not mask the new default. */}
+              {!forestBackground && <BackgroundCanvas config={currentBackground} rounded={15} />}
 
               {/* 마당 소품 — 배경 위, 나무 아래 (편집 모드일 때는 DecorateMode 가 위에서 덮음) */}
               {!decorateMode && (
@@ -570,94 +520,13 @@ export function MeTreeClient({
                 />
               )}
 
-              {/* 이름 오버레이 (좌상단) */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 14,
-                  left: 14,
-                  zIndex: 5,
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  className="font-galmuri"
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 400,
-                    color: "#fff",
-                    textShadow: "0 1px 3px rgba(0,0,0,0.45)",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {studentName}
-                </div>
-                {row.grade && (
-                  <div
-                    className="font-pretendard"
-                    style={{
-                      fontSize: 11,
-                      color: "rgba(255,255,255,0.65)",
-                      marginTop: 2,
-                      fontWeight: 400,
-                      textShadow: "0 1px 3px rgba(0,0,0,0.4)",
-                    }}
-                  >
-                    {row.grade}
-                  </div>
-                )}
-              </div>
-
-              {/* 포인트 오버레이 (우상단) */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 12,
-                  right: 12,
-                  zIndex: 5,
-                  padding: "8px 14px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.38)",
-                  border: "1px solid rgba(251,146,60,0.3)",
-                  boxShadow: "0 0 12px rgba(251,146,60,0.2)",
-                  textAlign: "center",
-                  minWidth: 66,
-                }}
-              >
-                <div
-                  className="font-galmuri"
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 400,
-                    color: "#fff",
-                    fontVariantNumeric: "tabular-nums",
-                    lineHeight: 1,
-                    textShadow: "0 1px 2px rgba(0,0,0,0.35)",
-                  }}
-                >
-                  {points}
-                </div>
-                <div
-                  className="font-pretendard"
-                  style={{
-                    fontSize: 8,
-                    color: "rgba(255,255,255,0.55)",
-                    letterSpacing: "0.14em",
-                    fontWeight: 400,
-                    marginTop: 3,
-                  }}
-                >
-                  POINT
-                </div>
-              </div>
-
               {/* 수확 가능 배지 */}
               {isHarvestStage && (
                 <div
                   className="harvest-pulse"
                   style={{
                     position: "absolute",
-                    top: 70,
+                    top: 12,
                     right: 12,
                     zIndex: 5,
                     padding: "4px 12px",
@@ -754,101 +623,40 @@ export function MeTreeClient({
 
               {/* 하단 기분 전광판 */}
               <MoodTicker text={row.mood_text ?? ""} borderRadius={20} />
-            </div>
+            </ForestYardScene>
 
             {/* === 하단 정보 영역 === */}
 
-            {/* 받을 포인트 (액션 아이템 - 항상 표시) */}
-            {pending.length > 0 && (
-              <PendingClaimSection
-                pending={pending}
-                claimingId={claimingId}
-                error={claimError}
-                onClaim={onClaim}
-              />
-            )}
-
-            {/* 🔔 웹 푸시 알림 켜기 — 미수령 포인트 리마인더 (키 미설정 시 자동 숨김) */}
-            <NotifyBell />
-
-            {/* 단계 + 프로그레스 바 */}
-            <div className="bg-[#F5F0E6] rounded-2xl px-3.5 py-3 mb-2.5">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 999,
-                      background: accent.meBarFill,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    className="font-galmuri text-gray-900 truncate"
-                    style={{ fontSize: 13, fontWeight: 400 }}
-                  >
-                    {stage}단계 · {info.name}
-                  </span>
-                </div>
-                <div
-                  className="font-pretendard text-gray-500 flex-shrink-0"
-                  style={{ fontSize: 11, fontWeight: 400 }}
-                >
-                  {info.nextThreshold === null ? "최고 단계" : `다음 단계까지 ${remain}P`}
-                </div>
-              </div>
-              <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                <div
-                  style={{
-                    width: `${Math.round(progress * 100)}%`,
-                    height: "100%",
-                    background: accent.meBarFill,
-                    transition: "width 600ms ease",
-                    borderRadius: 999,
-                  }}
-                />
-              </div>
-            </div>
+            <ForestYardProgress stage={stage} name={info.name} progress={progress} remaining={remain} harvest={isHarvestStage} />
 
             {/* 내 나무를 그대로 두고, SITE의 새 광장으로 바로 이동한다. */}
-            <YardPlazaEntry />
+            <div className={yardStyles.plaza}><YardPlazaEntry /></div>
 
             {/* 액션 버튼 (배경은 관리자만 — 학생 측 버튼 제거) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <div className={yardStyles.primaryActions}>
               <button
                 type="button"
                 onClick={() => setAvatarSheetOpen(true)}
-                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
-                style={{ fontSize: 13, fontWeight: 500 }}
               >
+                <span className={yardStyles.primaryIcon} aria-hidden="true">👕</span>
                 아바타 꾸미기
               </button>
               <button
                 type="button"
-                onClick={() => setMoodSheetOpen(true)}
-                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
-                style={{ fontSize: 13, fontWeight: 500 }}
-              >
-                한마디
-              </button>
-              <button
-                type="button"
-                onClick={() => setWeatherSheetOpen(true)}
-                className="font-pretendard bg-white border border-gray-200 rounded-xl py-3 text-gray-700 hover:bg-gray-50 transition"
-                style={{ fontSize: 13, fontWeight: 500 }}
-              >
-                ☁️ 분위기
-              </button>
-              <button
-                type="button"
                 onClick={() => setDecorateMode(true)}
-                className="font-pretendard bg-orange-50 border border-orange-200 rounded-xl py-3 text-orange-800 hover:bg-orange-100 transition shadow-sm"
-                style={{ fontSize: 13, fontWeight: 700 }}
               >
-                🎨 마당 꾸미기
+                <span className={yardStyles.primaryIcon} aria-hidden="true">🪴</span>
+                마당 꾸미기
               </button>
             </div>
+            <div className={yardStyles.secondaryActions}>
+              <button type="button" onClick={() => setMoodSheetOpen(true)}>✎ 한마디</button>
+              <button type="button" onClick={() => setWeatherSheetOpen(true)}>☁ 분위기</button>
+            </div>
+
+            <div className={yardStyles.extras}>
+              {pending.length > 0 && <PendingClaimSection pending={pending} claimingId={claimingId} error={claimError} onClaim={onClaim} />}
+              <NotifyBell />
 
             {/* 활동 기록 · 마일스톤 (접기/펼치기) */}
             <DetailsCollapse title="활동 기록 · 마일스톤">
@@ -913,10 +721,11 @@ export function MeTreeClient({
                 {STAGE_TABLE.length}단계 중 {stage}단계
               </div>
             </DetailsCollapse>
+            </div>
           </>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <div className={yardStyles.secondaryActions}>
           <Link
             href="/me/village"
             className="font-pretendard text-orange-600 no-underline hover:text-orange-700"
@@ -933,7 +742,7 @@ export function MeTreeClient({
             📖 몬스터도감
           </Link>
         </div>
-      </div>
+      </ForestYard>
 
       <div
         aria-live="polite"
