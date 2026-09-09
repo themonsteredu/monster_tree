@@ -3,36 +3,23 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AVAILABLE_LOOK_OPTIONS, CLOTH_COLORS, HAIR_COLORS, LOOK_LABELS, LOOK_OPTIONS, LOOK_PRESETS, SKIN_COLORS,
-  TOP_META, changeLook, isDressTop, isLookAvailable, normalizeLook, type LookField, type PaperDollLook,
+  CLOTH_COLORS, HAIR_COLORS, LOOK_LABELS, LOOK_OPTIONS, LOOK_PRESETS, SKIN_COLORS,
+  normalizeLook, type LookField, type PaperDollLook,
 } from "@/lib/avatar-v2";
-import { PaperDoll, WardrobeItemArt } from "./PaperDoll";
+import { PaperDoll } from "./PaperDoll";
 import styles from "./Wardrobe.module.css";
 
-type Tab = "looks" | "face" | "hair" | "top" | "bottom" | "shoes" | "hat" | "bag" | "glasses" | "neckwear";
-const TAB_NAMES: Record<Tab, string> = {
-  looks: "추천 코디", face: "얼굴", hair: "헤어", top: "상의 · 원피스", bottom: "하의", shoes: "신발",
-  hat: "모자", bag: "가방", glasses: "안경", neckwear: "목소품",
-};
-const SECTIONS: { id: string; name: string; tabs: Tab[] }[] = [
-  { id: "looks", name: "코디", tabs: ["looks"] },
-  { id: "appearance", name: "얼굴·헤어", tabs: ["face", "hair"] },
-  { id: "clothes", name: "옷·신발", tabs: ["top", "bottom", "shoes"] },
-  { id: "gear", name: "가방·모자", tabs: ["bag", "hat"] },
-  { id: "accessories", name: "액세서리", tabs: ["glasses", "neckwear"] },
+type Tab = "looks" | "face" | "hair" | "top" | "bottom" | "shoes" | "hat";
+const TABS: { id: Tab; name: string; short: string }[] = [
+  { id: "looks", name: "추천 코디", short: "✦" }, { id: "face", name: "얼굴", short: "☺" },
+  { id: "hair", name: "헤어", short: "⌁" }, { id: "top", name: "상의", short: "♧" },
+  { id: "bottom", name: "하의", short: "⋈" }, { id: "shoes", name: "신발", short: "◡" },
+  { id: "hat", name: "모자", short: "⌒" },
 ];
 const COLOR_FIELD: Partial<Record<Tab, LookField>> = {
   top: "topColor", bottom: "bottomColor", shoes: "shoeColor", hat: "hatColor",
-  bag: "bagColor", glasses: "glassesColor", neckwear: "neckwearColor",
 };
-const TOP_GROUPS = [
-  { id: "all", name: "전체" }, { id: "everyday", name: "일상" }, { id: "sport", name: "스포츠" },
-  { id: "outerwear", name: "겉옷" }, { id: "dress", name: "원피스" },
-] as const;
-const REMOVABLE = new Set<Tab>(["hat", "bag", "glasses", "neckwear"]);
-const FEATURED_PRESETS = new Set(["soccer", "royal", "explorer", "daytrip"]);
-const PAGE_SIZE = 12;
-const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex="0"]:not(:disabled)';
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), [href], [tabindex="0"]:not(:disabled)';
 
 export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: {
   open: boolean; initial: PaperDollLook; onClose: () => void;
@@ -41,15 +28,12 @@ export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: 
   const [mounted, setMounted] = useState(false);
   const [draft, setDraft] = useState(() => normalizeLook(initial));
   const [tab, setTab] = useState<Tab>("looks");
-  const [topGroup, setTopGroup] = useState<(typeof TOP_GROUPS)[number]["id"]>("all");
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const savingRef = useRef(false);
   const snapshotRef = useRef(JSON.stringify(normalizeLook(initial)));
   const titleId = useId();
@@ -70,7 +54,7 @@ export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: 
     if (!open) return;
     setDraft(normalizeLook(JSON.parse(initialKey)));
     snapshotRef.current = initialKey;
-    setTab("looks"); setTopGroup("all"); setVisibleCount(PAGE_SIZE); setError(""); setConfirmLeave(false);
+    setTab("looks"); setError(""); setConfirmLeave(false);
   }, [open, initialKey]);
 
   useEffect(() => {
@@ -112,18 +96,14 @@ export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: 
 
   const change = <K extends LookField>(field: K, value: PaperDollLook[K]) => {
     setError("");
-    setDraft(current => changeLook(current, field, value));
-  };
-  const selectTab = (next: Tab) => {
-    setTab(next); setTopGroup("all"); setVisibleCount(PAGE_SIZE);
-    panelRef.current?.scrollTo({ top: 0 });
+    setDraft(current => ({
+      ...current, [field]: value,
+      ...(field === "hair" || field === "hairColor" ? { face: "human" as const } : {}),
+      ...((field === "bottom" || field === "bottomColor") && current.top === "dress" ? { top: "sweatshirt" as const } : {}),
+    }));
   };
   const save = async () => {
     if (savingRef.current) return;
-    if (!isLookAvailable(draft)) {
-      setError("아직 준비 중인 아이템이 있어요. 다른 아이템으로 바꾼 뒤 저장해 주세요.");
-      return;
-    }
     savingRef.current = true; setPending(true); setError("");
     try {
       await onSave({ ...draft });
@@ -137,86 +117,66 @@ export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: 
   };
 
   if (!mounted || !open) return null;
-  const section = SECTIONS.find(item => item.tabs.includes(tab))!;
   const selectedPreset = LOOK_PRESETS.find(preset => JSON.stringify(preset.look) === JSON.stringify(draft));
   const colorField = COLOR_FIELD[tab];
-  const wardrobeOptions = AVAILABLE_LOOK_OPTIONS;
-  const options = tab === "looks" ? [] : wardrobeOptions[tab].filter(value =>
-    value !== "none" && (tab !== "top" || topGroup === "all" || TOP_META[value as PaperDollLook["top"]].group === topGroup));
-  const removable = REMOVABLE.has(tab);
-  const isEmptySlot = tab !== "looks" && draft[tab] === "none";
-  const visiblePresets = LOOK_PRESETS.filter(preset => isLookAvailable(preset.look))
-    .sort((a, b) => Number(FEATURED_PRESETS.has(b.id)) - Number(FEATURED_PRESETS.has(a.id)));
   return createPortal(
     <div className={styles.backdrop} onClick={event => { if (event.target === event.currentTarget) requestClose(); }}>
       <div className={styles.modal} ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className={styles.header}>
-          <div><span className={styles.eyebrow}>나의 아지트 · 아바타</span><h2 id={titleId}>오늘은 어떻게 입을까?</h2></div>
+          <div><span className={styles.eyebrow}>MONSTER WORLD · INVENTORY</span><h2 id={titleId}>오늘의 블록 아바타</h2></div>
           <button type="button" className={styles.close} ref={closeButtonRef} onClick={requestClose} disabled={pending} aria-label="옷장 닫기">×</button>
         </header>
         {adminMode && <p className={styles.admin}>🛠 테스트 모드 — 기록 저장 안 됨</p>}
         <div className={styles.body}>
           <section className={styles.preview} aria-label="선택한 아바타 미리보기">
+            <span className={styles.previewTag}>내 캐릭터 · 장비 장착</span>
             <div className={styles.mirror}><PaperDoll look={draft} size={320} className={styles.largeDoll} /></div>
-            <div className={styles.previewCaption}><strong>{selectedPreset?.name ?? "나만의 코디"}</strong></div>
+            <div className={styles.previewCaption}><span className={styles.littleStar}>✦</span><strong>{selectedPreset?.name ?? "나만의 코디"}</strong><span>장비를 고르고 나만의 캐릭터 완성!</span></div>
+            <span className={styles.freePill}>모든 기본 아이템 무료</span>
           </section>
           <section className={styles.closet} aria-label="아바타 꾸미기">
             <div className={styles.tabs} role="tablist" aria-label="꾸미기 종류">
-              {SECTIONS.map((item, index) => <button key={item.id} type="button" role="tab"
-                id={`${tabPrefix}-${item.id}`} aria-selected={section.id === item.id} aria-controls={`${tabPrefix}-panel`}
-                tabIndex={section.id === item.id ? 0 : -1} disabled={pending}
-                className={`${styles.tab} ${section.id === item.id ? styles.activeTab : ""}`}
-                onClick={() => selectTab(item.tabs[0])} onKeyDown={event => {
+              {TABS.map((item, index) => <button key={item.id} type="button" role="tab"
+                id={`${tabPrefix}-${item.id}`} aria-selected={tab === item.id} aria-controls={`${tabPrefix}-panel`}
+                tabIndex={tab === item.id ? 0 : -1} disabled={pending}
+                className={`${styles.tab} ${tab === item.id ? styles.activeTab : ""}`}
+                onClick={() => setTab(item.id)} onKeyDown={event => {
                   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                   event.preventDefault();
-                  const next = event.key === "Home" ? 0 : event.key === "End" ? SECTIONS.length - 1
-                    : (index + (event.key === "ArrowRight" ? 1 : -1) + SECTIONS.length) % SECTIONS.length;
-                  selectTab(SECTIONS[next].tabs[0]);
-                  document.getElementById(`${tabPrefix}-${SECTIONS[next].id}`)?.focus();
-                }}>{item.name}</button>)}
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1
+                    : (index + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+                  setTab(TABS[next].id);
+                  document.getElementById(`${tabPrefix}-${TABS[next].id}`)?.focus();
+                }}><span aria-hidden="true">{item.short}</span>{item.name}</button>)}
             </div>
-            <div id={`${tabPrefix}-panel`} ref={panelRef} role="tabpanel" aria-labelledby={`${tabPrefix}-${section.id}`} className={styles.panel}>
-              <div className={styles.panelHeading}>
-                {section.tabs.length > 1 ? <select className={styles.slotSelect} aria-label={`${section.name} 세부 부위`} value={tab} disabled={pending}
-                  onChange={event => selectTab(event.target.value as Tab)}>
-                  {section.tabs.map(item => <option key={item} value={item}>{TAB_NAMES[item]}</option>)}
-                </select> : <h3>{TAB_NAMES[tab]}</h3>}
-                {tab === "top" && <select className={styles.styleSelect} aria-label="상의 스타일" value={topGroup} disabled={pending}
-                  onChange={event => { setTopGroup(event.target.value as typeof topGroup); setVisibleCount(PAGE_SIZE); }}>
-                  {TOP_GROUPS.filter(group => group.id === "all" || wardrobeOptions.top.some(value => TOP_META[value].group === group.id)).map(group =>
-                    <option key={group.id} value={group.id}>{group.name === "전체" ? "모든 스타일" : group.name}</option>)}
-                </select>}
-                {removable ? <button type="button" className={styles.removeItem} disabled={pending || isEmptySlot}
-                  onClick={() => change(tab as "hat" | "bag" | "glasses" | "neckwear", "none")}>{isEmptySlot ? "착용 안 함" : "벗기"}</button>
-                  : tab !== "top" && <span>{tab === "looks" ? "한 번에 갈아입기" : `${options.length}가지`}</span>}
-              </div>
+            <div id={`${tabPrefix}-panel`} role="tabpanel" aria-labelledby={`${tabPrefix}-${tab}`} className={styles.panel}>
+              <div className={styles.panelHeading}><h3>{TABS.find(item => item.id === tab)?.name}</h3><span>{tab === "looks" ? "한 번에 갈아입기" : "누르면 바로 입어요"}</span></div>
               <fieldset className={styles.fieldset} disabled={pending}>
-                <legend className={styles.srOnly}>{TAB_NAMES[tab]} 선택</legend>
+                <legend className={styles.srOnly}>{TABS.find(item => item.id === tab)?.name} 선택</legend>
                 {tab === "looks" ? <div className={styles.presetGrid}>
-                  {visiblePresets.slice(0, visibleCount).map(preset => <label key={preset.id} className={`${styles.preset} ${selectedPreset?.id === preset.id ? styles.selected : ""}`}>
+                  {LOOK_PRESETS.map(preset => <label key={preset.id} className={`${styles.preset} ${selectedPreset?.id === preset.id ? styles.selected : ""}`}>
                     <input className={styles.radio} type="radio" name="preset" value={preset.id} checked={selectedPreset?.id === preset.id} onChange={() => { setDraft({ ...preset.look }); setError(""); }} />
                     <div className={styles.presetIllustration} style={{ background: `${CLOTH_COLORS[preset.look.topColor].fill}35` }}><PaperDoll look={preset.look} size={130} /></div>
                     <span className={styles.cardText}><strong>{preset.name}</strong><small>{preset.description}</small></span>
                     {selectedPreset?.id === preset.id && <span className={styles.check} aria-hidden="true">✓</span>}
                   </label>)}
-                  {visiblePresets.length > visibleCount && <button type="button" className={styles.showMore} onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>코디 더 보기</button>}
                 </div> : <>
                   {tab === "hair" && draft.face !== "human" && <p className={styles.hint}>헤어나 머리색을 고르면 사람 얼굴로 바뀌어요.</p>}
-                  {tab === "bottom" && isDressTop(draft.top) && <p className={styles.hint}>하의나 색상을 고르면 원피스 대신 맨투맨을 입어요.</p>}
+                  {tab === "bottom" && draft.top === "dress" && <p className={styles.hint}>하의나 색상을 고르면 원피스 대신 맨투맨을 입어요.</p>}
                   <div className={styles.itemGrid}>
-                    {options.slice(0, visibleCount).map(value => {
-                      const preview = changeLook(draft, tab, value as PaperDollLook[typeof tab]);
-                      const selected = draft[tab] === value && !(tab === "hair" && draft.face !== "human") && !(tab === "bottom" && isDressTop(draft.top));
+                    {LOOK_OPTIONS[tab].map(value => {
+                      const preview = { ...draft, [tab]: value,
+                        ...(tab === "hair" ? { face: "human" as const } : {}),
+                        ...(tab === "bottom" && draft.top === "dress" ? { top: "sweatshirt" as const } : {}),
+                      } as PaperDollLook;
+                      const selected = draft[tab] === value && !(tab === "hair" && draft.face !== "human");
                       return <label key={value} className={`${styles.item} ${selected ? styles.selected : ""}`}>
-                        <input type="radio" className={styles.radio} name={tab} value={value} checked={selected} onChange={() => change(tab, value as PaperDollLook[typeof tab])} />
-                        <div className={styles.itemIllustration}><WardrobeItemArt look={preview} slot={tab} size={96} /></div>
+                        <input type="radio" className={styles.radio} name={tab} value={value} checked={selected} onChange={() => change(tab, value)} />
+                        <div className={styles.itemIllustration}><PaperDoll look={preview} size={124} /></div>
                         <strong>{LOOK_LABELS[value]}</strong>{selected && <span className={styles.check} aria-hidden="true">✓</span>}
                       </label>;
                     })}
                   </div>
-                  {options.length === 0 && <p className={styles.emptyItems}>새 아이템을 준비하고 있어요.<br />다른 부위부터 자유롭게 꾸며 보세요.</p>}
-                  {options.length > visibleCount && <button type="button" className={styles.showMore} onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>
-                    아이템 더 보기 <span>({visibleCount}/{options.length})</span></button>}
                   {tab === "face" && <>
                     <fieldset className={styles.subFieldset}><legend>표정</legend><div className={styles.chips}>
                       {LOOK_OPTIONS.eyes.map(value => <label key={value} className={`${styles.chip} ${draft.eyes === value ? styles.selected : ""}`}><input type="radio" className={styles.radio} name="eyes" value={value} checked={draft.eyes === value} onChange={() => change("eyes", value)} />{LOOK_LABELS[value]}</label>)}
@@ -224,14 +184,14 @@ export function Wardrobe({ open, initial, onClose, onSave, adminMode = false }: 
                     {draft.face === "human" && <ColorChoices title="피부색" field="skin" options={SKIN_COLORS} selected={draft.skin} onChange={value => change("skin", value as PaperDollLook["skin"])} />}
                   </>}
                   {tab === "hair" && <ColorChoices title="머리색" field="hairColor" options={HAIR_COLORS} selected={draft.hairColor} onChange={value => change("hairColor", value as PaperDollLook["hairColor"])} />}
-                  {colorField && !isEmptySlot && options.length > 0 && <ColorChoices title="색 고르기" field={colorField} options={CLOTH_COLORS} selected={tab === "bottom" && isDressTop(draft.top) ? "" : draft[colorField]} onChange={value => change(colorField, value as PaperDollLook[typeof colorField])} />}
+                  {colorField && (tab !== "hat" || draft.hat !== "none") && <ColorChoices title="색 고르기" field={colorField} options={CLOTH_COLORS} selected={draft[colorField]} onChange={value => change(colorField, value as PaperDollLook[typeof colorField])} />}
                 </>}
               </fieldset>
             </div>
           </section>
         </div>
         <footer className={styles.footer}>
-          <div className={styles.saveMessage} aria-live="polite">{error ? <span role="alert" className={styles.error}>{error}</span> : <strong>{pending ? "코디를 저장하고 있어요…" : "언제든 다시 바꿀 수 있어요."}</strong>}</div>
+          <div className={styles.saveMessage} aria-live="polite">{error ? <span role="alert" className={styles.error}>{error}</span> : <><strong>{pending ? "코디를 저장하고 있어요…" : "준비됐으면 친구들을 만나러!"}</strong><span>아바타는 언제든 다시 바꿀 수 있어요.</span></>}</div>
           <button type="button" className={styles.save} onClick={save} disabled={pending} aria-busy={pending}>{pending ? "저장 중…" : adminMode ? "미리보기 적용" : "이렇게 입을래"}<span aria-hidden="true"> →</span></button>
         </footer>
         {confirmLeave && <div className={styles.confirmBackdrop}>
