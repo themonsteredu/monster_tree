@@ -6,7 +6,7 @@
 // - is_ready=false 면 자물쇠 뱃지 + 어두운 필터.
 // - 첫 진입 시 환영 메시지가 떴다가 1.5s 뒤 fade-out.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { VillageBuilding, VillageSettings } from "@/lib/types";
@@ -47,6 +47,32 @@ export function VillageClient({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [imgErrorIds, setImgErrorIds] = useState<Set<string>>(new Set());
   const hideTimerRef = useRef<number | null>(null);
+
+  // ── 화면 크기를 **직접 잰다** ──
+  //   예전에는 무대 너비를 CSS 로 `min(100vw, calc(100dvh * 16 / 9))` 라고 줬다.
+  //   dvh 를 모르는 브라우저(구형 iOS·안드로이드)에서는 이 한 줄이 통째로 무효가 되고,
+  //   그러면 무대에 너비가 없어 화면이 찌그러지거나 아예 안 보였다.
+  //   기종마다 다르게 보이던 까닭이다. 재서 픽셀로 주면 어느 기종에서나 똑같다.
+  //   주소창이 오르내리거나 화면을 돌려도 다시 잰다.
+  const frameRef = useRef<HTMLElement | null>(null);
+  const [frame, setFrame] = useState({ w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const measure = () => setFrame({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // 화면 회전·주소창 변화는 ResizeObserver 가 놓치는 기기가 있다
+    window.addEventListener("orientationchange", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("orientationchange", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   const markImgError = (id: string) =>
     setImgErrorIds((prev) => {
@@ -125,12 +151,21 @@ export function VillageClient({
     setToast(`${b.name}은(는) 곧 오픈 예정이에요! 기대해주세요 🎉`);
   };
 
-  // 배경은 16:9 — 컨테이너도 16:9 로 고정해야 좌표 매핑이 어긋나지 않는다.
-  // mobile portrait: 너비 기준 (위/아래 레터박스), PC wide: 높이 기준 (좌/우 레터박스).
+  // 배경은 16:9 — 무대도 16:9 여야 건물 좌표(%)가 배경과 어긋나지 않는다.
+  // 세로로 긴 폰은 너비 기준, 가로로 넓은 화면은 높이 기준으로 맞춘다.
+  const stage = useMemo(() => {
+    if (!frame.w || !frame.h) return { w: 0, h: 0 };
+    const byWidth = frame.w;
+    const byHeight = frame.h * (16 / 9);
+    const w = Math.floor(Math.min(byWidth, byHeight));
+    return { w, h: Math.floor((w * 9) / 16) };
+  }, [frame.w, frame.h]);
+
   const stageStyle: React.CSSProperties = {
     position: "relative",
-    width: "min(100vw, calc(100dvh * 16 / 9))",
-    maxHeight: "100dvh",
+    // 재서 픽셀로 준다 — CSS 단위 지원 여부에 기대지 않는다
+    width: stage.w || undefined,
+    height: stage.h || undefined,
     aspectRatio: "16 / 9",
     // 그라데이션을 바닥 레이어로 항상 깔고, 배경 이미지를 그 위에 올린다.
     // 이미지가 404/삭제 등으로 안 뜨면 그라데이션이 보여 완전 검정 화면을 막는다.
@@ -139,8 +174,18 @@ export function VillageClient({
       : STAGE_GRADIENT,
   };
 
+  // 무대 위아래(또는 좌우)에 남는 띠. 세로로 긴 폰일수록 넓다.
+  // 검정으로 두면 화면이 고장 난 것처럼 보여서 무대와 같은 색을 깐다.
+  const letterbox = Math.max(0, frame.h - stage.h);
+  // 띠가 좁으면 아래 「새 광장」 칸이 마을을 덮는다 — 그럴 때는 칸을 납작하게.
+  const tightBottom = letterbox < 150;
+
   return (
-    <main className="fixed inset-0 bg-black overflow-hidden text-white flex items-center justify-center">
+    <main
+      ref={frameRef}
+      className="fixed inset-0 overflow-hidden text-white flex items-center justify-center"
+      style={{ background: STAGE_GRADIENT }}
+    >
       {/* 상단 우측 — 학생 이름 + 포인트 */}
       <header className="absolute top-0 right-0 z-30 px-4 pt-3 pointer-events-none">
         <div className="bg-black/70 rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-2 pointer-events-auto">
@@ -157,15 +202,28 @@ export function VillageClient({
         <Link
           href={previewMode ? previewLinkOverrides?.plaza ?? "/admin/plaza-preview" : "/me/plaza"}
           prefetch={false}
-          className="flex min-h-[72px] items-center gap-3 rounded-2xl border border-[#e9e6cd] bg-[#fffdf2] px-4 py-3 text-[#4b5e3e] shadow-lg focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#d6e5b9]"
+          className={[
+            "flex items-center gap-3 rounded-2xl border border-[#e9e6cd] bg-[#fffdf2] text-[#4b5e3e] shadow-lg",
+            "focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#d6e5b9]",
+            // 띠가 좁은 기종(가로로 넓거나 화면이 낮은 폰)에서는 납작하게 — 마을을 덜 가리게
+            tightBottom ? "min-h-[52px] px-3 py-2" : "min-h-[72px] px-4 py-3",
+          ].join(" ")}
         >
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e5ead6] text-[28px]">
+          <span aria-hidden="true"
+            className={[
+              "flex shrink-0 items-center justify-center rounded-xl bg-[#e5ead6]",
+              tightBottom ? "h-9 w-9 text-[22px]" : "h-11 w-11 text-[28px]",
+            ].join(" ")}>
             🏘️
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-semibold tracking-wide text-[#7d8b62]">NEW · MONSTER PLAZA</span>
-            <span className="mt-0.5 block text-base font-bold">새 광장 · 친구 집</span>
-            <span className="mt-0.5 block text-[11px] text-[#847e65]">{previewMode ? "테스트 모드로 만나고 꾸며보기" : "내 아바타로 친구들을 만나러 가요"}</span>
+            {!tightBottom && (
+              <span className="block text-[10px] font-semibold tracking-wide text-[#7d8b62]">NEW · MONSTER PLAZA</span>
+            )}
+            <span className={`block font-bold ${tightBottom ? "text-sm" : "mt-0.5 text-base"}`}>새 광장 · 친구 집</span>
+            {!tightBottom && (
+              <span className="mt-0.5 block text-[11px] text-[#847e65]">{previewMode ? "테스트 모드로 만나고 꾸며보기" : "내 아바타로 친구들을 만나러 가요"}</span>
+            )}
           </span>
           <span aria-hidden="true" className="text-xl">→</span>
         </Link>
