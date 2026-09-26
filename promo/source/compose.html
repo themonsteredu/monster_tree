@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>몬스터마을 사과정원 홍보영상</title>
+<style>
+:root{--bg:#fff6ea;--bg2:#ffeede;--ink:#3d2818;--soft:#8a6f52;--apple:#f04848;--apple-d:#b02020;--leaf:#5e9c38;--leaf-d:#4a8030;--leaf-l:#a8e070;--gold:#f0c050;--gold-d:#e8a020;--pink:#ffb8d4;--card:#ffffff}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Pretendard",sans-serif;letter-spacing:-0.02em}
+.stage{position:absolute;inset:0;overflow:hidden;background:radial-gradient(1100px 700px at 85% 15%,#ffe3c4 0%,transparent 60%),radial-gradient(900px 600px at 5% 95%,#e6f3d3 0%,transparent 60%),linear-gradient(180deg,var(--bg),var(--bg2))}
+.dots{position:absolute;inset:-120px;background-image:radial-gradient(rgba(94,156,56,.13) 2.5px,transparent 3px);background-size:60px 60px}
+.scene{position:absolute;inset:0;opacity:0}
+.a{will-change:transform,opacity}
+/* hero */
+.hero .txt{position:absolute;left:140px;top:250px;width:980px}
+.eyebrow{font-size:30px;font-weight:700;color:var(--leaf-d);letter-spacing:.02em;margin-bottom:28px;display:flex;align-items:center;gap:16px}
+.eyebrow::before{content:"";width:44px;height:4px;border-radius:2px;background:var(--leaf);display:block}
+.big{font-size:108px;font-weight:900;line-height:1.12;letter-spacing:-0.045em}
+.big em{font-style:normal;color:var(--apple);text-shadow:0 6px 0 rgba(240,72,72,.12)}
+.sub{font-size:38px;font-weight:600;color:var(--soft);margin-top:36px;line-height:1.45}
+.hero .card{position:absolute;border-radius:28px;overflow:hidden;border:6px solid #fff;box-shadow:0 30px 80px rgba(61,40,24,.25)}
+.hero .card img{width:100%;height:100%;object-fit:cover;display:block}
+/* caption */
+.cap{position:absolute;left:150px;top:0;bottom:90px;width:880px;display:flex;flex-direction:column;justify-content:center}
+.cap .num{font-size:27px;font-weight:800;color:var(--leaf-d);letter-spacing:.04em;margin-bottom:24px;display:inline-flex;align-self:flex-start;padding:10px 22px;border-radius:999px;background:rgba(94,156,56,.12)}
+.cap h2{font-size:78px;font-weight:900;line-height:1.16;letter-spacing:-0.045em}
+.cap h2 em{font-style:normal;color:var(--apple)}
+.cap p{font-size:34px;font-weight:600;color:var(--soft);line-height:1.5;margin-top:32px}
+.chips{display:flex;flex-wrap:wrap;gap:14px;margin-top:36px}
+.chip{font-size:26px;font-weight:700;padding:12px 24px;border-radius:999px;border:2px solid rgba(240,72,72,.35);color:var(--apple-d);background:#fff}
+.chip.g{border-color:rgba(94,156,56,.45);color:var(--leaf-d)}
+/* phone */
+.phone{position:absolute;left:1190px;top:62px;width:436px;height:880px;border-radius:58px;background:#2b1d12;padding:15px;box-shadow:0 40px 100px rgba(61,40,24,.35),inset 0 0 0 2px #4a3524}
+.phone .view{position:relative;width:406px;height:850px;border-radius:44px;overflow:hidden;background:#fff}
+.phone .view img{position:absolute;left:0;top:0;transform-origin:0 0}
+.phone .notch{position:absolute;left:50%;top:26px;width:120px;height:30px;margin-left:-60px;border-radius:20px;background:#2b1d12;z-index:2}
+.blob{position:absolute;border-radius:50%;filter:blur(2px)}
+/* window (wide) */
+.win{position:absolute;left:320px;top:190px;width:1280px;border-radius:24px;overflow:hidden;background:#fff;border:2px solid rgba(61,40,24,.12);box-shadow:0 40px 110px rgba(61,40,24,.28)}
+.win .bar{height:52px;display:flex;align-items:center;gap:10px;padding:0 22px;background:#f6e9d8;border-bottom:1px solid rgba(61,40,24,.1)}
+.win .bar i{width:14px;height:14px;border-radius:50%;display:block}
+.win .bar i:nth-child(1){background:#f07a6a}.win .bar i:nth-child(2){background:#f0c050}.win .bar i:nth-child(3){background:#8cc860}
+.win .bar span{margin-left:22px;flex:1;height:32px;border-radius:9px;background:#fff;color:var(--soft);font-size:19px;display:flex;align-items:center;padding:0 18px;font-weight:600}
+.win .view{position:relative;width:1280px;height:720px;overflow:hidden}
+.win .view img{position:absolute;left:0;top:0;transform-origin:0 0}
+.wide .cap{left:320px;top:60px;bottom:auto;width:1280px;flex-direction:row;align-items:center;gap:26px;justify-content:flex-start}
+.wide .cap h2{font-size:58px}
+.wide .cap .num{margin:0}
+.tag{position:absolute;padding:14px 26px;border-radius:18px;background:#fff;border:3px solid var(--gold-d);font-size:28px;font-weight:800;color:var(--ink);box-shadow:0 18px 50px rgba(61,40,24,.22);white-space:nowrap}
+.tag.red{border-color:var(--apple);color:var(--apple-d)}
+.tag.green{border-color:var(--leaf);color:var(--leaf-d)}
+/* cards */
+.cards .head{position:absolute;left:0;right:0;top:130px;text-align:center}
+.cards .head h2{font-size:80px;font-weight:900;letter-spacing:-0.045em}
+.cards .head h2 em{font-style:normal;color:var(--apple)}
+.cards .head p{font-size:34px;color:var(--soft);margin-top:20px;font-weight:600}
+.cgrid{position:absolute;left:170px;right:170px;top:420px;display:grid;grid-template-columns:repeat(4,1fr);gap:30px}
+.card2{height:320px;border-radius:30px;padding:36px 34px;background:#fff;border:3px solid rgba(61,40,24,.08);box-shadow:0 20px 50px rgba(61,40,24,.12);display:flex;flex-direction:column;justify-content:space-between}
+.card2 .ic{font-size:64px;line-height:1}
+.card2 b{display:block;margin-bottom:12px;font-size:24px;color:var(--leaf-d);font-weight:800;letter-spacing:.02em}
+.card2 strong{font-size:38px;font-weight:900;line-height:1.28;letter-spacing:-0.035em}
+.card2.hot{border-color:rgba(240,72,72,.45)} .card2.hot b{color:var(--apple)}
+/* outro */
+.outro{display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding-bottom:110px}
+.logo{display:flex;align-items:center;gap:34px}
+.logo img{width:150px;height:150px;border-radius:36px;box-shadow:0 20px 50px rgba(61,40,24,.25)}
+.logo .name{font-size:96px;font-weight:900;letter-spacing:-0.04em;text-align:left;line-height:1.05}
+.logo .name small{display:block;font-size:28px;letter-spacing:.18em;color:var(--leaf-d);font-weight:800;margin-top:14px}
+.outro .line{font-size:54px;font-weight:800;margin-top:74px;letter-spacing:-0.035em}
+.outro .line em{font-style:normal;color:var(--apple)}
+.url{margin-top:56px;font-size:42px;font-weight:800;padding:22px 50px;border-radius:999px;background:var(--apple);color:#fff;letter-spacing:0;box-shadow:0 14px 40px rgba(240,72,72,.35)}
+.outro .foot{margin-top:40px;font-size:28px;color:var(--soft);font-weight:600}
+.subs{position:absolute;left:0;right:0;bottom:40px;display:flex;justify-content:center;pointer-events:none}
+.subs span{font-size:40px;font-weight:700;line-height:1.35;color:#fff;background:rgba(61,40,24,.86);padding:14px 36px;border-radius:18px;text-align:center;max-width:1560px;box-shadow:0 10px 40px rgba(61,40,24,.3);letter-spacing:-0.02em}
+.progress{position:absolute;left:0;bottom:0;height:7px;background:linear-gradient(90deg,var(--leaf),var(--apple))}
+</style></head>
+<body>
+<div class="stage" id="stage">
+  <div class="dots a" id="dots"></div>
+
+  <section class="scene hero" id="s-hero">
+    <div class="card a" id="hero-yard" style="left:1180px;top:130px;width:600px;height:600px"><img src="forest-yard.jpg"></div>
+    <div class="card a" id="hero-tv" style="left:1060px;top:560px;width:560px;height:315px"><img src="frames/tv/00030.jpg"></div>
+    <div class="txt">
+      <div class="eyebrow a" data-in="0.3">더몬스터학원 · 학생 보상 시스템</div>
+      <div class="big a" data-in="0.7">공부한 만큼<br><em>나무가 자라요</em></div>
+      <div class="sub a" data-in="1.6">칭찬 포인트가 사과나무 · 몬스터 · 마당으로<br>눈에 보이게 쌓이는 몬스터마을</div>
+    </div>
+  </section>
+
+  <section class="scene wide" id="s-tv">
+    <div class="cap"><div class="num a" data-in="0.1">로비 TV</div><h2 class="a" data-in="0.3">학원 TV에 <em>우리 반 사과정원</em>이 떠요</h2></div>
+    <div class="win a" data-win><div class="bar"><i></i><i></i><i></i><span>themonster.kr/tv</span></div><div class="view"><img id="v-tv"></div></div>
+    <div class="tag red a" id="tag-tv" style="left:1330px;top:880px">🍎 8단계 · 사과 수확!</div>
+  </section>
+
+  <section class="scene" id="s-admin">
+    <div class="cap">
+      <div class="num a" data-in="0.2">선생님 휴대폰</div>
+      <h2 class="a" data-in="0.4">터치 두 번이면<br><em>포인트 적립</em> 끝</h2>
+      <p class="a" data-in="0.8">출석 · 숙제 · 테스트 점수를 바로 주면<br>학생의 나무가 그만큼 자라요.</p>
+      <div class="chips a" data-in="1.2"><span class="chip g">출석 +1</span><span class="chip g">숙제 +1</span><span class="chip">테스트 +1~10</span><span class="chip">반별 · 일괄 적립</span></div>
+    </div>
+    <div class="phone a" data-win><div class="view"><img id="v-admin"></div></div>
+  </section>
+
+  <section class="scene" id="s-yard">
+    <div class="cap">
+      <div class="num a" data-in="0.2">나만의 숲속 마당</div>
+      <h2 class="a" data-in="0.4">모은 포인트로<br><em>마당을 꾸며요</em></h2>
+      <p class="a" data-in="0.8">소품을 놓고 옮기고 돌려 보며<br>나만의 아지트를 완성해요.</p>
+      <div class="chips a" data-in="1.2"><span class="chip g">가구 · 꽃 · 곤충 소품</span><span class="chip g">아바타 꾸미기</span><span class="chip">날씨 효과</span></div>
+    </div>
+    <div class="phone a" data-win><div class="view"><img id="v-yard"></div></div>
+  </section>
+
+  <section class="scene" id="s-game">
+    <div class="cap">
+      <div class="num a" data-in="0.2">몬스터 게임센터</div>
+      <h2 class="a" data-in="0.4">게임하면<br><em>몬스터 알</em>이 자라요</h2>
+      <p class="a" data-in="0.8">점수가 경험치가 되어 알이 부화하고 진화해요.<br>하루 3판이라 공부 시간도 지켜요.</p>
+      <div class="chips a" data-in="1.2"><span class="chip">무한의 계단</span><span class="chip">스카이 슈터</span><span class="chip">블록 수학 퀘스트</span><span class="chip g">이번 달 랭킹</span></div>
+    </div>
+    <div class="phone a" data-win><div class="view"><img id="v-game"></div></div>
+  </section>
+
+  <section class="scene" id="s-quiz">
+    <div class="cap">
+      <div class="num a" data-in="0.2">퀴즈 오두막</div>
+      <h2 class="a" data-in="0.4">하루 3문제,<br><em>다 맞히면 포인트</em></h2>
+      <p class="a" data-in="0.8">수학 · 상식 · 넌센스 문제로<br>매일 조금씩 공부하는 습관을 만들어요.</p>
+      <div class="chips a" data-in="1.2"><span class="chip">🧮 수학</span><span class="chip">🌏 상식</span><span class="chip">🎭 넌센스</span><span class="chip g">학년별 출제</span></div>
+    </div>
+    <div class="phone a" data-win><div class="view"><img id="v-quiz"></div></div>
+  </section>
+
+  <section class="scene" id="s-col">
+    <div class="cap">
+      <div class="num a" data-in="0.2">몬스터도감 · 우리 광장</div>
+      <h2 class="a" data-in="0.4">키운 몬스터는 <em>도감</em>에,<br>친구는 <em>광장</em>에서</h2>
+      <p class="a" data-in="0.8">다 키운 몬스터가 차곡차곡 모이고,<br>친구들의 아바타와 집도 구경해요.</p>
+    </div>
+    <div class="phone a" data-win><div class="view"><img id="v-col"></div></div>
+  </section>
+
+  <section class="scene cards" id="s-cards">
+    <div class="head"><h2 class="a" data-in="0.1">칭찬이 <em>눈에 보이는</em> 학원</h2><p class="a" data-in="0.4">학생은 신나게, 선생님은 간편하게, 학부모님은 안심하고</p></div>
+    <div class="cgrid">
+      <div class="card2 hot a" data-in="0.7"><span class="ic">🍎</span><div><b>학생</b><strong>공부한 만큼<br>자라는 내 나무</strong></div></div>
+      <div class="card2 a" data-in="0.9"><span class="ic">📱</span><div><b>선생님</b><strong>휴대폰으로<br>바로 적립</strong></div></div>
+      <div class="card2 a" data-in="1.1"><span class="ic">📊</span><div><b>원장님</b><strong>지점별 관리와<br>주간 리포트</strong></div></div>
+      <div class="card2 hot a" data-in="1.3"><span class="ic">⏰</span><div><b>학부모님</b><strong>게임은 하루 3판<br>공부가 먼저</strong></div></div>
+    </div>
+  </section>
+
+  <section class="scene outro" id="s-outro">
+    <div class="logo a" data-in="0.1"><img src="monster-symbol.png"><div class="name">몬스터마을 사과정원<small>THE MONSTER ACADEMY</small></div></div>
+    <div class="line a" data-in="0.6">칭찬이 자라는 학원, <em>더몬스터학원</em></div>
+    <div class="url a" data-in="1.1">themonster.kr</div>
+    <div class="foot a" data-in="1.5">설치 없이 휴대폰 · 태블릿 · 로비 TV에서 바로</div>
+  </section>
+  <div class="subs"><span id="sub"></span></div>
+  <div class="progress" id="prog"></div>
+</div>
+<script>
+const FPS = 30;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const ease = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+const eout = t => 1 - Math.pow(1 - t, 3);
+const lerp = (a, b, t) => a + (b - a) * t;
+// clip: 프레임 수, 프레임 픽셀 너비, CSS 너비(녹화 뷰포트), 세로/가로 비율
+const CLIPS = {
+  tv:{n:358,w:1920,css:1600,ar:9/16},
+  admin:{n:217,w:860,css:430,ar:900/430}, yard:{n:337,w:860,css:430,ar:900/430}, gchub:{n:127,w:860,css:430,ar:900/430},
+  stairs:{n:464,w:860,css:430,ar:900/430}, quiz:{n:480,w:860,css:430,ar:900/430}, col:{n:148,w:860,css:430,ar:900/430}, plaza:{n:223,w:860,css:430,ar:900/430},
+};
+const P = [0,0,430];
+// view: 녹화 화면(CSS px) 기준 [x,y,w] 시작→끝
+const SCENES = [
+  { id:'s-hero', dur:5.4 },
+  { id:'s-tv', dur:7.6, img:'v-tv', segs:[ { clip:'tv', from:0.4, rate:1.3, len:7.6, view:[[0,0,1600],[600,80,1000]] } ] },
+  { id:'s-admin', dur:6.6, img:'v-admin', segs:[ { clip:'admin', from:0.6, rate:1, len:6.6, view:[P,[10,20,410]] } ] },
+  { id:'s-yard', dur:7.0, img:'v-yard', segs:[ { clip:'yard', from:1.2, rate:1.35, len:7.0, view:[P,[8,30,414]] } ] },
+  { id:'s-game', dur:8.4, img:'v-game', segs:[
+      { clip:'gchub', from:0.8, rate:1.2, len:2.4, view:[P,P] },
+      { clip:'stairs', from:0.9, rate:1.3, len:6.0, view:[P,[10,10,410]] } ] },
+  { id:'s-quiz', dur:7.4, img:'v-quiz', segs:[ { clip:'quiz', from:1.0, rate:1.75, len:7.4, view:[P,P] } ] },
+  { id:'s-col', dur:7.0, img:'v-col', segs:[
+      { clip:'col', from:0.6, rate:1.3, len:3.2, view:[P,P] },
+      { clip:'plaza', from:0.8, rate:1.7, len:3.8, view:[P,P] } ] },
+  { id:'s-cards', dur:5.6 },
+  { id:'s-outro', dur:6.2 },
+];
+const XF = 0.6;
+let acc = 0; for (const s of SCENES) { s.start = acc; acc += s.dur - XF; }
+const TOTAL = acc + XF;
+window.TOTAL = TOTAL;
+function src(clip, i) { const c = CLIPS[clip]; i = Math.max(1, Math.min(c.n, i)); return `frames/${clip}/${String(i).padStart(5,'0')}.jpg`; }
+async function setImg(el, url) { if (el.dataset.src === url) return; el.dataset.src = url; el.src = url; try { await el.decode(); } catch {} }
+const SUBS = [
+  [0.5,4.4,'공부한 만큼 눈에 보이는 보상이 있다면, 아이들은 더 신이 나겠죠?'],
+  [4.9,8.2,'학원 로비 TV에는 우리 반 친구들의 사과나무가 한눈에 떠요.'],
+  [8.4,11.6,'포인트가 쌓일수록 화분이 새싹, 큰나무, 사과나무로 자라요.'],
+  [12.0,14.8,'선생님은 휴대폰에서 학생을 누르고,'],
+  [14.9,17.6,'출석 · 숙제 · 테스트 점수를 바로 적립해요.'],
+  [18.0,21.1,'학생은 모은 포인트로 자기만의 숲속 마당을 꾸미고,'],
+  [21.2,24.0,'소품을 옮기고 돌려 보며 아지트를 완성해요.'],
+  [24.4,27.9,'게임센터에서는 하루 3판, 미니게임 점수로'],
+  [28.0,31.8,'몬스터 알을 키우고 친구들과 이번 달 랭킹을 겨뤄요.'],
+  [32.2,35.3,'퀴즈 오두막에서는 매일 수학 · 상식 · 넌센스 3문제!'],
+  [35.4,38.6,'세 문제를 모두 맞히면 사과 포인트를 받아요.'],
+  [39.0,41.9,'다 키운 몬스터는 도감에 차곡차곡 모이고,'],
+  [42.0,45.0,'광장에서는 친구들의 아바타와 집을 구경해요.'],
+  [45.4,50.0,'학생은 신나게, 선생님은 간편하게, 학부모님은 안심하고.'],
+  [50.4,55.7,'칭찬이 자라는 학원, 더몬스터학원 몬스터마을에서 만나보세요.'],
+];
+window.SUBS = SUBS;
+window.render = async function (t) {
+  { const cur = SUBS.find(x => t >= x[0] && t <= x[1]); const el = document.getElementById('sub');
+    if (cur) { el.textContent = cur[2]; const o = Math.min(clamp((t-cur[0])/0.25), clamp((cur[1]-t)/0.25)); el.parentElement.style.opacity = o; el.style.visibility='visible'; }
+    else { el.style.visibility='hidden'; } }
+  document.getElementById('prog').style.width = (t / TOTAL * 100) + '%';
+  document.getElementById('dots').style.transform = `translate(${-(t*8)%60}px, ${-(t*4)%60}px)`;
+  const waits = [];
+  for (const s of SCENES) {
+    const el = document.getElementById(s.id);
+    const lt = t - s.start;
+    if (lt < -0.01 || lt > s.dur + 0.01) { el.style.opacity = 0; el.style.display = 'none'; continue; }
+    el.style.display = '';
+    const fin = s === SCENES[0] ? 1 : clamp(lt / XF), fout = s === SCENES.at(-1) ? clamp((s.dur - lt) / 0.8) : clamp((s.dur - lt) / XF);
+    el.style.opacity = Math.min(fin, fout);
+    el.querySelectorAll('[data-in]').forEach(a => {
+      const p = eout(clamp((lt - parseFloat(a.dataset.in)) / 0.7));
+      a.style.opacity = p; a.style.transform = `translateY(${(1 - p) * 34}px)`;
+    });
+    const win = el.querySelector('[data-win]');
+    if (win) { const p = eout(clamp((lt - 0.15) / 0.9)); win.style.opacity = p; win.style.transform = `translateY(${(1-p)*60}px) scale(${lerp(.95,1,p)})`; }
+    if (s.id === 's-hero') {
+      const y = document.getElementById('hero-yard'), v = document.getElementById('hero-tv');
+      const p1 = eout(clamp((lt-0.2)/1.1)), p2 = eout(clamp((lt-0.8)/1.1));
+      y.style.opacity = p1; y.style.transform = `translate(${(1-p1)*120}px, ${-lt*6}px) rotate(${lerp(8,4,p1)}deg) scale(${1+lt*0.01})`;
+      v.style.opacity = p2; v.style.transform = `translate(${(1-p2)*-80}px, ${(1-p2)*80 + lt*4}px) rotate(${lerp(-9,-5,p2)}deg)`;
+    }
+    if (s.id === 's-tv') { const tg = document.getElementById('tag-tv'); const p = eout(clamp((lt-2.2)/0.6)); tg.style.opacity = p; tg.style.transform = `translateY(${(1-p)*20}px) rotate(-2deg)`; }
+    if (s.segs) {
+      let off = 0, seg = s.segs[0];
+      for (const g of s.segs) { if (lt >= off) seg = g; off += g.len; }
+      let segStart = 0; for (const g of s.segs) { if (g === seg) break; segStart += g.len; }
+      const st = clamp(lt - segStart, 0, seg.len);
+      const frame = Math.round((seg.from + st * seg.rate) * FPS) + 1;
+      const img = document.getElementById(s.img);
+      const box = img.parentElement; const bw = box.clientWidth;
+      const k = ease(clamp(st / seg.len));
+      const [a, b] = seg.view; const C = CLIPS[seg.clip];
+      const vx = lerp(a[0], b[0], k), vy = lerp(a[1], b[1], k), vw = lerp(a[2], b[2], k);
+      const sc = bw / vw;
+      const pxScale = C.css / C.w;
+      img.style.width = C.w + 'px';
+      img.style.transform = `translate(${-vx*sc}px, ${-vy*sc}px) scale(${sc*pxScale})`;
+      waits.push(setImg(img, src(seg.clip, frame)));
+    }
+  }
+  await Promise.all(waits);
+};
+</script>
+</body></html>
